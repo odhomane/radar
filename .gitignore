@@ -21,6 +21,7 @@ Thumbs.db
 
 # Build artifacts
 *.log
+internal/static/dist/assets/
 
 # Local config
 .env
