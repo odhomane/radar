@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   AlertCircle,
   CheckCircle,
@@ -10,7 +10,7 @@ import {
   Plus,
   Trash2,
   List,
-  LayoutGrid,
+  GanttChart,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useChanges } from '../../api/client'
@@ -52,6 +52,29 @@ export function EventsTimeline({ namespace, onViewChange, currentView = 'list', 
   const [timeRange, setTimeRange] = useState<TimeRange>('1h')
   const [kindFilter, setKindFilter] = useState<string>('')
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Keyboard shortcut: / or Cmd/Ctrl+K to focus search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        // Allow Escape to blur
+        if (e.key === 'Escape') {
+          (e.target as HTMLElement).blur()
+        }
+        return
+      }
+
+      if (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key === 'k')) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // Fetch unified timeline
   const { data: events, isLoading, refetch } = useChanges({
@@ -148,8 +171,9 @@ export function EventsTimeline({ namespace, onViewChange, currentView = 'list', 
         <div className="flex-1 relative min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search by resource, reason, or message..."
+            placeholder="Search... (/ or ⌘K)"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full max-w-md pl-10 pr-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -236,7 +260,7 @@ export function EventsTimeline({ namespace, onViewChange, currentView = 'list', 
               )}
               title="Timeline view"
             >
-              <LayoutGrid className="w-4 h-4" />
+              <GanttChart className="w-4 h-4" />
             </button>
           </div>
         )}

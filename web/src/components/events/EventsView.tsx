@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { List, GanttChart } from 'lucide-react'
 import { EventsTimeline } from './EventsTimeline'
 import { TimelineSwimlanes } from './TimelineSwimlanes'
 import { useChanges } from '../../api/client'
@@ -12,7 +13,7 @@ interface EventsViewProps {
 export type EventsViewMode = 'list' | 'swimlane'
 
 export function EventsView({ namespace, onResourceClick }: EventsViewProps) {
-  const [viewMode, setViewMode] = useState<EventsViewMode>('list')
+  const [viewMode, setViewMode] = useState<EventsViewMode>('swimlane')
   const [timeRange] = useState<TimeRange>('1h')
 
   // Fetch events for swimlane view (shared with timeline)
@@ -20,7 +21,8 @@ export function EventsView({ namespace, onResourceClick }: EventsViewProps) {
     namespace: namespace || undefined,
     timeRange,
     includeK8sEvents: true,
-    limit: 500,
+    includeManaged: true, // Include Pods, ReplicaSets, etc. for hierarchical view
+    limit: 1000,
   })
 
   if (viewMode === 'swimlane') {
@@ -60,18 +62,20 @@ function ViewToggle({ viewMode, onChange }: ViewToggleProps) {
     <div className="flex items-center gap-1 bg-slate-700 rounded-lg p-1">
       <button
         onClick={() => onChange('list')}
-        className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${
           viewMode === 'list' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
         }`}
       >
+        <List className="w-4 h-4" />
         List
       </button>
       <button
         onClick={() => onChange('swimlane')}
-        className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${
           viewMode === 'swimlane' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
         }`}
       >
+        <GanttChart className="w-4 h-4" />
         Timeline
       </button>
     </div>

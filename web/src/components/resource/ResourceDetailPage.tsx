@@ -75,7 +75,7 @@ export function ResourceDetailPage({
   const healthState = latestEvent?.healthState || 'unknown'
 
   return (
-    <div className="flex flex-col h-full bg-slate-900">
+    <div className="flex flex-col h-full w-full bg-slate-900">
       {/* Header */}
       <div className="flex-shrink-0 border-b border-slate-700 bg-slate-800">
         <div className="px-6 py-4">

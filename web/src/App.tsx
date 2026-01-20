@@ -92,70 +92,92 @@ function App() {
     <div className="flex flex-col h-screen bg-slate-900">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
+        {/* Left: Logo + Cluster info */}
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-semibold text-white flex items-center gap-2">
             <Layers className="w-5 h-5 text-indigo-400" />
-            Skyhook Explorer
+            <span className="hidden sm:inline">Skyhook Explorer</span>
           </h1>
 
           {clusterInfo && (
-            <div className="flex items-center gap-3">
-              <span className="px-2 py-1 bg-slate-700 rounded text-sm font-medium text-indigo-300">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-slate-700 rounded text-sm font-medium text-indigo-300 truncate max-w-[200px]" title={clusterInfo.context || clusterInfo.cluster}>
                 {clusterInfo.context || clusterInfo.cluster}
               </span>
-              <span className="text-sm text-slate-500">
+              <span className="text-xs text-slate-500 hidden lg:inline">
                 {clusterInfo.platform} · {clusterInfo.kubernetesVersion}
               </span>
+              {/* Connection status - next to cluster name */}
+              <div className="flex items-center gap-1.5 ml-1">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    connected ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                />
+                <span className="text-xs text-slate-500 hidden sm:inline">
+                  {connected ? 'Connected' : 'Disconnected'}
+                </span>
+                {!connected && (
+                  <button
+                    onClick={reconnect}
+                    className="p-1 text-slate-400 hover:text-white"
+                    title="Reconnect"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
-
-          {/* Main view tabs */}
-          <div className="flex items-center gap-1 bg-slate-700/50 rounded-lg p-1 ml-4">
-            <button
-              onClick={() => setMainView('topology')}
-              className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors ${
-                mainView === 'topology'
-                  ? 'bg-indigo-500 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-600'
-              }`}
-            >
-              <Network className="w-4 h-4" />
-              Topology
-            </button>
-            <button
-              onClick={() => setMainView('resources')}
-              className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors ${
-                mainView === 'resources'
-                  ? 'bg-indigo-500 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-600'
-              }`}
-            >
-              <List className="w-4 h-4" />
-              Resources
-            </button>
-            <button
-              onClick={() => setMainView('events')}
-              className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors ${
-                mainView === 'events'
-                  ? 'bg-indigo-500 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-600'
-              }`}
-            >
-              <Clock className="w-4 h-4" />
-              Events
-            </button>
-          </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        {/* Center: View tabs */}
+        <div className="flex items-center gap-1 bg-slate-700/50 rounded-lg p-1">
+          <button
+            onClick={() => setMainView('topology')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
+              mainView === 'topology'
+                ? 'bg-indigo-500 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-600'
+            }`}
+          >
+            <Network className="w-4 h-4" />
+            <span className="hidden sm:inline">Topology</span>
+          </button>
+          <button
+            onClick={() => setMainView('resources')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
+              mainView === 'resources'
+                ? 'bg-indigo-500 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-600'
+            }`}
+          >
+            <List className="w-4 h-4" />
+            <span className="hidden sm:inline">Resources</span>
+          </button>
+          <button
+            onClick={() => setMainView('events')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
+              mainView === 'events'
+                ? 'bg-indigo-500 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-600'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span className="hidden sm:inline">Events</span>
+          </button>
+        </div>
+
+        {/* Right: Controls */}
+        <div className="flex items-center gap-3">
           {/* Topology-specific controls */}
           {mainView === 'topology' && (
             <>
               {/* Topology mode toggle */}
-              <div className="flex items-center gap-1 bg-slate-700 rounded-lg p-1">
+              <div className="flex items-center gap-1 bg-slate-700 rounded-lg p-0.5">
                 <button
                   onClick={() => setTopologyMode('full')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
                     topologyMode === 'full'
                       ? 'bg-slate-600 text-white'
                       : 'text-slate-400 hover:text-white'
@@ -165,7 +187,7 @@ function App() {
                 </button>
                 <button
                   onClick={() => setTopologyMode('traffic')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
                     topologyMode === 'traffic'
                       ? 'bg-slate-600 text-white'
                       : 'text-slate-400 hover:text-white'
@@ -176,12 +198,12 @@ function App() {
               </div>
 
               {/* Grouping selector */}
-              <div className="flex items-center gap-2">
-                <FolderTree className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-1.5">
+                <FolderTree className="w-3.5 h-3.5 text-slate-400" />
                 <select
                   value={groupingMode}
                   onChange={(e) => setGroupingMode(e.target.value as GroupingMode)}
-                  className="appearance-none bg-slate-700 text-white text-sm rounded-lg px-3 py-1.5 pr-8 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="appearance-none bg-slate-700 text-white text-xs rounded px-2 py-1 pr-6 border border-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 >
                   <option value="none">No Grouping</option>
                   <option value="namespace">By Namespace</option>
@@ -191,12 +213,12 @@ function App() {
             </>
           )}
 
-          {/* Namespace selector */}
+          {/* Namespace selector - compact */}
           <div className="relative">
             <select
               value={namespace}
               onChange={(e) => setNamespace(e.target.value)}
-              className="appearance-none bg-slate-700 text-white text-sm rounded-lg px-3 py-1.5 pr-8 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="appearance-none bg-slate-700 text-white text-xs rounded px-2 py-1 pr-6 border border-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 min-w-[100px]"
             >
               <option value="">All Namespaces</option>
               {namespaces?.map((ns) => (
@@ -205,28 +227,7 @@ function App() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          </div>
-
-          {/* Connection status */}
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                connected ? 'bg-green-500' : 'bg-red-500'
-              }`}
-            />
-            <span className="text-sm text-slate-400">
-              {connected ? 'Connected' : 'Disconnected'}
-            </span>
-            {!connected && (
-              <button
-                onClick={reconnect}
-                className="p-1 text-slate-400 hover:text-white"
-                title="Reconnect"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-            )}
+            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
           </div>
         </div>
       </header>
@@ -279,6 +280,7 @@ function App() {
         {mainView === 'events' && !detailResource && (
           <EventsView
             namespace={namespace}
+            onResourceClick={(kind, ns, name) => setDetailResource({ kind, namespace: ns, name })}
           />
         )}
 

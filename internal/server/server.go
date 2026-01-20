@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -87,6 +88,9 @@ func (s *Server) setupRoutes() {
 		r.Get("/events/stream", s.broadcaster.HandleSSE)
 		r.Get("/changes", s.handleChanges)
 		r.Get("/changes/{kind}/{namespace}/{name}/children", s.handleChangeChildren)
+		// Pod logs
+		r.Get("/pods/{namespace}/{name}/logs", s.handlePodLogs)
+		r.Get("/pods/{namespace}/{name}/logs/stream", s.handlePodLogsStream)
 	})
 
 	// Static files (frontend)
@@ -262,8 +266,14 @@ func (s *Server) handleListResources(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, result)
 }
 
+// normalizeKind converts K8s kind names to lowercase for case-insensitive matching
+// E.g., "Job" -> "job", "Deployment" -> "deployment"
+func normalizeKind(kind string) string {
+	return strings.ToLower(kind)
+}
+
 func (s *Server) handleGetResource(w http.ResponseWriter, r *http.Request) {
-	kind := chi.URLParam(r, "kind")
+	kind := normalizeKind(chi.URLParam(r, "kind"))
 	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
 
@@ -277,29 +287,29 @@ func (s *Server) handleGetResource(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	switch kind {
-	case "pods":
+	case "pods", "pod":
 		resource, err = cache.Pods().Pods(namespace).Get(name)
-	case "services":
+	case "services", "service":
 		resource, err = cache.Services().Services(namespace).Get(name)
-	case "deployments":
+	case "deployments", "deployment":
 		resource, err = cache.Deployments().Deployments(namespace).Get(name)
-	case "daemonsets":
+	case "daemonsets", "daemonset":
 		resource, err = cache.DaemonSets().DaemonSets(namespace).Get(name)
-	case "statefulsets":
+	case "statefulsets", "statefulset":
 		resource, err = cache.StatefulSets().StatefulSets(namespace).Get(name)
-	case "replicasets":
+	case "replicasets", "replicaset":
 		resource, err = cache.ReplicaSets().ReplicaSets(namespace).Get(name)
-	case "ingresses":
+	case "ingresses", "ingress":
 		resource, err = cache.Ingresses().Ingresses(namespace).Get(name)
-	case "configmaps":
+	case "configmaps", "configmap":
 		resource, err = cache.ConfigMaps().ConfigMaps(namespace).Get(name)
-	case "secrets":
+	case "secrets", "secret":
 		resource, err = cache.Secrets().Secrets(namespace).Get(name)
-	case "hpas":
+	case "hpas", "hpa", "horizontalpodautoscaler":
 		resource, err = cache.HorizontalPodAutoscalers().HorizontalPodAutoscalers(namespace).Get(name)
-	case "jobs":
+	case "jobs", "job":
 		resource, err = cache.Jobs().Jobs(namespace).Get(name)
-	case "cronjobs":
+	case "cronjobs", "cronjob":
 		resource, err = cache.CronJobs().CronJobs(namespace).Get(name)
 	default:
 		s.writeError(w, http.StatusBadRequest, fmt.Sprintf("Unknown resource kind: %s", kind))
