@@ -80,6 +80,8 @@ func (b *SSEBroadcaster) initCachedTopology() {
 	builder := topology.NewBuilder()
 	opts := topology.DefaultBuildOptions()
 	opts.ViewMode = topology.ViewModeResources
+	// Include ReplicaSets in the cache so relationship lookups work for them
+	opts.IncludeReplicaSets = true
 
 	if topo, err := builder.Build(opts); err == nil {
 		b.updateCachedTopology(topo)
@@ -206,6 +208,7 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 	// for relationship lookups, even if no clients are connected
 	fullOpts := topology.DefaultBuildOptions()
 	fullOpts.ViewMode = topology.ViewModeResources
+	fullOpts.IncludeReplicaSets = true // Include for relationship lookups
 	if fullTopo, err := builder.Build(fullOpts); err == nil {
 		b.updateCachedTopology(fullTopo)
 	} else {

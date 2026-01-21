@@ -93,7 +93,12 @@ export function EventsTimeline({ namespace, onViewChange, currentView = 'list', 
       // Filter by event type
       if (eventTypeFilter === 'changes' && event.type !== 'change') return false
       if (eventTypeFilter === 'k8s_events' && event.type !== 'k8s_event') return false
-      if (eventTypeFilter === 'warnings' && event.eventType !== 'Warning') return false
+      if (eventTypeFilter === 'warnings') {
+        // Warnings filter includes: K8s Warning events + unhealthy/degraded changes
+        const isK8sWarning = event.eventType === 'Warning'
+        const isUnhealthyChange = event.type === 'change' && (event.healthState === 'unhealthy' || event.healthState === 'degraded')
+        if (!isK8sWarning && !isUnhealthyChange) return false
+      }
 
       // Filter by search term
       if (searchTerm) {
@@ -159,7 +164,10 @@ export function EventsTimeline({ namespace, onViewChange, currentView = 'list', 
     return {
       total: events.length,
       changes: events.filter((e) => e.type === 'change').length,
-      warnings: events.filter((e) => e.eventType === 'Warning').length,
+      warnings: events.filter((e) =>
+        e.eventType === 'Warning' ||
+        (e.type === 'change' && (e.healthState === 'unhealthy' || e.healthState === 'degraded'))
+      ).length,
     }
   }, [events])
 

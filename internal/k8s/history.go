@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,15 +18,17 @@ import (
 
 // ChangeRecord represents a recorded resource change with optional diff
 type ChangeRecord struct {
-	ID          string     `json:"id"`
-	Kind        string     `json:"kind"`
-	Namespace   string     `json:"namespace"`
-	Name        string     `json:"name"`
-	Operation   string     `json:"operation"` // add, update, delete
-	Timestamp   time.Time  `json:"timestamp"`
-	Diff        *DiffInfo  `json:"diff,omitempty"`
-	HealthState string     `json:"healthState"` // healthy, degraded, unhealthy, unknown
-	Owner       *OwnerInfo `json:"owner,omitempty"`
+	ID           string     `json:"id"`
+	Kind         string     `json:"kind"`
+	Namespace    string     `json:"namespace"`
+	Name         string     `json:"name"`
+	Operation    string     `json:"operation"` // add, update, delete
+	Timestamp    time.Time  `json:"timestamp"`
+	Diff         *DiffInfo  `json:"diff,omitempty"`
+	HealthState  string     `json:"healthState"` // healthy, degraded, unhealthy, unknown
+	Owner        *OwnerInfo `json:"owner,omitempty"`
+	IsHistorical bool       `json:"isHistorical,omitempty"` // True if extracted from resource metadata/status
+	Reason       string     `json:"reason,omitempty"`       // Description for historical events (e.g., "created", "started", "completed")
 }
 
 // OwnerInfo represents the owner/controller of a resource
@@ -71,6 +74,8 @@ type ChangeHistory struct {
 	previousSpecs map[string]any // key: kind/namespace/name -> previous spec for diff
 	specMu        sync.RWMutex
 	persistPath   string // if set, persist to this file
+	seenResources map[string]bool // resources seen in loaded history (to skip duplicate adds on sync)
+	seenMu        sync.RWMutex
 }
 
 var (
@@ -86,6 +91,7 @@ func InitChangeHistory(maxSize int, persistPath string) {
 			maxSize:       maxSize,
 			previousSpecs: make(map[string]any),
 			persistPath:   persistPath,
+			seenResources: make(map[string]bool),
 		}
 		if persistPath != "" {
 			changeHistory.loadFromFile()
@@ -109,6 +115,27 @@ func (h *ChangeHistory) RecordChange(kind, namespace, name, operation string, ol
 		return nil
 	}
 
+	key := resourceKey(kind, namespace, name)
+
+	// Skip "add" for resources we've already seen (avoids duplicate adds on restart)
+	if operation == "add" {
+		h.seenMu.RLock()
+		seen := h.seenResources[key]
+		h.seenMu.RUnlock()
+		if seen {
+			return nil
+		}
+	}
+
+	// Track seen resources
+	h.seenMu.Lock()
+	if operation == "delete" {
+		delete(h.seenResources, key)
+	} else {
+		h.seenResources[key] = true
+	}
+	h.seenMu.Unlock()
+
 	record := ChangeRecord{
 		ID:          uuid.New().String(),
 		Kind:        kind,
@@ -118,8 +145,6 @@ func (h *ChangeHistory) RecordChange(kind, namespace, name, operation string, ol
 		Timestamp:   time.Now(),
 		HealthState: "unknown",
 	}
-
-	key := resourceKey(kind, namespace, name)
 
 	// Compute diff for updates
 	if operation == "update" && oldObj != nil && newObj != nil {
@@ -151,8 +176,22 @@ func (h *ChangeHistory) RecordChange(kind, namespace, name, operation string, ol
 		h.specMu.Unlock()
 	}
 
-	// Add to ring buffer
+	// For "add" operations, extract historical events from the resource
+	// These are timestamps embedded in the resource's metadata/status
+	var historicalEvents []ChangeRecord
+	if operation == "add" && newObj != nil {
+		historicalEvents = extractHistoricalEvents(kind, namespace, name, newObj, record.Owner)
+	}
+
+	// Add historical events first (they have older timestamps), then the current record
 	h.mu.Lock()
+	for _, histEvent := range historicalEvents {
+		h.records[h.head] = histEvent
+		h.head = (h.head + 1) % h.maxSize
+		if h.count < h.maxSize {
+			h.count++
+		}
+	}
 	h.records[h.head] = record
 	h.head = (h.head + 1) % h.maxSize
 	if h.count < h.maxSize {
@@ -162,6 +201,9 @@ func (h *ChangeHistory) RecordChange(kind, namespace, name, operation string, ol
 
 	// Persist if enabled
 	if h.persistPath != "" {
+		for _, histEvent := range historicalEvents {
+			h.appendToFile(histEvent)
+		}
 		h.appendToFile(record)
 	}
 
@@ -673,7 +715,19 @@ func diffStatefulSet(oldObj, newObj any) ([]FieldChange, []string) {
 // Helper functions
 
 // extractOwner gets the controller owner reference from an object
+// For K8s Events, it extracts the involvedObject instead
 func extractOwner(obj any) *OwnerInfo {
+	// Special case: K8s Events use involvedObject, not ownerReferences
+	if event, ok := obj.(*corev1.Event); ok {
+		if event.InvolvedObject.Kind != "" && event.InvolvedObject.Name != "" {
+			return &OwnerInfo{
+				Kind: event.InvolvedObject.Kind,
+				Name: event.InvolvedObject.Name,
+			}
+		}
+		return nil
+	}
+
 	meta, ok := obj.(metav1.Object)
 	if !ok {
 		return nil
@@ -861,6 +915,159 @@ func truncateImage(image string) string {
 	return image
 }
 
+// extractHistoricalEvents extracts meaningful timestamps from a resource's metadata/status
+// Returns a list of historical events that should be added to the timeline
+func extractHistoricalEvents(kind, namespace, name string, obj any, owner *OwnerInfo) []ChangeRecord {
+	var events []ChangeRecord
+
+	// Helper to create a historical record
+	makeRecord := func(ts time.Time, reason, healthState string) ChangeRecord {
+		return ChangeRecord{
+			ID:           uuid.New().String(),
+			Kind:         kind,
+			Namespace:    namespace,
+			Name:         name,
+			Operation:    "update", // Historical events are shown as updates
+			Timestamp:    ts,
+			HealthState:  healthState,
+			Owner:        owner,
+			IsHistorical: true,
+			Reason:       reason,
+		}
+	}
+
+	switch kind {
+	case "Pod":
+		if pod, ok := obj.(*corev1.Pod); ok {
+			// Pod creation
+			if !pod.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(pod.CreationTimestamp.Time, "created", "unknown"))
+			}
+			// Pod started
+			if pod.Status.StartTime != nil && !pod.Status.StartTime.IsZero() {
+				events = append(events, makeRecord(pod.Status.StartTime.Time, "started", "degraded"))
+			}
+			// Container started/terminated times
+			for _, cs := range pod.Status.ContainerStatuses {
+				if cs.State.Running != nil && !cs.State.Running.StartedAt.IsZero() {
+					events = append(events, makeRecord(cs.State.Running.StartedAt.Time, "container started", "healthy"))
+				}
+				if cs.State.Terminated != nil {
+					if !cs.State.Terminated.StartedAt.IsZero() {
+						events = append(events, makeRecord(cs.State.Terminated.StartedAt.Time, "container started", "degraded"))
+					}
+					if !cs.State.Terminated.FinishedAt.IsZero() {
+						state := "unhealthy"
+						if cs.State.Terminated.ExitCode == 0 {
+							state = "healthy"
+						}
+						events = append(events, makeRecord(cs.State.Terminated.FinishedAt.Time, "container finished", state))
+					}
+				}
+			}
+			// Pod conditions
+			for _, cond := range pod.Status.Conditions {
+				if !cond.LastTransitionTime.IsZero() && cond.Status == corev1.ConditionTrue {
+					reason := string(cond.Type)
+					events = append(events, makeRecord(cond.LastTransitionTime.Time, reason, "healthy"))
+				}
+			}
+		}
+
+	case "Deployment":
+		if deploy, ok := obj.(*appsv1.Deployment); ok {
+			// Creation
+			if !deploy.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(deploy.CreationTimestamp.Time, "created", "unknown"))
+			}
+			// Conditions (Available, Progressing)
+			for _, cond := range deploy.Status.Conditions {
+				if !cond.LastTransitionTime.IsZero() && cond.Status == corev1.ConditionTrue {
+					state := "healthy"
+					if cond.Type == appsv1.DeploymentProgressing {
+						state = "degraded"
+					}
+					events = append(events, makeRecord(cond.LastTransitionTime.Time, string(cond.Type), state))
+				}
+			}
+		}
+
+	case "ReplicaSet":
+		if rs, ok := obj.(*appsv1.ReplicaSet); ok {
+			if !rs.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(rs.CreationTimestamp.Time, "created", "unknown"))
+			}
+		}
+
+	case "DaemonSet":
+		if ds, ok := obj.(*appsv1.DaemonSet); ok {
+			if !ds.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(ds.CreationTimestamp.Time, "created", "unknown"))
+			}
+		}
+
+	case "StatefulSet":
+		if sts, ok := obj.(*appsv1.StatefulSet); ok {
+			if !sts.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(sts.CreationTimestamp.Time, "created", "unknown"))
+			}
+		}
+
+	case "Service":
+		if svc, ok := obj.(*corev1.Service); ok {
+			if !svc.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(svc.CreationTimestamp.Time, "created", "unknown"))
+			}
+		}
+
+	case "Ingress":
+		if ing, ok := obj.(*networkingv1.Ingress); ok {
+			if !ing.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(ing.CreationTimestamp.Time, "created", "unknown"))
+			}
+		}
+
+	case "ConfigMap":
+		if cm, ok := obj.(*corev1.ConfigMap); ok {
+			if !cm.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(cm.CreationTimestamp.Time, "created", "unknown"))
+			}
+		}
+
+	case "Job":
+		if job, ok := obj.(*batchv1.Job); ok {
+			if !job.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(job.CreationTimestamp.Time, "created", "unknown"))
+			}
+			if job.Status.StartTime != nil && !job.Status.StartTime.IsZero() {
+				events = append(events, makeRecord(job.Status.StartTime.Time, "started", "degraded"))
+			}
+			if job.Status.CompletionTime != nil && !job.Status.CompletionTime.IsZero() {
+				state := "healthy"
+				if job.Status.Failed > 0 {
+					state = "unhealthy"
+				}
+				events = append(events, makeRecord(job.Status.CompletionTime.Time, "completed", state))
+			}
+		}
+
+	case "CronJob":
+		if cj, ok := obj.(*batchv1.CronJob); ok {
+			if !cj.CreationTimestamp.IsZero() {
+				events = append(events, makeRecord(cj.CreationTimestamp.Time, "created", "unknown"))
+			}
+			if cj.Status.LastScheduleTime != nil && !cj.Status.LastScheduleTime.IsZero() {
+				events = append(events, makeRecord(cj.Status.LastScheduleTime.Time, "scheduled", "degraded"))
+			}
+			if cj.Status.LastSuccessfulTime != nil && !cj.Status.LastSuccessfulTime.IsZero() {
+				events = append(events, makeRecord(cj.Status.LastSuccessfulTime.Time, "succeeded", "healthy"))
+			}
+		}
+	}
+
+	return events
+}
+
 // File persistence
 
 func (h *ChangeHistory) loadFromFile() {
@@ -893,6 +1100,19 @@ func (h *ChangeHistory) loadFromFile() {
 	if len(records) > h.maxSize {
 		start = len(records) - h.maxSize
 	}
+
+	// Track which resources have been seen (for skipping duplicate adds on sync)
+	// Process all records to get final state of each resource
+	h.seenMu.Lock()
+	for _, record := range records {
+		key := resourceKey(record.Kind, record.Namespace, record.Name)
+		if record.Operation == "delete" {
+			delete(h.seenResources, key)
+		} else {
+			h.seenResources[key] = true
+		}
+	}
+	h.seenMu.Unlock()
 
 	for i := start; i < len(records); i++ {
 		h.records[h.head] = records[i]
