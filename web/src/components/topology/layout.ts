@@ -17,16 +17,23 @@ const elkOptionsGroup = {
   'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
 }
 
-// Configuration for multi-column group layout
-const MULTI_COLUMN_CONFIG = {
-  columns: 2,           // Number of columns for namespace groups
-  columnGap: 80,        // Horizontal gap between columns
-  rowGap: 60,           // Vertical gap between groups in same column
+// ELK options for positioning groups based on inter-group connections
+// Groups are treated as single nodes, edges represent cross-group connections
+const elkOptionsGroupLayout = {
+  'elk.algorithm': 'layered',
+  'elk.direction': 'RIGHT',
+  'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+  'elk.spacing.nodeNode': '80',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '120',
+  'elk.edgeRouting': 'ORTHOGONAL',
+  'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
 }
 
 // Group padding - space for header + internal spacing (must account for border)
+// Top padding accommodates the header at its largest (when zoomed out)
+// Child nodes are translated up dynamically when zoomed in (see TopologyGraph)
 const GROUP_PADDING = {
-  top: 100,   // Space for group header (~80px) + margin
+  top: 100,   // Space for group header at max scale
   left: 30,
   bottom: 36,
   right: 30,
@@ -397,7 +404,7 @@ export function buildHierarchicalElkGraph(
   }
 }
 
-// Apply ELK layout results to ReactFlow nodes with multi-column arrangement for groups
+// Two-phase layout: first layout groups internally, then position groups based on connections
 export async function applyHierarchicalLayout(
   elkGraph: ElkGraph,
   topologyNodes: TopologyNode[],
@@ -408,7 +415,9 @@ export async function applyHierarchicalLayout(
   hideGroupHeader: boolean = false
 ): Promise<{ nodes: Node[]; positions: Map<string, { x: number; y: number }> }> {
   try {
-    // Step 1: Layout each group independently
+    const padding = hideGroupHeader ? GROUP_PADDING_NO_HEADER : GROUP_PADDING
+
+    // Phase 1: Layout each group independently and collect their sizes
     const groupLayouts: Array<{
       groupId: string
       groupKey: string
@@ -418,18 +427,30 @@ export async function applyHierarchicalLayout(
       isCollapsed: boolean
     }> = []
 
-    const ungroupedNodes: ElkLayoutResult[] = []
+    const ungroupedNodes: Array<{
+      id: string
+      width: number
+      height: number
+    }> = []
+
+    // Build a set of node IDs in each group for edge filtering
+    const groupNodeIds = new Map<string, Set<string>>()
 
     for (const child of elkGraph.children) {
       const isGroup = child.id.startsWith('group-')
 
       if (isGroup && child.children && child.children.length > 0) {
-        // Layout this group independently
         const groupKey = child.id.replace(`group-${groupingMode}-`, '')
         const minWidth = hideGroupHeader ? 300 : Math.max(500, groupKey.length * 16 + 200)
 
-        // Use reduced padding when header is hidden
-        const padding = hideGroupHeader ? GROUP_PADDING_NO_HEADER : GROUP_PADDING
+        // Track node IDs in this group
+        const nodeIds = new Set(child.children.map(c => c.id))
+        groupNodeIds.set(child.id, nodeIds)
+
+        // Layout this group independently with only intra-group edges
+        const intraGroupEdges = elkGraph.edges.filter(e =>
+          nodeIds.has(e.sources[0]) && nodeIds.has(e.targets[0])
+        )
 
         const groupGraph: ElkGraph = {
           id: child.id,
@@ -438,16 +459,11 @@ export async function applyHierarchicalLayout(
             'elk.padding': `[left=${padding.left}, top=${padding.top}, right=${padding.right}, bottom=${padding.bottom}]`,
           },
           children: child.children,
-          edges: elkGraph.edges.filter(e => {
-            // Include edges where both source and target are in this group
-            const childIds = new Set(child.children!.map(c => c.id))
-            return childIds.has(e.sources[0]) && childIds.has(e.targets[0])
-          }),
+          edges: intraGroupEdges,
         }
 
         const layoutResult = await elk.layout(groupGraph) as ElkLayoutResult
 
-        // Enforce minimum width for header visibility (not needed when header hidden)
         const finalWidth = hideGroupHeader
           ? (layoutResult.width || 300)
           : Math.max(layoutResult.width || 300, minWidth)
@@ -476,76 +492,107 @@ export async function applyHierarchicalLayout(
         // Ungrouped node
         ungroupedNodes.push({
           id: child.id,
-          x: 0,
-          y: 0,
-          width: child.width,
-          height: child.height,
+          width: child.width || 200,
+          height: child.height || 56,
         })
       }
     }
 
-    // Step 2: Arrange groups in multiple columns
-    const { columns, columnGap, rowGap } = MULTI_COLUMN_CONFIG
-    const columnHeights: number[] = new Array(columns).fill(0)
-    const columnWidths: number[] = new Array(columns).fill(0)
+    // Phase 2: Build a meta-graph of groups and use ELK to position them
+    // based on inter-group connections
+    const nodeToGroup = new Map<string, string>()
+    for (const [groupId, nodeIds] of groupNodeIds) {
+      for (const nodeId of nodeIds) {
+        nodeToGroup.set(nodeId, groupId)
+      }
+    }
 
-    // Sort groups by height (tallest first) for better packing
-    groupLayouts.sort((a, b) => b.height - a.height)
+    // Find inter-group edges (edges where source and target are in different groups)
+    const interGroupEdges: ElkEdge[] = []
+    const seenInterGroupEdges = new Set<string>()
 
-    // Assign each group to the shortest column - track column index directly
-    const groupPositions: Array<{ groupId: string; colIndex: number; y: number }> = []
+    for (const edge of elkGraph.edges) {
+      const sourceGroup = nodeToGroup.get(edge.sources[0])
+      const targetGroup = nodeToGroup.get(edge.targets[0])
 
-    for (const group of groupLayouts) {
-      // Find the column with minimum height
-      let minColIndex = 0
-      let minHeight = columnHeights[0]
-      for (let i = 1; i < columns; i++) {
-        if (columnHeights[i] < minHeight) {
-          minHeight = columnHeights[i]
-          minColIndex = i
+      // Edge crosses groups if both are in groups but different ones
+      if (sourceGroup && targetGroup && sourceGroup !== targetGroup) {
+        const edgeKey = `${sourceGroup}->${targetGroup}`
+        if (!seenInterGroupEdges.has(edgeKey)) {
+          seenInterGroupEdges.add(edgeKey)
+          interGroupEdges.push({
+            id: `inter-${edgeKey}`,
+            sources: [sourceGroup],
+            targets: [targetGroup],
+          })
         }
       }
-
-      groupPositions.push({
-        groupId: group.groupId,
-        colIndex: minColIndex,
-        y: columnHeights[minColIndex],
-      })
-
-      // Update column tracking
-      columnHeights[minColIndex] += group.height + rowGap
-      columnWidths[minColIndex] = Math.max(columnWidths[minColIndex], group.width)
-    }
-
-    // Calculate final x positions using the tracked column index and final column widths
-    const groupFinalPositions: Array<{ groupId: string; x: number; y: number }> = []
-    for (const pos of groupPositions) {
-      let x = 0
-      for (let i = 0; i < pos.colIndex; i++) {
-        x += columnWidths[i] + columnGap
+      // Edge from ungrouped to group or vice versa
+      else if ((!sourceGroup && targetGroup) || (sourceGroup && !targetGroup)) {
+        const source = sourceGroup || edge.sources[0]
+        const target = targetGroup || edge.targets[0]
+        const edgeKey = `${source}->${target}`
+        if (!seenInterGroupEdges.has(edgeKey)) {
+          seenInterGroupEdges.add(edgeKey)
+          interGroupEdges.push({
+            id: `inter-${edgeKey}`,
+            sources: [source],
+            targets: [target],
+          })
+        }
       }
-      groupFinalPositions.push({
-        groupId: pos.groupId,
-        x,
-        y: pos.y,
+    }
+
+    // Build meta-graph: groups and ungrouped nodes as children
+    const metaChildren: ElkNode[] = []
+
+    for (const group of groupLayouts) {
+      metaChildren.push({
+        id: group.groupId,
+        width: group.width,
+        height: group.height,
       })
     }
 
-    // Step 3: Build ReactFlow nodes
+    for (const node of ungroupedNodes) {
+      metaChildren.push({
+        id: node.id,
+        width: node.width,
+        height: node.height,
+      })
+    }
+
+    // Layout the meta-graph to position groups
+    const metaGraph: ElkGraph = {
+      id: 'meta-root',
+      layoutOptions: elkOptionsGroupLayout,
+      children: metaChildren,
+      edges: interGroupEdges,
+    }
+
+    const metaLayoutResult = await elk.layout(metaGraph) as ElkLayoutResult
+
+    // Build position map from meta-layout
+    const groupPositions = new Map<string, { x: number; y: number }>()
+    for (const child of metaLayoutResult.children || []) {
+      groupPositions.set(child.id, { x: child.x || 0, y: child.y || 0 })
+    }
+
+    // Phase 3: Build ReactFlow nodes using positions from both phases
     const nodes: Node[] = []
     const positions = new Map<string, { x: number; y: number }>()
 
     for (const group of groupLayouts) {
-      const pos = groupFinalPositions.find(p => p.groupId === group.groupId)!
+      const pos = groupPositions.get(group.groupId) || { x: 0, y: 0 }
       const memberIds = groupMap.get(group.groupKey) || []
 
-      positions.set(group.groupId, { x: pos.x, y: pos.y })
+      positions.set(group.groupId, pos)
 
       // Add group node
       nodes.push({
         id: group.groupId,
         type: 'group',
-        position: { x: pos.x, y: pos.y },
+        position: pos,
         data: {
           type: groupingMode,
           name: group.groupKey,
@@ -561,11 +608,13 @@ export async function applyHierarchicalLayout(
         zIndex: -1,
       })
 
-      // Add child nodes
+      // Add child nodes with positions relative to group
       for (const child of group.children) {
         const topoNode = topologyNodes.find(n => n.id === child.id)
         if (topoNode) {
-          positions.set(child.id, { x: pos.x + (child.x || 0), y: pos.y + (child.y || 0) })
+          const absX = pos.x + (child.x || 0)
+          const absY = pos.y + (child.y || 0)
+          positions.set(child.id, { x: absX, y: absY })
 
           nodes.push({
             id: child.id,
@@ -585,19 +634,17 @@ export async function applyHierarchicalLayout(
       }
     }
 
-    // Add ungrouped nodes (positioned after all columns)
-    const totalWidth = columnWidths.reduce((sum, w, i) => sum + w + (i < columns - 1 ? columnGap : 0), 0)
-    let ungroupedY = 0
+    // Add ungrouped nodes
     for (const node of ungroupedNodes) {
+      const pos = groupPositions.get(node.id) || { x: 0, y: 0 }
       const topoNode = topologyNodes.find(n => n.id === node.id)
       if (topoNode) {
-        const x = totalWidth + columnGap
-        positions.set(node.id, { x, y: ungroupedY })
+        positions.set(node.id, pos)
 
         nodes.push({
           id: node.id,
           type: 'k8sResource',
-          position: { x, y: ungroupedY },
+          position: pos,
           data: {
             kind: topoNode.kind,
             name: topoNode.name,
@@ -606,8 +653,6 @@ export async function applyHierarchicalLayout(
             selected: false,
           },
         })
-
-        ungroupedY += (node.height || 56) + 20
       }
     }
 

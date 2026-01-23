@@ -8,6 +8,7 @@ const (
 	KindIngress       NodeKind = "Ingress"
 	KindService       NodeKind = "Service"
 	KindDeployment    NodeKind = "Deployment"
+	KindRollout       NodeKind = "Rollout"
 	KindDaemonSet     NodeKind = "DaemonSet"
 	KindStatefulSet   NodeKind = "StatefulSet"
 	KindReplicaSet    NodeKind = "ReplicaSet"

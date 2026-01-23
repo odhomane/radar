@@ -18,7 +18,7 @@ import '@xyflow/react/dist/style.css'
 
 import { K8sResourceNode } from './K8sResourceNode'
 import { GroupNode } from './GroupNode'
-import { buildHierarchicalElkGraph, applyHierarchicalLayout } from './layout'
+import { buildHierarchicalElkGraph, applyHierarchicalLayout, getGroupKey } from './layout'
 import type { Topology, TopologyNode, TopologyEdge, ViewMode, GroupingMode } from '../../types'
 
 // Edge colors by type
@@ -47,6 +47,7 @@ function getNodeColor(kind: string): string {
     case 'Service':
       return '#3b82f6'
     case 'Deployment':
+    case 'Rollout':
       return '#10b981'
     case 'DaemonSet':
       return '#14b8a6'
@@ -257,6 +258,76 @@ export function TopologyGraph({
     return { nodes: newNodes, edges: newEdges }
   }, [])
 
+  // Transform to per-group Internet nodes in traffic view with grouping
+  const createPerGroupInternetNodes = useCallback((
+    nodes: TopologyNode[],
+    edges: TopologyEdge[],
+    groupMode: GroupingMode
+  ): { nodes: TopologyNode[]; edges: TopologyEdge[] } => {
+    if (groupMode === 'none') {
+      return { nodes, edges }
+    }
+
+    // Find the single Internet node
+    const internetNode = nodes.find(n => n.kind === 'Internet')
+    if (!internetNode) {
+      return { nodes, edges }
+    }
+
+    // Find all ingresses and group them
+    const ingresses = nodes.filter(n => n.kind === 'Ingress')
+    const groupsWithIngresses = new Map<string, TopologyNode[]>()
+
+    for (const ingress of ingresses) {
+      const groupKey = getGroupKey(ingress, groupMode)
+      if (groupKey) {
+        if (!groupsWithIngresses.has(groupKey)) {
+          groupsWithIngresses.set(groupKey, [])
+        }
+        groupsWithIngresses.get(groupKey)!.push(ingress)
+      }
+    }
+
+    // If no groups with ingresses, keep original
+    if (groupsWithIngresses.size === 0) {
+      return { nodes, edges }
+    }
+
+    // Remove original Internet node and its edges
+    const newNodes = nodes.filter(n => n.id !== internetNode.id)
+    const newEdges = edges.filter(e => e.source !== internetNode.id)
+
+    // Create per-group Internet nodes
+    for (const [groupKey, groupIngresses] of groupsWithIngresses) {
+      const internetId = `internet-${groupMode}-${groupKey}`
+
+      // Add Internet node for this group with group metadata
+      newNodes.push({
+        id: internetId,
+        kind: 'Internet',
+        name: 'Internet',
+        status: 'healthy',
+        data: {
+          // Add group metadata so it gets grouped with its ingresses
+          namespace: groupMode === 'namespace' ? groupKey : groupIngresses[0]?.data?.namespace,
+          labels: groupMode === 'app' ? { 'app.kubernetes.io/name': groupKey } : {},
+        },
+      })
+
+      // Add edges from this Internet node to its ingresses
+      for (const ingress of groupIngresses) {
+        newEdges.push({
+          id: `${internetId}-to-${ingress.id}`,
+          source: internetId,
+          target: ingress.id,
+          type: 'routes-to',
+        })
+      }
+    }
+
+    return { nodes: newNodes, edges: newEdges }
+  }, [])
+
   // Prepare topology data with expanded pod groups
   const { workingNodes, workingEdges } = useMemo(() => {
     if (!topology) {
@@ -266,14 +337,22 @@ export function TopologyGraph({
     let nodes = [...topology.nodes]
     let edges = [...topology.edges]
 
+    // Expand pod groups
     for (const podGroupId of expandedPodGroups) {
       const result = expandPodGroup(nodes, edges, podGroupId)
       nodes = result.nodes
       edges = result.edges
     }
 
+    // In traffic view with grouping, create per-group Internet nodes
+    if (isTrafficView && groupingMode !== 'none') {
+      const result = createPerGroupInternetNodes(nodes, edges, groupingMode)
+      nodes = result.nodes
+      edges = result.edges
+    }
+
     return { workingNodes: nodes, workingEdges: edges }
-  }, [topology, expandedPodGroups, expandPodGroup])
+  }, [topology, expandedPodGroups, expandPodGroup, isTrafficView, groupingMode, createPerGroupInternetNodes])
 
   // Structure key for change detection
   const structureKey = useMemo(() => {
@@ -424,12 +503,30 @@ export function TopologyGraph({
 // Animation duration for viewport transitions
 const VIEWPORT_ANIMATION_DURATION = 400
 
-// Inner component to handle animated viewport transitions
+// Inner component to handle animated viewport transitions and zoom-based CSS variables
 // Must be inside ReactFlow to use useReactFlow hook
 function ViewportController({ structureKey }: { structureKey: string }) {
-  const { fitView } = useReactFlow()
+  const { fitView, getViewport } = useReactFlow()
   const prevStructureKeyRef = useRef<string>('')
   const isInitialMount = useRef(true)
+
+  // Update CSS variable for header offset based on zoom
+  // This allows child nodes to move up when header shrinks (zoomed in)
+  useEffect(() => {
+    const updateZoomOffset = () => {
+      const { zoom } = getViewport()
+      // Match the headerScale formula from GroupNode
+      const headerScale = Math.max(0.35, Math.min(1, 0.5 / zoom))
+      // At scale 1.0, offset is 0. At scale 0.35, offset is ~45px (header shrinks by ~45px)
+      const headerOffset = (1 - headerScale) * 70
+      document.documentElement.style.setProperty('--group-header-offset', `${-headerOffset}px`)
+    }
+
+    // Update on mount and periodically (zoom changes don't fire events we can easily hook)
+    updateZoomOffset()
+    const interval = setInterval(updateZoomOffset, 100)
+    return () => clearInterval(interval)
+  }, [getViewport])
 
   useEffect(() => {
     // Skip animation on initial mount (fitView prop handles that)

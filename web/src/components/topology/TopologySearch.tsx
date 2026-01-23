@@ -17,6 +17,7 @@ function getNodeIcon(kind: string) {
     case 'Service':
       return Server
     case 'Deployment':
+    case 'Rollout':
     case 'DaemonSet':
     case 'StatefulSet':
     case 'ReplicaSet':
@@ -40,6 +41,7 @@ function getKindColor(kind: string): string {
     case 'Service':
       return 'text-blue-400'
     case 'Deployment':
+    case 'Rollout':
       return 'text-emerald-400'
     case 'DaemonSet':
       return 'text-teal-400'

@@ -8,6 +8,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/skyhook-io/skyhook-explorer/internal/k8s"
@@ -46,9 +47,11 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 	// Track IDs for linking
 	deploymentIDs := make(map[string]string)
+	rolloutIDs := make(map[string]string)    // Argo Rollouts
 	statefulSetIDs := make(map[string]string)
 	replicaSetIDs := make(map[string]string)
 	replicaSetToDeployment := make(map[string]string) // rsKey -> deploymentID (for shortcut edges)
+	replicaSetToRollout := make(map[string]string)    // rsKey -> rolloutID (for shortcut edges)
 	serviceIDs := make(map[string]string)
 	jobIDs := make(map[string]string)
 	cronJobIDs := make(map[string]string)
@@ -103,6 +106,77 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 			}
 			if len(refs.pvcs) > 0 {
 				workloadPVCRefs[deployID] = refs.pvcs
+			}
+		}
+	}
+
+	// 1b. Add Argo Rollout nodes (CRD - fetched via dynamic cache)
+	dynamicCache := k8s.GetDynamicResourceCache()
+	rolloutGVR, hasRollouts := k8s.GetResourceDiscovery().GetGVR("Rollout")
+	if hasRollouts && dynamicCache != nil {
+		rollouts, err := dynamicCache.List(rolloutGVR, opts.Namespace)
+		if err == nil {
+			for _, rollout := range rollouts {
+				ns := rollout.GetNamespace()
+				name := rollout.GetName()
+
+				rolloutID := fmt.Sprintf("rollout-%s-%s", ns, name)
+				rolloutIDs[ns+"/"+name] = rolloutID
+
+				// Extract status fields
+				status, _, _ := unstructured.NestedMap(rollout.Object, "status")
+				spec, _, _ := unstructured.NestedMap(rollout.Object, "spec")
+
+				var ready, total int64
+				if status != nil {
+					ready, _, _ = unstructured.NestedInt64(status, "readyReplicas")
+					total, _, _ = unstructured.NestedInt64(status, "replicas")
+				}
+				if total == 0 && spec != nil {
+					total, _, _ = unstructured.NestedInt64(spec, "replicas")
+				}
+
+				// Get strategy type
+				strategy := "unknown"
+				if spec != nil {
+					if _, ok, _ := unstructured.NestedMap(spec, "strategy", "canary"); ok {
+						strategy = "Canary"
+					} else if _, ok, _ := unstructured.NestedMap(spec, "strategy", "blueGreen"); ok {
+						strategy = "BlueGreen"
+					}
+				}
+
+				nodes = append(nodes, Node{
+					ID:     rolloutID,
+					Kind:   "Rollout",
+					Name:   name,
+					Status: getDeploymentStatus(int32(ready), int32(total)),
+					Data: map[string]any{
+						"namespace":     ns,
+						"readyReplicas": ready,
+						"totalReplicas": total,
+						"strategy":      strategy,
+						"labels":        rollout.GetLabels(),
+					},
+				})
+
+				// Extract pod template spec for config references
+				template, _, _ := unstructured.NestedMap(spec, "template", "spec")
+				if template != nil {
+					refs := extractWorkloadReferencesFromMap(template)
+					if len(refs.configMaps) > 0 || len(refs.secrets) > 0 || len(refs.pvcs) > 0 {
+						workloadNamespaces[rolloutID] = ns
+					}
+					if len(refs.configMaps) > 0 {
+						workloadConfigMapRefs[rolloutID] = refs.configMaps
+					}
+					if len(refs.secrets) > 0 {
+						workloadSecretRefs[rolloutID] = refs.secrets
+					}
+					if len(refs.pvcs) > 0 {
+						workloadPVCRefs[rolloutID] = refs.pvcs
+					}
+				}
 			}
 		}
 	}
@@ -310,11 +384,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 			// Track owner for shortcut edges regardless of visibility
 			for _, ownerRef := range rs.OwnerReferences {
+				ownerKey := rs.Namespace + "/" + ownerRef.Name
+				rsKey := rs.Namespace + "/" + rs.Name
 				if ownerRef.Kind == "Deployment" {
-					ownerKey := rs.Namespace + "/" + ownerRef.Name
 					if ownerID, ok := deploymentIDs[ownerKey]; ok {
-						rsKey := rs.Namespace + "/" + rs.Name
 						replicaSetToDeployment[rsKey] = ownerID
+					}
+				} else if ownerRef.Kind == "Rollout" {
+					if ownerID, ok := rolloutIDs[ownerKey]; ok {
+						replicaSetToRollout[rsKey] = ownerID
 					}
 				}
 			}
@@ -337,18 +415,23 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 					},
 				})
 
-				// Connect to owner Deployment
+				// Connect to owner Deployment or Rollout
 				for _, ownerRef := range rs.OwnerReferences {
+					ownerKey := rs.Namespace + "/" + ownerRef.Name
+					var ownerID string
+					var found bool
 					if ownerRef.Kind == "Deployment" {
-						ownerKey := rs.Namespace + "/" + ownerRef.Name
-						if ownerID, ok := deploymentIDs[ownerKey]; ok {
-							edges = append(edges, Edge{
-								ID:     fmt.Sprintf("%s-to-%s", ownerID, rsID),
-								Source: ownerID,
-								Target: rsID,
-								Type:   EdgeManages,
-							})
-						}
+						ownerID, found = deploymentIDs[ownerKey]
+					} else if ownerRef.Kind == "Rollout" {
+						ownerID, found = rolloutIDs[ownerKey]
+					}
+					if found {
+						edges = append(edges, Edge{
+							ID:     fmt.Sprintf("%s-to-%s", ownerID, rsID),
+							Source: ownerID,
+							Target: rsID,
+							Type:   EdgeManages,
+						})
 					}
 				}
 			}
@@ -453,11 +536,18 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 								})
 							}
 						} else {
-							// ReplicaSets hidden: use shortcut edge directly to Deployment
+							// ReplicaSets hidden: use shortcut edge directly to Deployment or Rollout
 							if deployID, ok := replicaSetToDeployment[ownerKey]; ok {
 								edges = append(edges, Edge{
 									ID:     fmt.Sprintf("%s-to-%s", deployID, podID),
 									Source: deployID,
+									Target: podID,
+									Type:   EdgeManages,
+								})
+							} else if rolloutID, ok := replicaSetToRollout[ownerKey]; ok {
+								edges = append(edges, Edge{
+									ID:     fmt.Sprintf("%s-to-%s", rolloutID, podID),
+									Source: rolloutID,
 									Target: podID,
 									Type:   EdgeManages,
 								})
@@ -584,11 +674,18 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 								})
 							}
 						} else {
-							// ReplicaSets hidden: use shortcut edge directly to Deployment
+							// ReplicaSets hidden: use shortcut edge directly to Deployment or Rollout
 							if deployID, ok := replicaSetToDeployment[ownerKey]; ok {
 								edges = append(edges, Edge{
 									ID:     fmt.Sprintf("%s-to-%s", deployID, podGroupID),
 									Source: deployID,
+									Target: podGroupID,
+									Type:   EdgeManages,
+								})
+							} else if rolloutID, ok := replicaSetToRollout[ownerKey]; ok {
+								edges = append(edges, Edge{
+									ID:     fmt.Sprintf("%s-to-%s", rolloutID, podGroupID),
+									Source: rolloutID,
 									Target: podGroupID,
 									Type:   EdgeManages,
 								})
@@ -671,7 +768,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 					if deploy.Namespace != svc.Namespace {
 						continue
 					}
-					if matchesSelector(deploy.Spec.Selector.MatchLabels, svc.Spec.Selector) {
+					if matchesSelector(deploy.Spec.Template.ObjectMeta.Labels, svc.Spec.Selector) {
 						deployID := deploymentIDs[deploy.Namespace+"/"+deploy.Name]
 						edges = append(edges, Edge{
 							ID:     fmt.Sprintf("%s-to-%s", svcID, deployID),
@@ -679,6 +776,65 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 							Target: deployID,
 							Type:   EdgeExposes,
 						})
+					}
+				}
+			}
+			// Check StatefulSets
+			for _, sts := range statefulsets {
+				if sts.Namespace != svc.Namespace {
+					continue
+				}
+				if matchesSelector(sts.Spec.Template.ObjectMeta.Labels, svc.Spec.Selector) {
+					stsID := statefulSetIDs[sts.Namespace+"/"+sts.Name]
+					edges = append(edges, Edge{
+						ID:     fmt.Sprintf("%s-to-%s", svcID, stsID),
+						Source: svcID,
+						Target: stsID,
+						Type:   EdgeExposes,
+					})
+				}
+			}
+			// Check DaemonSets
+			for _, ds := range daemonsets {
+				if ds.Namespace != svc.Namespace {
+					continue
+				}
+				if matchesSelector(ds.Spec.Template.ObjectMeta.Labels, svc.Spec.Selector) {
+					dsID := fmt.Sprintf("daemonset-%s-%s", ds.Namespace, ds.Name)
+					edges = append(edges, Edge{
+						ID:     fmt.Sprintf("%s-to-%s", svcID, dsID),
+						Source: svcID,
+						Target: dsID,
+						Type:   EdgeExposes,
+					})
+				}
+			}
+			// Check Rollouts (if we have any)
+			if hasRollouts && dynamicCache != nil {
+				rollouts, _ := dynamicCache.List(rolloutGVR, svc.Namespace)
+				for _, rollout := range rollouts {
+					spec, _, _ := unstructured.NestedMap(rollout.Object, "spec", "template", "metadata")
+					if spec != nil {
+						if podLabels, ok := spec["labels"].(map[string]any); ok {
+							// Convert map[string]any to map[string]string for matching
+							strLabels := make(map[string]string)
+							for k, v := range podLabels {
+								if s, ok := v.(string); ok {
+									strLabels[k] = s
+								}
+							}
+							if matchesSelector(strLabels, svc.Spec.Selector) {
+								rolloutID := rolloutIDs[rollout.GetNamespace()+"/"+rollout.GetName()]
+								if rolloutID != "" {
+									edges = append(edges, Edge{
+										ID:     fmt.Sprintf("%s-to-%s", svcID, rolloutID),
+										Source: svcID,
+										Target: rolloutID,
+										Type:   EdgeExposes,
+									})
+								}
+							}
+						}
 					}
 				}
 			}
@@ -925,6 +1081,8 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 			switch targetKind {
 			case "Deployment":
 				targetID = deploymentIDs[targetKey]
+			case "Rollout":
+				targetID = rolloutIDs[targetKey]
 			case "StatefulSet":
 				targetID = statefulSetIDs[targetKey]
 			case "ReplicaSet":
@@ -1409,6 +1567,109 @@ func extractWorkloadReferences(spec corev1.PodSpec) workloadRefs {
 		}
 		if volume.PersistentVolumeClaim != nil {
 			refs.pvcs[volume.PersistentVolumeClaim.ClaimName] = true
+		}
+	}
+
+	return refs
+}
+
+// extractWorkloadReferencesFromMap extracts ConfigMap/Secret/PVC refs from unstructured pod spec
+func extractWorkloadReferencesFromMap(spec map[string]any) workloadRefs {
+	refs := workloadRefs{
+		configMaps: make(map[string]bool),
+		secrets:    make(map[string]bool),
+		pvcs:       make(map[string]bool),
+	}
+
+	// Helper to get string from nested map
+	getString := func(m map[string]any, key string) string {
+		if v, ok := m[key]; ok {
+			if s, ok := v.(string); ok {
+				return s
+			}
+		}
+		return ""
+	}
+
+	// Process containers
+	processContainers := func(containersField string) {
+		containers, ok := spec[containersField].([]any)
+		if !ok {
+			return
+		}
+		for _, c := range containers {
+			container, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			// Check env
+			if env, ok := container["env"].([]any); ok {
+				for _, e := range env {
+					envVar, ok := e.(map[string]any)
+					if !ok {
+						continue
+					}
+					if valueFrom, ok := envVar["valueFrom"].(map[string]any); ok {
+						if cmRef, ok := valueFrom["configMapKeyRef"].(map[string]any); ok {
+							if name := getString(cmRef, "name"); name != "" {
+								refs.configMaps[name] = true
+							}
+						}
+						if secRef, ok := valueFrom["secretKeyRef"].(map[string]any); ok {
+							if name := getString(secRef, "name"); name != "" {
+								refs.secrets[name] = true
+							}
+						}
+					}
+				}
+			}
+			// Check envFrom
+			if envFrom, ok := container["envFrom"].([]any); ok {
+				for _, ef := range envFrom {
+					envFromItem, ok := ef.(map[string]any)
+					if !ok {
+						continue
+					}
+					if cmRef, ok := envFromItem["configMapRef"].(map[string]any); ok {
+						if name := getString(cmRef, "name"); name != "" {
+							refs.configMaps[name] = true
+						}
+					}
+					if secRef, ok := envFromItem["secretRef"].(map[string]any); ok {
+						if name := getString(secRef, "name"); name != "" {
+							refs.secrets[name] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	processContainers("containers")
+	processContainers("initContainers")
+
+	// Process volumes
+	if volumes, ok := spec["volumes"].([]any); ok {
+		for _, v := range volumes {
+			volume, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			if cm, ok := volume["configMap"].(map[string]any); ok {
+				if name := getString(cm, "name"); name != "" {
+					refs.configMaps[name] = true
+				}
+			}
+			if sec, ok := volume["secret"].(map[string]any); ok {
+				if name := getString(sec, "secretName"); name != "" {
+					refs.secrets[name] = true
+				}
+			}
+			if pvc, ok := volume["persistentVolumeClaim"].(map[string]any); ok {
+				if name := getString(pvc, "claimName"); name != "" {
+					refs.pvcs[name] = true
+				}
+			}
 		}
 	}
 

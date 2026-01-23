@@ -31,6 +31,7 @@ const RESOURCE_KINDS: {
 
   // Workloads
   { kind: 'Deployment', label: 'Deployment', icon: Layers, color: 'text-emerald-400', category: 'workloads' },
+  { kind: 'Rollout', label: 'Rollout', icon: Layers, color: 'text-emerald-400', category: 'workloads' },
   { kind: 'DaemonSet', label: 'DaemonSet', icon: Layers, color: 'text-teal-400', category: 'workloads' },
   { kind: 'StatefulSet', label: 'StatefulSet', icon: Layers, color: 'text-cyan-400', category: 'workloads' },
   { kind: 'ReplicaSet', label: 'ReplicaSet', icon: Layers, color: 'text-green-400', category: 'workloads' },
