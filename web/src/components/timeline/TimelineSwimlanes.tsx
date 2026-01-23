@@ -16,6 +16,7 @@ import {
 import type { TimelineEvent, TimeRange, Topology } from '../../types'
 import { isWorkloadKind } from '../../types'
 import { DiffViewer } from './DiffViewer'
+import { getOperationColor, getHealthBadgeColor, getEventTypeColor } from '../../utils/badge-colors'
 
 interface TimelineSwimlanesProps {
   events: TimelineEvent[]
@@ -175,6 +176,7 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
   const [expandedLanes, setExpandedLanes] = useState<Set<string>>(new Set())
   const [hasAutoZoomed, setHasAutoZoomed] = useState(false)
   const [showRoutineUpdates, setShowRoutineUpdates] = useState(false)
+  const [groupByApp, setGroupByApp] = useState(true) // Group by app.kubernetes.io/name label
 
   // Stable lane ordering - tracks the order lanes were first seen
   const [laneOrder, setLaneOrder] = useState<Map<string, number>>(new Map())
@@ -420,6 +422,67 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
       }
     }
 
+    // Source 3: App label grouping (optional)
+    // Group resources that share the same app.kubernetes.io/name or app label
+    if (groupByApp && topology?.nodes) {
+      // Build a map of laneId -> app label from topology nodes
+      const laneAppLabels = new Map<string, string>()
+      for (const node of topology.nodes) {
+        const laneId = nodeIdToLaneId(node.id)
+        if (!laneId) continue
+        const labels = node.data?.labels as Record<string, string> | undefined
+        const appLabel = labels?.['app.kubernetes.io/name'] || labels?.['app']
+        if (appLabel) {
+          laneAppLabels.set(laneId, appLabel)
+        }
+      }
+
+      // Group lanes by app label - find lanes without parents that share an app label
+      const appGroups = new Map<string, string[]>() // appLabel -> laneIds
+      for (const [laneId] of laneMap) {
+        if (laneParent.has(laneId)) continue // Already has a parent
+        const appLabel = laneAppLabels.get(laneId)
+        if (!appLabel) continue
+        if (!appGroups.has(appLabel)) {
+          appGroups.set(appLabel, [])
+        }
+        appGroups.get(appLabel)!.push(laneId)
+      }
+
+      // For each app group with multiple members, pick the best parent
+      // Priority: Service > Ingress > Deployment/StatefulSet/DaemonSet > others
+      for (const [, laneIds] of appGroups) {
+        if (laneIds.length < 2) continue // Need at least 2 to group
+
+        const kindPriority: Record<string, number> = {
+          Service: 1, Ingress: 2,
+          Deployment: 3, StatefulSet: 3, DaemonSet: 3,
+          Job: 4, CronJob: 4,
+          ConfigMap: 5, Secret: 5,
+          ReplicaSet: 6, Pod: 7
+        }
+
+        // Sort by priority to find the best parent
+        const sorted = [...laneIds].sort((a, b) => {
+          const aLane = laneMap.get(a)!
+          const bLane = laneMap.get(b)!
+          const aPriority = kindPriority[aLane.kind] || 10
+          const bPriority = kindPriority[bLane.kind] || 10
+          return aPriority - bPriority
+        })
+
+        // First one becomes parent, rest become children
+        const parentLaneId = sorted[0]
+        for (let i = 1; i < sorted.length; i++) {
+          const childLaneId = sorted[i]
+          // Only set parent if child doesn't already have one
+          if (!laneParent.has(childLaneId)) {
+            laneParent.set(childLaneId, parentLaneId)
+          }
+        }
+      }
+    }
+
     // Walk up parent chain to find root
     const findRoot = (laneId: string, visited = new Set<string>()): string => {
       if (visited.has(laneId)) return laneId
@@ -485,7 +548,7 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
       // New lane (undefined) goes before known lane
       return aOrder === undefined ? -1 : 1
     })
-  }, [filteredEvents, topology, laneOrder, sortVersion])
+  }, [filteredEvents, topology, laneOrder, sortVersion, groupByApp])
 
   // Track lane order for stable sorting - record order as lanes appear
   useEffect(() => {
@@ -662,7 +725,7 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
               {routineEventCount} routine event{routineEventCount !== 1 ? 's' : ''} hidden.{' '}
               <button
                 onClick={() => setShowRoutineUpdates(true)}
-                className="text-blue-400 hover:text-blue-300 underline"
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline"
               >
                 Show them
               </button>
@@ -725,7 +788,7 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
             {panOffset > 0 && (
               <button
                 onClick={() => setPanOffset(0)}
-                className="px-2 py-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-theme-elevated rounded"
+                className="px-2 py-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-theme-elevated rounded"
                 title="Jump to current time"
               >
                 → Now
@@ -755,9 +818,19 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
             {filteredEvents.length !== 1 ? 's' : ''}
             {searchTerm && ` (filtered)`}
           </span>
+          {/* Group by app toggle */}
+          <label className="flex items-center gap-1.5 text-xs text-theme-text-secondary cursor-pointer hover:text-theme-text-primary">
+            <input
+              type="checkbox"
+              checked={groupByApp}
+              onChange={(e) => setGroupByApp(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-theme-border-light bg-theme-elevated text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+            />
+            <span>Group by app</span>
+          </label>
           {/* Routine updates toggle */}
           {routineEventCount > 0 && (
-            <label className="flex items-center gap-1.5 text-xs text-theme-text-secondary cursor-pointer hover:text-theme-text-secondary">
+            <label className="flex items-center gap-1.5 text-xs text-theme-text-secondary cursor-pointer hover:text-theme-text-primary">
               <input
                 type="checkbox"
                 checked={showRoutineUpdates}
@@ -823,12 +896,37 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
                     </div>
                   )
                 })}
+                {/* "Now" marker in header */}
+                {(() => {
+                  const nowX = timeToX(Date.now())
+                  if (nowX < 0 || nowX > 100) return null
+                  return (
+                    <div
+                      className="absolute top-0 bottom-0 flex flex-col items-center z-20"
+                      style={{ left: `${nowX}%` }}
+                    >
+                      <div className="h-2 w-0.5 bg-red-500" />
+                      <span className="text-xs text-red-500 font-medium mt-0.5">Now</span>
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           </div>
 
           {/* Swimlanes */}
-          <div>
+          <div className="relative">
+            {/* "Now" line through swimlanes */}
+            {(() => {
+              const nowX = timeToX(Date.now())
+              if (nowX < 0 || nowX > 100) return null
+              return (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-red-500/50 z-10 pointer-events-none"
+                  style={{ left: `calc(320px + (100% - 320px - 32px) * ${nowX / 100})` }}
+                />
+              )
+            })()}
             {lanes.map((lane) => {
               const isExpanded = expandedLanes.has(lane.id)
               const hasChildren = lane.children && lane.children.length > 0
@@ -861,7 +959,7 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
                           <div className="flex items-center gap-1">
                             <span className={clsx(
                               'text-xs px-1 py-0.5 rounded',
-                              lane.isWorkload ? 'bg-blue-900/50 text-blue-400' : 'bg-theme-elevated text-theme-text-secondary'
+                              lane.isWorkload ? 'bg-blue-500/15 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400' : 'bg-theme-elevated text-theme-text-secondary'
                             )}>
                               {lane.kind}
                             </span>
@@ -871,7 +969,7 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
                               </span>
                             )}
                           </div>
-                          <div className="text-sm text-theme-text-primary break-words group-hover:text-blue-300">
+                          <div className="text-sm text-theme-text-primary break-words group-hover:text-blue-600 dark:group-hover:text-blue-300">
                             {lane.name}
                           </div>
                           <div className="text-xs text-theme-text-tertiary">{lane.namespace}</div>
@@ -923,11 +1021,11 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1">
-                                  <span className="text-xs px-1 py-0.5 rounded bg-blue-900/50 text-blue-400">
+                                  <span className="text-xs px-1 py-0.5 rounded bg-blue-500/15 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400">
                                     {lane.kind}
                                   </span>
                                 </div>
-                                <div className="text-sm text-theme-text-secondary break-words group-hover:text-blue-300">
+                                <div className="text-sm text-theme-text-secondary break-words group-hover:text-blue-600 dark:group-hover:text-blue-300">
                                   {lane.name}
                                 </div>
                               </div>
@@ -969,7 +1067,7 @@ export function TimelineSwimlanes({ events, isLoading, filterTimeRange: _filterT
                                     {child.kind}
                                   </span>
                                 </div>
-                                <div className="text-sm text-theme-text-secondary break-words group-hover:text-blue-300">
+                                <div className="text-sm text-theme-text-secondary break-words group-hover:text-blue-600 dark:group-hover:text-blue-300">
                                   {child.name}
                                 </div>
                               </div>
@@ -1170,25 +1268,11 @@ function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       {isChange ? (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span
-              className={clsx(
-                'text-sm font-medium',
-                event.operation === 'add' && 'text-green-400',
-                event.operation === 'update' && 'text-blue-400',
-                event.operation === 'delete' && 'text-red-400'
-              )}
-            >
+            <span className={clsx('text-sm font-medium', event.operation && getOperationColor(event.operation))}>
               {event.operation}
             </span>
             {event.healthState && event.healthState !== 'unknown' && (
-              <span
-                className={clsx(
-                  'text-xs px-1.5 py-0.5 rounded',
-                  event.healthState === 'healthy' && 'bg-green-500/20 text-green-400',
-                  event.healthState === 'degraded' && 'bg-yellow-500/20 text-yellow-400',
-                  event.healthState === 'unhealthy' && 'bg-red-500/20 text-red-400'
-                )}
-              >
+              <span className={clsx('text-xs px-1.5 py-0.5 rounded', getHealthBadgeColor(event.healthState))}>
                 {event.healthState}
               </span>
             )}
@@ -1198,22 +1282,19 @@ function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       ) : (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span className={clsx('text-sm font-medium', isProblematic ? 'text-amber-300' : 'text-green-300')}>
+            <span className={clsx('text-sm font-medium', isProblematic ? 'text-amber-700 dark:text-amber-300' : 'text-green-700 dark:text-green-300')}>
               {event.reason}
             </span>
-            <span
-              className={clsx(
-                'text-xs px-1.5 py-0.5 rounded',
-                isProblematic ? 'bg-amber-500/20 text-amber-400' : 'bg-green-500/20 text-green-400'
-              )}
-            >
-              {event.eventType}
-            </span>
+            {event.eventType && (
+              <span className={clsx('text-xs px-1.5 py-0.5 rounded', getEventTypeColor(event.eventType))}>
+                {event.eventType}
+              </span>
+            )}
             {event.count && event.count > 1 && (
               <span className="text-xs text-theme-text-tertiary">x{event.count}</span>
             )}
           </div>
-          {event.message && <p className={clsx("text-sm", isProblematic ? "text-amber-200" : "text-theme-text-secondary")}>{event.message}</p>}
+          {event.message && <p className={clsx("text-sm", isProblematic ? "text-amber-700 dark:text-amber-200" : "text-theme-text-secondary")}>{event.message}</p>}
         </div>
       )}
     </div>

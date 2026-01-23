@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { NodeKind, HealthStatus } from '../../types'
+import { healthToSeverity, SEVERITY_DOT } from '../../utils/badge-colors'
 
 // Node dimensions for ELK layout - sized for typical K8s resource names
 export const NODE_DIMENSIONS: Record<NodeKind, { width: number; height: number }> = {
@@ -79,18 +80,10 @@ function getIcon(kind: NodeKind) {
   }
 }
 
-// Status indicator color (for dot and left bar)
+// Status indicator color (for dot and left bar) - uses centralized severity colors
 function getStatusDotColor(status: HealthStatus): string {
-  switch (status) {
-    case 'healthy':
-      return 'bg-green-500'
-    case 'degraded':
-      return 'bg-yellow-500'
-    case 'unhealthy':
-      return 'bg-red-500'
-    default:
-      return 'bg-theme-hover'
-  }
+  const severity = healthToSeverity(status)
+  return SEVERITY_DOT[severity]
 }
 
 // Border style for problem states - wraps entire card

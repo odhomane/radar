@@ -26,6 +26,7 @@ import {
 import type { TimelineEvent, TimeRange, ResourceRef, Relationships } from '../../types'
 import { useChanges, useResourceWithRelationships, usePodLogs } from '../../api/client'
 import { DiffViewer } from '../timeline/DiffViewer'
+import { getKindBadgeColor, getHealthBadgeColor, getEventTypeColor } from '../../utils/badge-colors'
 
 // Known noisy resources that update constantly
 const NOISY_NAME_PATTERNS = [
@@ -156,7 +157,7 @@ export function ResourceDetailPage({
               <KindBadge kind={kind} />
               <HealthBadge state={healthState} />
               {warningCount > 0 && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400">
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-400">
                   <AlertCircle className="w-3 h-3" />
                   {warningCount} warning{warningCount !== 1 ? 's' : ''}
                 </span>
@@ -379,36 +380,23 @@ function determineHealth(kind: string, resource: any): string {
 // Sub-components
 
 function KindBadge({ kind }: { kind: string }) {
-  const colors: Record<string, string> = {
-    Deployment: 'bg-blue-900/50 text-blue-400',
-    StatefulSet: 'bg-purple-900/50 text-purple-400',
-    DaemonSet: 'bg-blue-900/50 text-blue-400',
-    Service: 'bg-cyan-900/50 text-cyan-400',
-    Pod: 'bg-green-900/50 text-green-400',
-    ReplicaSet: 'bg-violet-900/50 text-violet-400',
-    Ingress: 'bg-orange-900/50 text-orange-400',
-    ConfigMap: 'bg-yellow-900/50 text-yellow-400',
-    Secret: 'bg-red-900/50 text-red-400',
-    Job: 'bg-teal-900/50 text-teal-400',
-    CronJob: 'bg-teal-900/50 text-teal-400',
-  }
   return (
-    <span className={clsx('text-xs px-2 py-0.5 rounded font-medium', colors[kind] || 'bg-theme-elevated text-theme-text-secondary')}>
+    <span className={clsx('text-xs px-2 py-0.5 rounded font-medium', getKindBadgeColor(kind))}>
       {kind}
     </span>
   )
 }
 
 function HealthBadge({ state }: { state: string }) {
-  const config: Record<string, { bg: string; text: string; icon: typeof CheckCircle }> = {
-    healthy: { bg: 'bg-green-500/20', text: 'text-green-400', icon: CheckCircle },
-    degraded: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: AlertCircle },
-    unhealthy: { bg: 'bg-red-500/20', text: 'text-red-400', icon: AlertCircle },
-    unknown: { bg: 'bg-theme-hover/50', text: 'text-theme-text-secondary', icon: Clock },
+  const icons: Record<string, typeof CheckCircle> = {
+    healthy: CheckCircle,
+    degraded: AlertCircle,
+    unhealthy: AlertCircle,
+    unknown: Clock,
   }
-  const { bg, text, icon: Icon } = config[state] || config.unknown
+  const Icon = icons[state] || icons.unknown
   return (
-    <span className={clsx('inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded', bg, text)}>
+    <span className={clsx('inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded', getHealthBadgeColor(state))}>
       <Icon className="w-3 h-3" />
       {state}
     </span>
@@ -519,18 +507,47 @@ function MiniTimeline({ events, timeRange }: { events: TimelineEvent[]; timeRang
   const windowMs = timeRangeMs[timeRange]
   const start = now - windowMs
 
-  // Calculate health segments (simplified: just show event dots for now)
-  const eventPositions = events.map(e => {
-    const ts = new Date(e.timestamp).getTime()
-    const x = ((ts - start) / windowMs) * 100
-    return { x: Math.max(0, Math.min(100, x)), event: e }
-  }).filter(e => e.x >= 0 && e.x <= 100)
+  // Calculate event positions, sorted so important ones render on top
+  const eventPositions = events
+    .map(e => {
+      const ts = new Date(e.timestamp).getTime()
+      const x = ((ts - start) / windowMs) * 100
+      return { x: Math.max(0, Math.min(100, x)), event: e }
+    })
+    .filter(e => e.x >= 0 && e.x <= 100)
+    .sort((a, b) => {
+      // Render warnings/errors last (on top)
+      const getPriority = (e: TimelineEvent) => {
+        if (isProblematicEvent(e)) return 3
+        if (e.operation === 'delete') return 2
+        if (e.operation === 'add') return 1
+        return 0
+      }
+      return getPriority(a.event) - getPriority(b.event)
+    })
+
+  const warningCount = eventPositions.filter(ep => isProblematicEvent(ep.event)).length
 
   return (
-    <div className="px-4 py-2 border-t border-theme-border/50">
-      <div className="relative h-6 bg-theme-elevated/30 rounded overflow-hidden">
-        {/* Health bar background - gradient from past to now */}
-        <div className="absolute inset-0 bg-gradient-to-r from-theme-hover/50 to-theme-hover/30" />
+    <div className="px-4 py-3 border-t border-theme-border bg-theme-surface/30">
+      {/* Timeline header */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-theme-text-secondary">Timeline</span>
+        <div className="flex items-center gap-3 text-xs text-theme-text-tertiary">
+          {warningCount > 0 && (
+            <span className="text-amber-500">{warningCount} warning{warningCount !== 1 ? 's' : ''}</span>
+          )}
+          <span>{eventPositions.length} event{eventPositions.length !== 1 ? 's' : ''}</span>
+        </div>
+      </div>
+
+      {/* Timeline bar */}
+      <div className="relative h-8 bg-theme-elevated rounded-lg overflow-hidden border border-theme-border/50">
+        {/* Background gradient */}
+        <div className="absolute inset-0 bg-gradient-to-r from-theme-base/50 via-theme-base/30 to-transparent" />
+
+        {/* "Now" indicator line */}
+        <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-red-500/60" />
 
         {/* Event markers */}
         {eventPositions.map((ep, i) => {
@@ -541,25 +558,33 @@ function MiniTimeline({ events, timeRange }: { events: TimelineEvent[]; timeRang
             <div
               key={i}
               className={clsx(
-                'absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full',
+                'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-theme-base shadow-sm cursor-pointer hover:scale-125 transition-transform',
                 isProblematic ? 'bg-amber-500' :
                 isDelete ? 'bg-red-500' :
                 isAdd ? 'bg-green-500' :
                 'bg-blue-500'
               )}
               style={{ left: `${ep.x}%` }}
-              title={`${ep.event.operation || ep.event.reason} at ${new Date(ep.event.timestamp).toLocaleTimeString()}`}
+              title={`${ep.event.operation || ep.event.reason} - ${ep.event.name}\n${new Date(ep.event.timestamp).toLocaleString()}`}
             />
           )
         })}
 
         {/* Time labels */}
-        <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-theme-text-tertiary">
+        <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-medium text-theme-text-tertiary">
           -{timeRange}
         </div>
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-theme-text-tertiary">
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-red-500">
           Now
         </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 mt-2 text-xs text-theme-text-tertiary">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" />add</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" />update</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" />delete</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" />warning</span>
       </div>
     </div>
   )
@@ -599,8 +624,8 @@ function OverviewTab({
       <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Active Issues */}
         {warnings.length > 0 && (
-          <div className="lg:col-span-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-amber-400 mb-3 flex items-center gap-2">
+          <div className="lg:col-span-2 bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 dark:border-amber-800/50 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-amber-700 dark:text-amber-400 mb-3 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               Active Issues ({warnings.length})
             </h3>
@@ -609,9 +634,9 @@ function OverviewTab({
                 <div key={event.id} className="flex items-start gap-3 text-sm">
                   <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />
                   <div>
-                    <span className="text-amber-300 font-medium">{event.reason || event.operation}</span>
-                    {event.message && <p className="text-amber-200/70 text-xs mt-0.5">{event.message}</p>}
-                    <p className="text-amber-200/50 text-xs">{new Date(event.timestamp).toLocaleString()}</p>
+                    <span className="text-amber-700 dark:text-amber-300 font-medium">{event.reason || event.operation}</span>
+                    {event.message && <p className="text-amber-600/80 dark:text-amber-200/70 text-xs mt-0.5">{event.message}</p>}
+                    <p className="text-amber-600/60 dark:text-amber-200/50 text-xs">{new Date(event.timestamp).toLocaleString()}</p>
                   </div>
                 </div>
               ))}
@@ -1064,12 +1089,7 @@ function ActivityTab({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               {!isOwn && (
-                                <span className={clsx(
-                                  'text-xs px-1.5 py-0.5 rounded',
-                                  event.kind === 'ReplicaSet' ? 'bg-violet-900/50 text-violet-400' :
-                                  event.kind === 'Pod' ? 'bg-green-900/50 text-green-400' :
-                                  'bg-theme-elevated text-theme-text-secondary'
-                                )}>
+                                <span className={clsx('text-xs px-1.5 py-0.5 rounded', getKindBadgeColor(event.kind))}>
                                   {event.kind}
                                 </span>
                               )}
@@ -1079,11 +1099,8 @@ function ActivityTab({
                               {event.healthState && event.healthState !== 'unknown' && (
                                 <HealthBadge state={event.healthState} />
                               )}
-                              {event.type === 'k8s_event' && (
-                                <span className={clsx(
-                                  'text-xs px-1.5 py-0.5 rounded',
-                                  isProblematicEvent(event) ? 'bg-amber-500/20 text-amber-400' : 'bg-green-500/20 text-green-400'
-                                )}>
+                              {event.type === 'k8s_event' && event.eventType && (
+                                <span className={clsx('text-xs px-1.5 py-0.5 rounded', getEventTypeColor(event.eventType))}>
                                   {event.eventType}
                                 </span>
                               )}

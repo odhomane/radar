@@ -16,6 +16,7 @@ import { clsx } from 'clsx'
 import { useChanges } from '../../api/client'
 import { DiffViewer, DiffBadge } from './DiffViewer'
 import type { TimelineEvent, TimeRange } from '../../types'
+import { getOperationColor, getHealthBadgeColor } from '../../utils/badge-colors'
 
 interface TimelineListProps {
   namespace: string
@@ -345,9 +346,9 @@ interface FilterButtonProps {
 
 function FilterButton({ active, onClick, icon, label, count, color }: FilterButtonProps) {
   const colorClasses = {
-    blue: 'bg-blue-500/20 text-blue-300',
-    amber: 'bg-amber-500/20 text-amber-300',
-    green: 'bg-green-500/20 text-green-300',
+    blue: 'bg-blue-500/20 text-blue-700 dark:text-blue-300',
+    amber: 'bg-amber-500/20 text-amber-700 dark:text-amber-300',
+    green: 'bg-green-500/20 text-green-700 dark:text-green-300',
   }
 
   return (
@@ -459,33 +460,19 @@ function ActivityCard({ item, expanded, onToggle, onResourceClick }: ActivityCar
             <div className="mt-1 flex items-center gap-2 flex-wrap">
               {isChange ? (
                 <>
-                  <span
-                    className={clsx(
-                      'text-sm font-medium',
-                      item.operation === 'add' && 'text-green-400',
-                      item.operation === 'update' && 'text-blue-400',
-                      item.operation === 'delete' && 'text-red-400'
-                    )}
-                  >
+                  <span className={clsx('text-sm font-medium', item.operation && getOperationColor(item.operation))}>
                     {item.operation}
                   </span>
                   {item.diff && <DiffBadge diff={item.diff} />}
                   {item.healthState && item.healthState !== 'unknown' && (
-                    <span
-                      className={clsx(
-                        'text-xs px-1.5 py-0.5 rounded',
-                        item.healthState === 'healthy' && 'bg-green-500/20 text-green-400',
-                        item.healthState === 'degraded' && 'bg-yellow-500/20 text-yellow-400',
-                        item.healthState === 'unhealthy' && 'bg-red-500/20 text-red-400'
-                      )}
-                    >
+                    <span className={clsx('text-xs px-1.5 py-0.5 rounded', getHealthBadgeColor(item.healthState))}>
                       {item.healthState}
                     </span>
                   )}
                 </>
               ) : (
                 <>
-                  <span className={clsx('text-sm font-medium', isWarning ? 'text-amber-300' : 'text-theme-text-secondary')}>
+                  <span className={clsx('text-sm font-medium', isWarning ? 'text-amber-700 dark:text-amber-300' : 'text-theme-text-secondary')}>
                     {item.reason}
                   </span>
                   <span className="text-sm text-theme-text-secondary">

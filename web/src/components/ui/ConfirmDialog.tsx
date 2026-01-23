@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 import { clsx } from 'clsx'
+import { SEVERITY_TEXT, SEVERITY_BADGE_BORDERED } from '../../utils/badge-colors'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -52,6 +53,7 @@ export function ConfirmDialog({
   if (!open) return null
 
   const isDanger = variant === 'danger'
+  const severity = isDanger ? 'error' : 'warning'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -75,9 +77,7 @@ export function ConfirmDialog({
               isDanger ? 'bg-red-500/20' : 'bg-amber-500/20'
             )}
           >
-            <AlertTriangle
-              className={clsx('w-5 h-5', isDanger ? 'text-red-400' : 'text-amber-400')}
-            />
+            <AlertTriangle className={clsx('w-5 h-5', SEVERITY_TEXT[severity])} />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-semibold text-theme-text-primary">{title}</h3>
@@ -106,9 +106,7 @@ export function ConfirmDialog({
           <div
             className={clsx(
               'flex items-start gap-2 p-3 rounded text-sm',
-              isDanger
-                ? 'bg-red-500/10 border border-red-500/30 text-red-300'
-                : 'bg-amber-500/10 border border-amber-500/30 text-amber-300'
+              SEVERITY_BADGE_BORDERED[severity]
             )}
           >
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />

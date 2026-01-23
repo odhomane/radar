@@ -4,7 +4,8 @@ import { clsx } from 'clsx'
 import { useHelmRelease, useHelmManifest, useHelmValues, useHelmManifestDiff, useHelmUpgradeInfo, useHelmRollback, useHelmUninstall, useHelmUpgrade } from '../../api/client'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import type { SelectedHelmRelease, HelmHook, ChartDependency } from '../../types'
-import { getStatusColor, formatDate } from './helm-utils'
+import { formatDate } from './helm-utils'
+import { getHelmStatusColor } from '../../utils/badge-colors'
 import { RevisionHistory } from './RevisionHistory'
 import { ManifestViewer } from './ManifestViewer'
 import { ValuesViewer } from './ValuesViewer'
@@ -217,11 +218,11 @@ export function HelmReleaseDrawer({ release, onClose, onNavigateToResource }: He
       <div className="border-b border-theme-border shrink-0">
         <div className="flex items-center justify-between px-4 pt-3 pb-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-2 py-0.5 text-xs font-medium rounded border border-purple-500/50 bg-purple-500/20 text-purple-300">
+            <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-500/20 text-purple-700 dark:text-purple-300">
               Helm Release
             </span>
             {releaseDetail && (
-              <span className={clsx('px-2 py-0.5 text-xs font-medium rounded', getStatusColor(releaseDetail.status))}>
+              <span className={clsx('px-2 py-0.5 text-xs font-medium rounded', getHelmStatusColor(releaseDetail.status))}>
                 {releaseDetail.status}
               </span>
             )}
@@ -233,14 +234,14 @@ export function HelmReleaseDrawer({ release, onClose, onNavigateToResource }: He
             ) : upgradeInfo?.updateAvailable ? (
               <button
                 onClick={() => setShowUpgradeConfirm(true)}
-                className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded bg-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/30 transition-colors"
                 title={`Click to upgrade: ${upgradeInfo.currentVersion} → ${upgradeInfo.latestVersion}${upgradeInfo.repositoryName ? ` (${upgradeInfo.repositoryName})` : ''}`}
               >
                 <ArrowUpCircle className="w-3 h-3" />
                 {upgradeInfo.latestVersion}
               </button>
             ) : upgradeInfo && !upgradeInfo.error ? (
-              <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-500/20 text-green-400" title="Chart is up to date">
+              <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-500/20 text-green-700 dark:text-green-400" title="Chart is up to date">
                 latest
               </span>
             ) : null}

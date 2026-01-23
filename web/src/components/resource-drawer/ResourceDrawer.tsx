@@ -3,55 +3,17 @@ import { X, ExternalLink, Copy, Check } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useState, useCallback } from 'react'
 import type { TopologyNode, NodeKind, HealthStatus } from '../../types'
+import { getKindBadgeBordered, healthToSeverity, SEVERITY_BADGE_BORDERED } from '../../utils/badge-colors'
 
 interface ResourceDrawerProps {
   node: TopologyNode
   onClose: () => void
 }
 
-// Status badge colors
+// Status badge colors using centralized severity
 function getStatusBadge(status: HealthStatus) {
-  switch (status) {
-    case 'healthy':
-      return 'bg-green-500/20 text-green-400 border-green-500/30'
-    case 'degraded':
-      return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-    case 'unhealthy':
-      return 'bg-red-500/20 text-red-400 border-red-500/30'
-    default:
-      return 'bg-theme-hover/50 text-theme-text-secondary border-theme-border'
-  }
-}
-
-// Kind badge colors
-function getKindBadge(kind: NodeKind): string {
-  switch (kind) {
-    case 'Internet':
-      return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-    case 'Ingress':
-      return 'bg-violet-500/20 text-violet-400 border-violet-500/30'
-    case 'Service':
-      return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-    case 'Deployment':
-      return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-    case 'DaemonSet':
-      return 'bg-teal-500/20 text-teal-400 border-teal-500/30'
-    case 'StatefulSet':
-      return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-    case 'ReplicaSet':
-      return 'bg-green-500/20 text-green-400 border-green-500/30'
-    case 'Pod':
-    case 'PodGroup':
-      return 'bg-lime-500/20 text-lime-400 border-lime-500/30'
-    case 'ConfigMap':
-      return 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-    case 'Secret':
-      return 'bg-red-500/20 text-red-400 border-red-500/30'
-    case 'HPA':
-      return 'bg-pink-500/20 text-pink-400 border-pink-500/30'
-    default:
-      return 'bg-theme-hover/50 text-theme-text-secondary border-theme-border'
-  }
+  const severity = healthToSeverity(status)
+  return SEVERITY_BADGE_BORDERED[severity]
 }
 
 // Format data value for display
@@ -150,8 +112,8 @@ export const ResourceDrawer = memo(function ResourceDrawer({
             <div className="flex items-center gap-2 mb-2">
               <span
                 className={clsx(
-                  'px-2 py-0.5 text-xs font-medium rounded border',
-                  getKindBadge(node.kind)
+                  'px-2 py-0.5 text-xs font-medium rounded',
+                  getKindBadgeBordered(node.kind)
                 )}
               >
                 {node.kind}

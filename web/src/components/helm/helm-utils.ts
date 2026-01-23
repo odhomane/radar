@@ -1,27 +1,11 @@
 // Utility functions for Helm components
 
+import { getHelmStatusColor } from '../../utils/badge-colors'
+
 // Get status color classes for Helm release status
+// Delegates to centralized badge-colors for consistency
 export function getStatusColor(status: string): string {
-  const statusLower = status.toLowerCase()
-  if (statusLower === 'deployed') {
-    return 'bg-green-500/20 text-green-400'
-  }
-  if (statusLower === 'superseded') {
-    return 'bg-theme-hover/50 text-theme-text-secondary'
-  }
-  if (statusLower === 'failed') {
-    return 'bg-red-500/20 text-red-400'
-  }
-  if (statusLower === 'pending-install' || statusLower === 'pending-upgrade' || statusLower === 'pending-rollback') {
-    return 'bg-yellow-500/20 text-yellow-400'
-  }
-  if (statusLower === 'uninstalling') {
-    return 'bg-orange-500/20 text-orange-400'
-  }
-  if (statusLower === 'uninstalled') {
-    return 'bg-theme-hover/50 text-theme-text-secondary'
-  }
-  return 'bg-theme-hover/50 text-theme-text-secondary'
+  return getHelmStatusColor(status)
 }
 
 // Format age from ISO date string

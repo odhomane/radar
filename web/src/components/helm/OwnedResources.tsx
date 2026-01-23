@@ -2,35 +2,7 @@ import { Link2, ExternalLink, Box, Server, FileJson, Lock, Network, Settings, Pu
 import { clsx } from 'clsx'
 import type { HelmOwnedResource } from '../../types'
 import { kindToPlural } from './helm-utils'
-
-// Status color mapping
-function getStatusColor(status?: string): string {
-  if (!status) return 'bg-theme-hover/50 text-theme-text-secondary'
-
-  const statusLower = status.toLowerCase()
-
-  // Green - healthy states
-  if (['running', 'active', 'succeeded', 'bound'].includes(statusLower)) {
-    return 'bg-green-500/20 text-green-400'
-  }
-
-  // Yellow - transitional states
-  if (['pending', 'progressing', 'scaled to 0', 'suspended'].includes(statusLower)) {
-    return 'bg-yellow-500/20 text-yellow-400'
-  }
-
-  // Red - error states
-  if (['failed', 'error', 'crashloopbackoff', 'imagepullbackoff', 'evicted'].includes(statusLower)) {
-    return 'bg-red-500/20 text-red-400'
-  }
-
-  // Blue - completed/terminated
-  if (['completed', 'terminated'].includes(statusLower)) {
-    return 'bg-blue-500/20 text-blue-400'
-  }
-
-  return 'bg-theme-hover/50 text-theme-text-secondary'
-}
+import { getResourceStatusColor, SEVERITY_BADGE } from '../../utils/badge-colors'
 
 interface OwnedResourcesProps {
   resources: HelmOwnedResource[]
@@ -113,17 +85,17 @@ export function OwnedResources({ resources, onNavigate }: OwnedResourcesProps) {
         </div>
         <div className="flex items-center gap-2">
           {health.healthy > 0 && (
-            <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-green-500/20 text-green-400">
+            <span className={clsx('flex items-center gap-1 px-2 py-0.5 text-xs rounded', SEVERITY_BADGE.success)}>
               {health.healthy} healthy
             </span>
           )}
           {health.warning > 0 && (
-            <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/20 text-yellow-400">
+            <span className={clsx('flex items-center gap-1 px-2 py-0.5 text-xs rounded', SEVERITY_BADGE.warning)}>
               {health.warning} pending
             </span>
           )}
           {health.error > 0 && (
-            <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-red-500/20 text-red-400">
+            <span className={clsx('flex items-center gap-1 px-2 py-0.5 text-xs rounded', SEVERITY_BADGE.error)}>
               {health.error} failed
             </span>
           )}
@@ -198,7 +170,7 @@ function ResourceItem({ resource, onNavigate }: ResourceItemProps) {
         {/* Status badge */}
         {resource.status && (
           <span
-            className={clsx('px-1.5 py-0.5 text-xs rounded', getStatusColor(resource.status))}
+            className={clsx('px-1.5 py-0.5 text-xs rounded', getResourceStatusColor(resource.status || ''))}
             title={resource.message || resource.status}
           >
             {resource.status}
