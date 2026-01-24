@@ -135,12 +135,12 @@ function GenericConditionsSection({ conditions }: { conditions: any[] }) {
   return (
     <Section title={`Conditions (${conditions.length})`} defaultExpanded={conditions.length <= 5}>
       <div className="space-y-2">
-        {conditions.map((cond: any, i: number) => {
+        {conditions.map((cond: any) => {
           const isTrue = cond.status === 'True'
           const isFalse = cond.status === 'False'
 
           return (
-            <div key={i} className="flex items-start gap-2 text-sm">
+            <div key={cond.type} className="flex items-start gap-2 text-sm">
               <span className={clsx(
                 'w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5',
                 isTrue ? 'text-green-400' :

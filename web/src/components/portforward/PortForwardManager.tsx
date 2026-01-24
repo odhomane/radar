@@ -48,7 +48,7 @@ export function PortForwardManager({
       if (!res.ok) throw new Error('Failed to fetch port forwards')
       return res.json()
     },
-    refetchInterval: 2000, // Poll for updates
+    refetchInterval: 30000, // Poll every 30 seconds - sessions are invalidated on user actions
   })
 
   // Stop port forward mutation
@@ -265,7 +265,7 @@ export function usePortForwardCount() {
       if (!res.ok) return []
       return res.json()
     },
-    refetchInterval: 5000,
+    refetchInterval: 30000, // Poll every 30 seconds
   })
 
   // Count both running and error sessions (not stopped)
