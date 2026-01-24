@@ -435,12 +435,19 @@ export function TopologyGraph({
       // Ignore clicks on group nodes
       if (node.type === 'group') return
 
-      const topologyNode = topology?.nodes.find(n => n.id === node.id)
+      // First try to find in original topology
+      let topologyNode = topology?.nodes.find(n => n.id === node.id)
+
+      // If not found, check workingNodes (for expanded pods from PodGroup)
+      if (!topologyNode) {
+        topologyNode = workingNodes.find(n => n.id === node.id)
+      }
+
       if (topologyNode) {
         onNodeClick(topologyNode)
       }
     },
-    [topology, onNodeClick]
+    [topology, workingNodes, onNodeClick]
   )
 
   // Update selected state
