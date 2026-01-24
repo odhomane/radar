@@ -1,14 +1,79 @@
-import { Server, HardDrive, Terminal as TerminalIcon, FileText } from 'lucide-react'
+import { Server, HardDrive, Terminal as TerminalIcon, FileText, AlertTriangle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Section, PropertyList, Property, ConditionsSection, CopyHandler } from '../drawer-components'
 import { formatResources } from '../resource-utils'
 import { PortForwardInlineButton } from '../../portforward/PortForwardButton'
 import { useOpenTerminal, useOpenLogs } from '../../dock'
+import { Tooltip } from '../../ui/Tooltip'
 
 interface PodRendererProps {
   data: any
   onCopy: CopyHandler
   copied: string | null
+}
+
+// Extract problems from pod status and conditions
+function getPodProblems(data: any): string[] {
+  const problems: string[] = []
+  const phase = data.status?.phase
+  const conditions = data.status?.conditions || []
+  const containerStatuses = data.status?.containerStatuses || []
+  const initContainerStatuses = data.status?.initContainerStatuses || []
+
+  // Check phase
+  if (phase === 'Failed' || phase === 'Unknown') {
+    problems.push(`Pod is in ${phase} state`)
+  }
+
+  // Check conditions for scheduling/init issues
+  for (const cond of conditions) {
+    if (cond.status === 'False') {
+      if (cond.type === 'PodScheduled' && cond.reason) {
+        problems.push(`Scheduling: ${cond.reason}${cond.message ? ' - ' + cond.message : ''}`)
+      } else if (cond.type === 'Initialized' && cond.message) {
+        problems.push(`Init failed: ${cond.message}`)
+      } else if (cond.type === 'ContainersReady' && cond.reason === 'ContainersNotReady') {
+        // Will be covered by container status details
+      } else if (cond.message) {
+        problems.push(`${cond.type}: ${cond.message}`)
+      }
+    }
+  }
+
+  // Check init container failures
+  for (const initStatus of initContainerStatuses) {
+    if (initStatus.state?.waiting?.reason && initStatus.state.waiting.reason !== 'PodInitializing') {
+      problems.push(`Init container "${initStatus.name}": ${initStatus.state.waiting.reason}`)
+    }
+    if (initStatus.state?.terminated?.exitCode && initStatus.state.terminated.exitCode !== 0) {
+      problems.push(`Init container "${initStatus.name}" failed with exit code ${initStatus.state.terminated.exitCode}`)
+    }
+  }
+
+  // Check container issues (most important)
+  for (const status of containerStatuses) {
+    const waiting = status.state?.waiting
+    const terminated = status.state?.terminated
+
+    if (waiting?.reason && waiting.reason !== 'ContainerCreating') {
+      const msg = `Container "${status.name}": ${waiting.reason}`
+      if (waiting.reason === 'ImagePullBackOff' || waiting.reason === 'ErrImagePull') {
+        problems.push(msg + (waiting.message ? ` - ${waiting.message.slice(0, 100)}` : ''))
+      } else if (waiting.reason === 'CrashLoopBackOff') {
+        problems.push(msg + ' (container keeps crashing)')
+      } else {
+        problems.push(msg)
+      }
+    }
+
+    if (terminated?.reason === 'OOMKilled') {
+      problems.push(`Container "${status.name}" was OOMKilled - increase memory limit`)
+    } else if (terminated?.exitCode && terminated.exitCode !== 0) {
+      problems.push(`Container "${status.name}" exited with code ${terminated.exitCode}`)
+    }
+  }
+
+  return problems
 }
 
 export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
@@ -21,6 +86,10 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
 
   const openTerminal = useOpenTerminal()
   const openLogs = useOpenLogs()
+
+  // Check for problems
+  const problems = getPodProblems(data)
+  const hasProblems = problems.length > 0
 
   const handleOpenTerminal = (containerName?: string) => {
     const container = containerName || containers[0]?.name
@@ -47,6 +116,26 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
 
   return (
     <>
+      {/* Problems alert - shown at top when there are issues */}
+      {hasProblems && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-red-400 mb-1">Issues Detected</div>
+              <ul className="text-xs text-red-300 space-y-1">
+                {problems.map((problem, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className="text-red-400/60 mt-0.5">•</span>
+                    <span>{problem}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status section */}
       <Section title="Status" icon={Server}>
         <PropertyList>
@@ -54,7 +143,23 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
           <Property label="Node" value={data.spec?.nodeName} copyable onCopy={onCopy} copied={copied} />
           <Property label="Pod IP" value={data.status?.podIP} copyable onCopy={onCopy} copied={copied} />
           <Property label="Host IP" value={data.status?.hostIP} />
-          <Property label="QoS Class" value={data.status?.qosClass} />
+          <Property
+            label={
+              <Tooltip
+                content={
+                  data.status?.qosClass === 'Guaranteed'
+                    ? 'Guaranteed: Pod has exact resource requests=limits. Least likely to be evicted.'
+                    : data.status?.qosClass === 'Burstable'
+                    ? 'Burstable: Pod has some resource requests/limits. May be evicted if node is under pressure.'
+                    : 'BestEffort: No resource requests/limits. First to be evicted under memory pressure.'
+                }
+                position="right"
+              >
+                <span className="border-b border-dotted border-theme-text-tertiary cursor-help">QoS Class</span>
+              </Tooltip>
+            }
+            value={data.status?.qosClass}
+          />
           <Property label="Service Account" value={data.spec?.serviceAccountName} />
         </PropertyList>
       </Section>
@@ -62,15 +167,20 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
       {/* Container Status */}
       <Section title="Containers" icon={HardDrive} defaultExpanded>
         <div className="space-y-3">
-          {containers.map((container: any, i: number) => {
+          {containers.map((container: any) => {
             const status = containerStatuses.find((s: any) => s.name === container.name)
             const state = status?.state
             const stateKey = state ? Object.keys(state)[0] : 'unknown'
             const isReady = status?.ready
             const restarts = status?.restartCount || 0
 
+            // Get last termination info for troubleshooting
+            const lastTermination = status?.lastState?.terminated
+            const currentWaiting = status?.state?.waiting
+            const currentTerminated = status?.state?.terminated
+
             return (
-              <div key={i} className="bg-theme-elevated/30 rounded-lg p-3">
+              <div key={container.name} className="bg-theme-elevated/30 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-theme-text-primary">{container.name}</span>
                   <div className="flex items-center gap-2">
@@ -113,12 +223,44 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
                       Restarts: {restarts}
                     </div>
                   )}
+                  {/* Show current waiting reason (e.g., CrashLoopBackOff) */}
+                  {currentWaiting?.reason && currentWaiting.reason !== 'ContainerCreating' && (
+                    <div className="text-red-400 flex items-center gap-1">
+                      <span className="font-medium">{currentWaiting.reason}</span>
+                      {currentWaiting.message && (
+                        <span className="text-theme-text-tertiary truncate" title={currentWaiting.message}>
+                          — {currentWaiting.message.slice(0, 60)}{currentWaiting.message.length > 60 ? '...' : ''}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {/* Show current terminated reason */}
+                  {currentTerminated?.reason && (
+                    <div className="text-red-400 flex items-center gap-1">
+                      <span className="font-medium">Terminated: {currentTerminated.reason}</span>
+                      {currentTerminated.exitCode !== undefined && currentTerminated.exitCode !== 0 && (
+                        <span className="text-theme-text-tertiary">(exit code {currentTerminated.exitCode})</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Show last termination info if container restarted */}
+                  {lastTermination && restarts > 0 && !currentTerminated && (
+                    <div className="text-amber-400/80 flex items-center gap-1">
+                      <span className="font-medium">Last exit: {lastTermination.reason || 'Error'}</span>
+                      {lastTermination.exitCode !== undefined && lastTermination.exitCode !== 0 && (
+                        <span className="text-theme-text-tertiary">(code {lastTermination.exitCode})</span>
+                      )}
+                      {lastTermination.reason === 'OOMKilled' && container.resources?.limits?.memory && (
+                        <span className="text-theme-text-tertiary">— limit: {container.resources.limits.memory}</span>
+                      )}
+                    </div>
+                  )}
                   {container.ports && container.ports.length > 0 && (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span>Ports:</span>
-                      {container.ports.map((p: any, pi: number) => (
+                      {container.ports.map((p: any) => (
                         <PortForwardInlineButton
-                          key={pi}
+                          key={`${p.containerPort}-${p.protocol || 'TCP'}`}
                           namespace={namespace}
                           podName={podName}
                           port={p.containerPort}

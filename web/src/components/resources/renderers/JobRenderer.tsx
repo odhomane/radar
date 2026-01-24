@@ -1,4 +1,4 @@
-import { Clock } from 'lucide-react'
+import { Clock, AlertTriangle, CheckCircle } from 'lucide-react'
 import { Section, PropertyList, Property, ConditionsSection } from '../drawer-components'
 import { formatDuration } from '../resource-utils'
 
@@ -6,9 +6,47 @@ interface JobRendererProps {
   data: any
 }
 
+// Extract problems from Job status and conditions
+function getJobProblems(data: any): string[] {
+  const problems: string[] = []
+  const status = data.status || {}
+  const spec = data.spec || {}
+  const conditions = status.conditions || []
+
+  // Check for Failed condition
+  const failedCondition = conditions.find((c: any) => c.type === 'Failed' && c.status === 'True')
+  if (failedCondition) {
+    if (failedCondition.reason === 'BackoffLimitExceeded') {
+      problems.push(`Job failed: reached backoff limit (${spec.backoffLimit ?? 6} retries)`)
+    } else if (failedCondition.reason === 'DeadlineExceeded') {
+      problems.push(`Job failed: exceeded active deadline (${spec.activeDeadlineSeconds}s)`)
+    } else {
+      problems.push(`Job failed: ${failedCondition.reason}${failedCondition.message ? ' - ' + failedCondition.message : ''}`)
+    }
+  }
+
+  // Check for pod failures without terminal condition yet
+  if (!failedCondition && status.failed > 0) {
+    const remaining = (spec.backoffLimit ?? 6) - status.failed
+    if (remaining > 0) {
+      problems.push(`${status.failed} pod(s) failed — ${remaining} retries remaining`)
+    } else {
+      problems.push(`${status.failed} pod(s) failed — no retries remaining`)
+    }
+  }
+
+  // Check for suspended
+  if (spec.suspend) {
+    problems.push('Job is suspended — pods will not be created')
+  }
+
+  return problems
+}
+
 export function JobRenderer({ data }: JobRendererProps) {
   const status = data.status || {}
   const spec = data.spec || {}
+  const conditions = status.conditions || []
 
   const startTime = status.startTime ? new Date(status.startTime) : null
   const completionTime = status.completionTime ? new Date(status.completionTime) : null
@@ -18,8 +56,45 @@ export function JobRenderer({ data }: JobRendererProps) {
     ? formatDuration(Date.now() - startTime.getTime(), true) + ' (running)'
     : null
 
+  // Check for problems
+  const problems = getJobProblems(data)
+  const hasProblems = problems.length > 0
+
+  // Check if job completed successfully
+  const isComplete = conditions.some((c: any) => c.type === 'Complete' && c.status === 'True')
+
   return (
     <>
+      {/* Problems alert */}
+      {hasProblems && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-red-400 mb-1">Job Issues</div>
+              <ul className="text-xs text-red-300 space-y-1">
+                {problems.map((problem, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className="text-red-400/60 mt-0.5">•</span>
+                    <span>{problem}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success banner */}
+      {isComplete && !hasProblems && (
+        <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
+            <div className="text-sm font-medium text-green-400">Job Completed Successfully</div>
+          </div>
+        </div>
+      )}
+
       <Section title="Status" icon={Clock}>
         <PropertyList>
           <Property label="Succeeded" value={status.succeeded || 0} />

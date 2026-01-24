@@ -1,15 +1,70 @@
-import { Server } from 'lucide-react'
-import { Section, PropertyList, Property, KeyValueBadgeList } from '../drawer-components'
+import { Server, AlertTriangle } from 'lucide-react'
+import { Section, PropertyList, Property, KeyValueBadgeList, ConditionsSection } from '../drawer-components'
 
 interface ReplicaSetRendererProps {
   data: any
 }
 
+// Extract problems from ReplicaSet status
+function getReplicaSetProblems(data: any): string[] {
+  const problems: string[] = []
+  const status = data.status || {}
+  const spec = data.spec || {}
+  const conditions = status.conditions || []
+
+  const ready = status.readyReplicas || 0
+  const desired = spec.replicas || 0
+  const available = status.availableReplicas || 0
+
+  // Check replica counts
+  if (desired > 0 && ready < desired) {
+    problems.push(`${desired - ready} of ${desired} pods are not ready`)
+  }
+
+  if (desired > 0 && available < desired) {
+    problems.push(`${desired - available} pods are not available`)
+  }
+
+  // Check conditions
+  for (const cond of conditions) {
+    if (cond.status === 'False' && cond.message) {
+      problems.push(`${cond.type}: ${cond.message}`)
+    }
+    if (cond.status === 'True' && cond.type === 'ReplicaFailure' && cond.message) {
+      problems.push(cond.message)
+    }
+  }
+
+  return problems
+}
+
 export function ReplicaSetRenderer({ data }: ReplicaSetRendererProps) {
   const ownerRef = data.metadata?.ownerReferences?.[0]
+  const problems = getReplicaSetProblems(data)
+  const hasProblems = problems.length > 0
 
   return (
     <>
+      {/* Problems alert */}
+      {hasProblems && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-red-400 mb-1">Issues Detected</div>
+              <ul className="text-xs text-red-300 space-y-1">
+                {problems.map((problem, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className="text-red-400/60 mt-0.5">•</span>
+                    <span>{problem}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Section title="Status" icon={Server}>
         <PropertyList>
           <Property label="Replicas" value={`${data.status?.readyReplicas || 0}/${data.spec?.replicas || 0}`} />
@@ -24,6 +79,8 @@ export function ReplicaSetRenderer({ data }: ReplicaSetRendererProps) {
       <Section title="Selector">
         <KeyValueBadgeList items={data.spec?.selector?.matchLabels} />
       </Section>
+
+      <ConditionsSection conditions={data.status?.conditions} />
     </>
   )
 }
