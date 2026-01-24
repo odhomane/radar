@@ -496,8 +496,8 @@ function OverviewTab({ release, onCopy, copied }: OverviewTabProps) {
             <h3 className="text-sm font-medium text-theme-text-secondary">Chart Dependencies</h3>
           </div>
           <div className="space-y-2">
-            {release.dependencies.map((dep, i) => (
-              <div key={i} className="flex items-center justify-between bg-theme-base/50 rounded p-2 text-sm">
+            {release.dependencies.map((dep) => (
+              <div key={dep.name} className="flex items-center justify-between bg-theme-base/50 rounded p-2 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-theme-text-primary font-medium">{dep.name}</span>
                   <span className="text-theme-text-tertiary">{dep.version}</span>
@@ -588,8 +588,8 @@ function HooksTab({ hooks }: HooksTabProps) {
       <p className="text-sm text-theme-text-secondary mb-4">
         Helm hooks are executed at specific points during the release lifecycle.
       </p>
-      {hooks.map((hook, i) => (
-        <div key={i} className="bg-theme-elevated/30 rounded-lg p-4">
+      {hooks.map((hook) => (
+        <div key={hook.name} className="bg-theme-elevated/30 rounded-lg p-4">
           <div className="flex items-start justify-between mb-2">
             <div>
               <div className="flex items-center gap-2">
@@ -609,9 +609,9 @@ function HooksTab({ hooks }: HooksTabProps) {
             )}
           </div>
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {hook.events.map((event, j) => (
+            {hook.events.map((event) => (
               <span
-                key={j}
+                key={event}
                 className={clsx('px-2 py-0.5 text-xs rounded border', getEventColor(event))}
               >
                 {event}

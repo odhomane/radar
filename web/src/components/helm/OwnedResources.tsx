@@ -180,9 +180,9 @@ export function OwnedResources({ resources, onNavigate }: OwnedResourcesProps) {
                 <span className="text-xs text-theme-text-tertiary">({items.length})</span>
               </div>
               <div className="space-y-1">
-                {items.map((resource) => (
+                {items.map((resource, idx) => (
                   <ResourceItem
-                    key={`${resource.namespace}-${resource.name}`}
+                    key={`${resource.namespace}-${resource.name}-${idx}`}
                     resource={resource}
                     onNavigate={onNavigate}
                   />

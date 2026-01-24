@@ -222,7 +222,75 @@ interface ReleaseRowProps {
   onClick: () => void
 }
 
+// Get actionable tooltip content for health issues
+function getActionableTooltip(issue: string | undefined, summary: string | undefined, health: string): React.ReactNode {
+  const issueDetails: Record<string, { description: string; action: string }> = {
+    OOMKilled: {
+      description: 'Container exceeded its memory limit and was killed.',
+      action: 'Increase memory limits in Helm values or optimize app memory usage.',
+    },
+    CrashLoopBackOff: {
+      description: 'Container is repeatedly crashing.',
+      action: 'Check pod logs for crash reason.',
+    },
+    ImagePullBackOff: {
+      description: 'Cannot pull container image.',
+      action: 'Verify image name in Helm values and registry credentials.',
+    },
+  }
+
+  const details = issue ? issueDetails[issue] : null
+
+  return (
+    <div className="max-w-xs">
+      <div className={clsx(
+        'font-medium',
+        health === 'unhealthy' ? 'text-red-400' : 'text-yellow-400'
+      )}>
+        {summary || issue || health}
+      </div>
+      {details && (
+        <>
+          <div className="text-theme-text-secondary text-[10px] mt-1">{details.description}</div>
+          <div className="text-blue-400 text-[10px] mt-1.5 border-t border-theme-border pt-1.5">
+            💡 {details.action}
+          </div>
+        </>
+      )}
+      {!details && issue && (
+        <div className="text-blue-400 text-[10px] mt-1.5">Click release for details</div>
+      )}
+    </div>
+  )
+}
+
 function ReleaseRow({ release, upgradeInfo, isSelected, onClick }: ReleaseRowProps) {
+  // Health badge styling
+  const getHealthBadge = () => {
+    if (!release.resourceHealth || release.resourceHealth === 'unknown') return null
+
+    const healthStyles: Record<string, { bg: string; text: string; dot: string }> = {
+      healthy: { bg: 'bg-green-500/10', text: 'text-green-400', dot: 'bg-green-500' },
+      degraded: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', dot: 'bg-yellow-500' },
+      unhealthy: { bg: 'bg-red-500/10', text: 'text-red-400', dot: 'bg-red-500' },
+    }
+
+    const style = healthStyles[release.resourceHealth] || healthStyles.healthy
+    const tooltipContent = getActionableTooltip(release.healthIssue, release.healthSummary, release.resourceHealth)
+
+    return (
+      <Tooltip content={tooltipContent}>
+        <span className={clsx(
+          'flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded shrink-0',
+          style.bg, style.text
+        )}>
+          <span className={clsx('w-1.5 h-1.5 rounded-full', style.dot)} />
+          {release.healthIssue || (release.resourceHealth !== 'healthy' ? release.healthSummary : null)}
+        </span>
+      </Tooltip>
+    )
+  }
+
   return (
     <tr
       onClick={onClick}
@@ -237,6 +305,7 @@ function ReleaseRow({ release, upgradeInfo, isSelected, onClick }: ReleaseRowPro
         <div className="flex items-center gap-2">
           <Package className="w-4 h-4 text-theme-text-tertiary flex-shrink-0" />
           <span className="text-sm text-theme-text-primary font-medium truncate">{release.name}</span>
+          {getHealthBadge()}
           {upgradeInfo?.updateAvailable && (
             <Tooltip content={`Upgrade available: ${release.chartVersion} → ${upgradeInfo.latestVersion}`}>
               <span className="flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">

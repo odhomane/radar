@@ -14,6 +14,10 @@ type HelmRelease struct {
 	Status       string    `json:"status"`
 	Revision     int       `json:"revision"`
 	Updated      time.Time `json:"updated"`
+	// Health summary from owned resources
+	ResourceHealth string `json:"resourceHealth,omitempty"` // healthy, degraded, unhealthy, unknown
+	HealthIssue    string `json:"healthIssue,omitempty"`    // Primary issue if unhealthy (e.g., "OOMKilled")
+	HealthSummary  string `json:"healthSummary,omitempty"`  // Brief summary like "2/3 pods ready"
 }
 
 // HelmRevision represents a single revision in the release history
@@ -71,6 +75,8 @@ type OwnedResource struct {
 	Status    string `json:"status,omitempty"`    // Running, Pending, Failed, etc.
 	Ready     string `json:"ready,omitempty"`     // e.g., "3/3" for deployments
 	Message   string `json:"message,omitempty"`   // Status message or reason
+	Summary   string `json:"summary,omitempty"`   // Brief status like "0/3 OOMKilled"
+	Issue     string `json:"issue,omitempty"`     // Primary issue if unhealthy
 }
 
 // HelmValues represents the values for a release

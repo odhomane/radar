@@ -290,7 +290,7 @@ func (c *Client) GetManifestDiff(namespace, name string, revision1, revision2 in
 
 // toHelmRelease converts a helm release to our API type
 func toHelmRelease(rel *release.Release) HelmRelease {
-	return HelmRelease{
+	hr := HelmRelease{
 		Name:         rel.Name,
 		Namespace:    rel.Namespace,
 		Chart:        rel.Chart.Metadata.Name,
@@ -300,6 +300,105 @@ func toHelmRelease(rel *release.Release) HelmRelease {
 		Revision:     rel.Version,
 		Updated:      rel.Info.LastDeployed.Time,
 	}
+
+	// Compute health from owned resources
+	resources := parseManifestResources(rel.Manifest, rel.Namespace)
+	enrichResourcesWithStatus(resources)
+	health, issue, summary := computeResourceHealth(resources)
+	hr.ResourceHealth = health
+	hr.HealthIssue = issue
+	hr.HealthSummary = summary
+
+	return hr
+}
+
+// computeResourceHealth analyzes owned resources and returns overall health status
+func computeResourceHealth(resources []OwnedResource) (health, issue, summary string) {
+	if len(resources) == 0 {
+		return "unknown", "", ""
+	}
+
+	var unhealthyCount, degradedCount, healthyCount, unknownCount int
+	var primaryIssue string
+	var issueSeverity int // 0=none, 1=degraded, 2=unhealthy
+
+	// Track workload stats for summary
+	var totalPods, readyPods int
+	var workloadIssues []string
+
+	for _, r := range resources {
+		// Skip non-workload resources for health calculation
+		switch r.Kind {
+		case "Deployment", "DaemonSet", "StatefulSet", "ReplicaSet":
+			// Parse ready string like "2/3"
+			if r.Ready != "" {
+				var ready, total int
+				if _, err := fmt.Sscanf(r.Ready, "%d/%d", &ready, &total); err == nil {
+					totalPods += total
+					readyPods += ready
+				}
+			}
+
+			// Check for issues
+			if r.Issue != "" {
+				if primaryIssue == "" || issueSeverity < 2 {
+					primaryIssue = r.Issue
+					issueSeverity = 2
+				}
+				workloadIssues = append(workloadIssues, fmt.Sprintf("%s: %s", r.Name, r.Issue))
+				unhealthyCount++
+			} else if r.Status == "Running" || r.Status == "Active" {
+				healthyCount++
+			} else if r.Status == "Progressing" {
+				degradedCount++
+			} else if r.Status != "" {
+				unknownCount++
+			}
+
+		case "Pod":
+			totalPods++
+			if r.Issue != "" {
+				if primaryIssue == "" || issueSeverity < 2 {
+					primaryIssue = r.Issue
+					issueSeverity = 2
+				}
+				unhealthyCount++
+			} else if r.Status == "Running" {
+				readyPods++
+				healthyCount++
+			} else if r.Status == "Pending" || r.Status == "ContainerCreating" {
+				degradedCount++
+			} else if r.Status == "Failed" || r.Status == "Error" {
+				unhealthyCount++
+			}
+		}
+	}
+
+	// Determine overall health
+	if unhealthyCount > 0 {
+		health = "unhealthy"
+	} else if degradedCount > 0 {
+		health = "degraded"
+	} else if healthyCount > 0 {
+		health = "healthy"
+	} else {
+		health = "unknown"
+	}
+
+	issue = primaryIssue
+
+	// Build summary
+	if totalPods > 0 {
+		if primaryIssue != "" {
+			summary = fmt.Sprintf("%d/%d %s", readyPods, totalPods, primaryIssue)
+		} else if readyPods < totalPods {
+			summary = fmt.Sprintf("%d/%d ready", readyPods, totalPods)
+		} else {
+			summary = fmt.Sprintf("%d/%d ready", readyPods, totalPods)
+		}
+	}
+
+	return health, issue, summary
 }
 
 // toHelmRevision converts a helm release to a revision entry
@@ -377,6 +476,8 @@ func enrichResourcesWithStatus(resources []OwnedResource) {
 			resources[i].Status = status.Status
 			resources[i].Ready = status.Ready
 			resources[i].Message = status.Message
+			resources[i].Summary = status.Summary
+			resources[i].Issue = status.Issue
 		}
 	}
 }
