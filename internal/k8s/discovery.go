@@ -266,3 +266,13 @@ func (d *ResourceDiscovery) SupportsWatchGVR(gvr schema.GroupVersionResource) bo
 	// Look up by plural resource name
 	return d.SupportsWatch(gvr.Resource)
 }
+
+// GetKindForGVR returns the Kind name for a given GVR
+// e.g., for GVR{Resource: "rollouts"}, returns "Rollout"
+func (d *ResourceDiscovery) GetKindForGVR(gvr schema.GroupVersionResource) string {
+	res, ok := d.GetResource(gvr.Resource)
+	if ok {
+		return res.Kind
+	}
+	return ""
+}

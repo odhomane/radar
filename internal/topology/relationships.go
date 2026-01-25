@@ -123,6 +123,7 @@ func buildNodeID(kind, namespace, name string) string {
 }
 
 // parseNodeID extracts kind, namespace, and name from a node ID
+// Returns nil for PodGroup since it's a UI-only concept, not a real K8s resource
 func parseNodeID(nodeID string) *ResourceRef {
 	// Node IDs are formatted as: kind-namespace-name
 	// e.g., "deployment-default-my-app" or "pod-kube-system-coredns-abc123"
@@ -135,6 +136,11 @@ func parseNodeID(nodeID string) *ResourceRef {
 	kind := parts[0]
 	namespace := parts[1]
 	name := parts[2]
+
+	// Skip PodGroup - it's a UI grouping concept, not a real K8s resource
+	if strings.ToLower(kind) == "podgroup" {
+		return nil
+	}
 
 	// Handle special case where namespace or name contains dashes
 	// We need to be smarter about this - look for known namespace patterns

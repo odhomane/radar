@@ -1,34 +1,13 @@
 // Utility functions for Helm components
 
 import { getHelmStatusColor } from '../../utils/badge-colors'
+// Re-export formatAge from resource-utils to avoid duplication
+export { formatAge } from '../resources/resource-utils'
 
 // Get status color classes for Helm release status
 // Delegates to centralized badge-colors for consistency
 export function getStatusColor(status: string): string {
   return getHelmStatusColor(status)
-}
-
-// Format age from ISO date string
-export function formatAge(dateString: string): string {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-
-  const seconds = Math.floor(diffMs / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (days > 0) {
-    return `${days}d`
-  }
-  if (hours > 0) {
-    return `${hours}h`
-  }
-  if (minutes > 0) {
-    return `${minutes}m`
-  }
-  return `${seconds}s`
 }
 
 // Format date for display

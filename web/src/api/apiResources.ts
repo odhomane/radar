@@ -28,7 +28,7 @@ export interface ResourceCategory {
 }
 
 // Known core resource categories
-const WORKLOAD_KINDS = ['Pod', 'Deployment', 'DaemonSet', 'StatefulSet', 'ReplicaSet', 'Job', 'CronJob']
+const WORKLOAD_KINDS = ['Pod', 'Deployment', 'Rollout', 'DaemonSet', 'StatefulSet', 'ReplicaSet', 'Job', 'CronJob']
 const NETWORKING_KINDS = ['Service', 'Ingress', 'NetworkPolicy', 'Endpoints', 'EndpointSlice']
 const CONFIG_KINDS = ['ConfigMap', 'Secret', 'HorizontalPodAutoscaler', 'PodDisruptionBudget', 'LimitRange', 'ResourceQuota']
 const STORAGE_KINDS = ['PersistentVolumeClaim', 'PersistentVolume', 'StorageClass', 'VolumeAttachment']
