@@ -9,6 +9,7 @@ import {
   useEdgesState,
   useReactFlow,
   useOnViewportChange,
+  useNodes,
   type Node,
   type Edge,
   type NodeTypes,
@@ -180,6 +181,7 @@ export function TopologyGraph({
   const [layoutError, setLayoutError] = useState<string | null>(null)
   const [layoutRetryCount, setLayoutRetryCount] = useState(0)
   const prevStructureRef = useRef<string>('')
+  const layoutVersionRef = useRef(0) // Used to invalidate stale layout results
 
   // Toggle group collapse
   const handleToggleCollapse = useCallback((groupId: string) => {
@@ -381,75 +383,80 @@ export function TopologyGraph({
 
     const structureChanged = structureKey !== prevStructureRef.current
 
-    if (structureChanged) {
-      prevStructureRef.current = structureKey
+    if (!structureChanged) {
+      return
+    }
 
-      // Build hierarchical ELK graph
-      const { elkGraph, groupMap, nodeToGroup } = buildHierarchicalElkGraph(
-        workingNodes,
-        workingEdges,
-        groupingMode,
-        collapsedGroups
-      )
+    prevStructureRef.current = structureKey
 
-      // Track if this effect was cancelled (deps changed or unmount)
-      let cancelled = false
+    // Increment version to invalidate any previous in-flight layout
+    const thisLayoutVersion = ++layoutVersionRef.current
 
-      // Apply layout and get positioned nodes
-      applyHierarchicalLayout(
-        elkGraph,
-        workingNodes,
-        groupMap,
-        groupingMode,
-        collapsedGroups,
-        handleToggleCollapse,
-        hideGroupHeader
-      ).then(({ nodes: layoutedNodes, error }) => {
-        // Skip state updates if effect was cancelled
-        if (cancelled) return
+    // Build hierarchical ELK graph
+    const { elkGraph, groupMap, nodeToGroup } = buildHierarchicalElkGraph(
+      workingNodes,
+      workingEdges,
+      groupingMode,
+      collapsedGroups
+    )
 
-        // Handle layout errors
-        if (error) {
-          console.error('Layout error:', error)
-          setLayoutError(error)
-          return
+    // Apply layout and get positioned nodes
+    applyHierarchicalLayout(
+      elkGraph,
+      workingNodes,
+      groupMap,
+      groupingMode,
+      collapsedGroups,
+      handleToggleCollapse,
+      hideGroupHeader
+    ).then(({ nodes: layoutedNodes, error }) => {
+      // Check if a newer layout has started - if so, discard this stale result
+      if (layoutVersionRef.current !== thisLayoutVersion) {
+        return
+      }
+
+      // Handle layout errors
+      if (error) {
+        console.error('Layout error:', error)
+        setLayoutError(error)
+        return
+      }
+      setLayoutError(null)
+
+      // Add expand/collapse handlers to pod-related nodes
+      const nodesWithHandlers = layoutedNodes.map(node => {
+        const isPodGroup = node.data?.kind === 'PodGroup'
+        const nodeData = node.data?.nodeData as Record<string, unknown> | undefined
+        const expandedFromGroup = nodeData?.expandedFromGroup as string | undefined
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            onExpand: isPodGroup ? handleExpandPodGroup : undefined,
+            onCollapse: expandedFromGroup ? handleCollapsePodGroup : undefined,
+            isExpanded: isPodGroup ? expandedPodGroups.has(node.id) : undefined,
+          },
         }
-        setLayoutError(null)
-        // Add expand/collapse handlers to pod-related nodes
-        const nodesWithHandlers = layoutedNodes.map(node => {
-          const isPodGroup = node.data?.kind === 'PodGroup'
-          const nodeData = node.data?.nodeData as Record<string, unknown> | undefined
-          const expandedFromGroup = nodeData?.expandedFromGroup as string | undefined
-
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              onExpand: isPodGroup ? handleExpandPodGroup : undefined,
-              onCollapse: expandedFromGroup ? handleCollapsePodGroup : undefined,
-              isExpanded: isPodGroup ? expandedPodGroups.has(node.id) : undefined,
-            },
-          }
-        })
-
-        setNodes(nodesWithHandlers)
-
-        // Build edges with styling
-        const builtEdges = buildEdges(
-          workingEdges,
-          collapsedGroups,
-          groupMap,
-          groupingMode,
-          isTrafficView,
-          nodeToGroup
-        )
-        setEdges(builtEdges)
       })
 
-      return () => { cancelled = true }
-    }
-    // Note: When structure hasn't changed, nodes keep their positions
-    // Data updates happen via selected state effect
+      setNodes(nodesWithHandlers)
+
+      // Build edges with styling
+      const builtEdges = buildEdges(
+        workingEdges,
+        collapsedGroups,
+        groupMap,
+        groupingMode,
+        isTrafficView,
+        nodeToGroup
+      )
+      setEdges(builtEdges)
+    })
+
+    // No cleanup function - we use version-based invalidation instead
+    // This prevents React's effect re-runs from canceling in-flight layouts
+    // when the actual structure hasn't changed
   }, [workingNodes, workingEdges, structureKey, groupingMode, hideGroupHeader, collapsedGroups, handleToggleCollapse, isTrafficView, expandedPodGroups, handleExpandPodGroup, handleCollapsePodGroup, setNodes, setEdges, layoutRetryCount])
 
   // Handle node click
@@ -603,8 +610,9 @@ const VIEWPORT_ANIMATION_DURATION = 400
 // Must be inside ReactFlow to use useReactFlow hook
 function ViewportController({ structureKey }: { structureKey: string }) {
   const { fitView, getViewport } = useReactFlow()
+  const nodes = useNodes() // Reactive hook to watch node changes
   const prevStructureKeyRef = useRef<string>('')
-  const isInitialMount = useRef(true)
+  const prevNodesLengthRef = useRef(0)
 
   // Update CSS variable for header offset based on zoom
   // This allows child nodes to move up when header shrinks (zoomed in)
@@ -627,29 +635,34 @@ function ViewportController({ structureKey }: { structureKey: string }) {
     updateZoomOffset(getViewport())
   }, [updateZoomOffset, getViewport])
 
+  // Fit view when nodes become available or structure changes
+  // This handles both initial mount and view switching scenarios
   useEffect(() => {
-    // Skip animation on initial mount (fitView prop handles that)
-    if (isInitialMount.current) {
-      isInitialMount.current = false
+    const structureChanged = structureKey !== prevStructureKeyRef.current
+    const nodesJustPopulated = prevNodesLengthRef.current === 0 && nodes.length > 0
+
+    // Update refs
+    prevNodesLengthRef.current = nodes.length
+    if (structureChanged) {
       prevStructureKeyRef.current = structureKey
-      return
     }
 
-    // Only animate when structure actually changes
-    if (structureKey !== prevStructureKeyRef.current) {
-      prevStructureKeyRef.current = structureKey
-
-      // Small delay to let the new nodes render, then animate to fit
+    // Fit view when:
+    // 1. Nodes just became available (were 0, now > 0) - handles initial mount/view switch
+    // 2. Structure changed AND nodes already exist - handles topology changes
+    if (nodesJustPopulated || (structureChanged && nodes.length > 0)) {
+      // Small delay to ensure DOM is updated
       const timeoutId = setTimeout(() => {
         fitView({
           padding: 0.15,
-          duration: VIEWPORT_ANIMATION_DURATION,
+          // No animation when nodes first appear, animate on subsequent structure changes
+          duration: nodesJustPopulated ? 0 : VIEWPORT_ANIMATION_DURATION,
         })
-      }, 50)
+      }, 10)
 
       return () => clearTimeout(timeoutId)
     }
-  }, [structureKey, fitView])
+  }, [structureKey, nodes.length, fitView])
 
   return null
 }
