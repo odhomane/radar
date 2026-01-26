@@ -605,10 +605,22 @@ export interface TrafficFlowsResponse {
   timestamp: string
   flows: TrafficFlow[]
   aggregated: AggregatedFlow[]
+  warning?: string  // Non-fatal warning (e.g., query errors)
 }
 
 // Wizard state for traffic setup
 export type TrafficWizardState = 'detecting' | 'not_found' | 'wizard' | 'checking' | 'ready'
+
+// Traffic view filter options
+export interface TrafficFilters {
+  hideSystem: boolean
+  hideExternal: boolean
+  minConnections: number
+  focusedNamespaces: Set<string>
+  showNamespaceGroups: boolean
+  aggregateExternal: boolean
+  timeRange: string
+}
 
 // Main view type now includes 'traffic'
 export type ExtendedMainView = MainView | 'traffic'
