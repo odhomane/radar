@@ -4,43 +4,19 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 
-**Real-time Kubernetes cluster visualization in your browser.** Explore your cluster's topology, browse resources, track events, and manage Helm releases — all from a single, zero-install UI.
+**A real-time Kubernetes dashboard that runs locally or in-cluster.** Visualize your cluster topology, browse resources, stream logs, exec into pods, manage Helm releases, and forward ports — all from a single binary with zero cluster-side installation.
 
 <p align="center">
   <img src="docs/screenshot.png" alt="Skyhook Explorer Screenshot" width="800">
 </p>
 
-## Features
+## Why Explorer?
 
-### Cluster Visualization
-- **Real-time topology graph** - See pods, deployments, services, and ingresses connected
-- **Live event stream** - Watch resource changes as they happen
-- **Resource details** - Click any node to see full resource information with YAML editor
-- **Multiple view modes** - Traffic view (network path) or Resources view (hierarchy)
-- **Change history** - Track resource changes over time with optional persistence
-
-### Pod Operations
-- **Terminal access** - Open interactive shell sessions into pods via WebSocket
-- **Log streaming** - View and stream pod logs in real-time
-- **Container selection** - Choose specific containers in multi-container pods
-
-### Port Forwarding
-- **Session management** - Start and stop port forwards from the UI
-- **Auto-discovery** - Automatically detect available ports on pods and services
-- **Multiple sessions** - Run concurrent port forwards to different targets
-
-### Helm Integration
-- **Release management** - View all Helm releases across namespaces
-- **Revision history** - Compare manifests between revisions
-- **Upgrade & rollback** - Upgrade releases or rollback to previous versions
-- **Values inspection** - View computed values for any release
-
-### Additional Features
-- **Namespace filtering** - Focus on specific namespaces
-- **Platform detection** - Automatic detection of GKE, EKS, AKS, minikube, kind
-- **CRD support** - Dynamic discovery and display of Custom Resource Definitions
-- **Zero cluster modification** - Read-only by default, no agents to install
-- **Dark/Light mode** - Easy on the eyes, day or night
+- **Zero install on your cluster** — runs on your laptop, talks to the K8s API directly
+- **Single binary** — no dependencies, no agents, no CRDs
+- **Real-time** — watches your cluster via informers, pushes updates to the browser via SSE
+- **Works everywhere** — GKE, EKS, AKS, minikube, kind, k3s, or any conformant cluster
+- **In-cluster option** — deploy with Helm for shared team access with RBAC-scoped permissions
 
 ---
 
@@ -52,14 +28,10 @@
 curl -fsSL https://raw.githubusercontent.com/skyhook-io/explorer/main/install.sh | bash
 ```
 
-### Using Homebrew (macOS/Linux)
+### Homebrew (macOS/Linux)
 
 ```bash
 brew install skyhook-io/tap/explorer
-skyhook-explorer
-
-# Also works as kubectl plugin
-kubectl explorer
 ```
 
 ### Direct Download
@@ -74,21 +46,6 @@ Download the latest release for your platform from [GitHub Releases](https://git
 | Linux | ARM64 | `explorer_*_linux_arm64.tar.gz` |
 | Windows | x86_64 | `explorer_*_windows_amd64.zip` |
 
-### Docker
-
-```bash
-docker run -v ~/.kube:/root/.kube -p 9280:9280 ghcr.io/skyhook-io/explorer
-```
-
-### Build from Source
-
-```bash
-git clone https://github.com/skyhook-io/explorer.git
-cd explorer
-make build
-./explorer
-```
-
 ### In-Cluster Deployment
 
 Deploy Explorer to your Kubernetes cluster for shared team access:
@@ -99,29 +56,29 @@ helm install explorer ./deploy/helm/skyhook-explorer \
   --create-namespace
 ```
 
-See [In-Cluster Deployment Guide](docs/in-cluster.md) for ingress, authentication, and DNS setup.
+See the [In-Cluster Deployment Guide](docs/in-cluster.md) for ingress, authentication, and RBAC configuration.
 
 ---
 
 ## Usage
 
 ```bash
-# Basic usage — opens browser automatically
+# Opens browser automatically
 skyhook-explorer
 
-# Specify initial namespace
+# Also works as a kubectl plugin
+kubectl explorer
+
+# Filter to a specific namespace
 skyhook-explorer --namespace production
 
 # Custom port
 skyhook-explorer --port 8080
 
-# Use specific kubeconfig
+# Use a specific kubeconfig
 skyhook-explorer --kubeconfig /path/to/kubeconfig
 
-# Don't auto-open browser
-skyhook-explorer --no-browser
-
-# Use SQLite for persistent timeline storage
+# Persist timeline events across restarts
 skyhook-explorer --timeline-storage sqlite
 ```
 
@@ -133,7 +90,6 @@ skyhook-explorer --timeline-storage sqlite
 | `--namespace` | (all) | Initial namespace filter |
 | `--port` | `9280` | Server port |
 | `--no-browser` | `false` | Don't auto-open browser |
-| `--dev` | `false` | Development mode (serve frontend from filesystem) |
 | `--timeline-storage` | `memory` | Timeline storage backend: `memory` or `sqlite` |
 | `--timeline-db` | `~/.skyhook-explorer/timeline.db` | Path to SQLite database (when using sqlite storage) |
 | `--history-limit` | `10000` | Maximum events to retain in timeline |
@@ -142,180 +98,74 @@ skyhook-explorer --timeline-storage sqlite
 
 ---
 
-## View Modes
+## Views
 
-Skyhook Explorer provides four main views to help you understand and manage your cluster:
+### Topology
 
-### 1. Topology View
+Interactive graph showing how your Kubernetes resources are connected in real-time.
 
-Interactive graph visualization showing how your Kubernetes resources are connected.
-
-<!-- TODO: Add screenshot -->
 <p align="center">
   <img src="docs/screenshots/topology-view.png" alt="Topology View" width="800">
   <br><em>Topology View — Visualize resource relationships</em>
 </p>
 
-**Features:**
-- Real-time updates via Server-Sent Events (SSE)
-- Two sub-modes: **Full** (complete resource hierarchy) and **Traffic** (network flow path)
-- Grouping options: by namespace, by app label, or ungrouped
-- Filter by resource kind (Pods, Deployments, Services, etc.)
-- Click any node to see detailed resource information
-- Collapsible groups for cleaner visualization
-- Auto-layout powered by ELK.js
+- Two modes: **Resources** (full hierarchy) and **Traffic** (network flow path)
+- Group by namespace, app label, or view ungrouped
+- Filter by resource kind — click any node for full details
+- Auto-layout powered by ELK.js, live updates via SSE
 
----
+### Resources
 
-### 2. Resources View
+Table-based resource browser with smart columns per resource kind.
 
-Comprehensive resource browser with a familiar table interface.
-
-<!-- TODO: Add screenshot -->
 <p align="center">
   <img src="docs/screenshots/resources-view.png" alt="Resources View" width="800">
   <br><em>Resources View — Browse and filter all cluster resources</em>
 </p>
 
-**Features:**
-- Browse all Kubernetes resource types (including CRDs)
-- Smart columns per resource kind (e.g., Ready/Status for Pods, Replicas for Deployments)
-- Search by name or namespace
-- Filter by status, health, or problems (e.g., CrashLoopBackOff, ImagePullBackOff)
-- Sort by any column
-- Click any resource to open detail drawer with:
-  - YAML manifest
-  - Related resources
-  - Container logs (for Pods)
-  - Events
+- Browse all resource types including CRDs
+- Search by name, filter by status or problems (CrashLoopBackOff, ImagePullBackOff, etc.)
+- Click any resource for YAML manifest, related resources, logs, and events
 
----
+### Timeline
 
-### 3. Events View
+Unified timeline of Kubernetes events and resource changes.
 
-Timeline of Kubernetes events and resource changes.
-
-<!-- TODO: Add screenshot -->
 <p align="center">
-  <img src="docs/screenshots/events-view.png" alt="Events View" width="800">
-  <br><em>Events View — Track cluster activity in real-time</em>
+  <img src="docs/screenshots/timeline-view.png" alt="Timeline View" width="800">
+  <br><em>Timeline View — Track cluster activity in real-time</em>
 </p>
 
-**Features:**
-- Unified timeline combining K8s Events and resource changes
-- Filter by event type (All, Warnings only)
-- Click any event to drill down into resource details
-- Recent activity summary showing most active resources
+- Filter by event type (all or warnings only)
 - Resource change diffs showing what changed (replicas, images, etc.)
 - Real-time updates as new events occur
 
----
-
-### 4. Helm View
+### Helm
 
 Manage Helm releases deployed in your cluster.
 
-<!-- TODO: Add screenshot -->
 <p align="center">
   <img src="docs/screenshots/helm-view.png" alt="Helm View" width="800">
   <br><em>Helm View — Manage your Helm deployments</em>
 </p>
 
-**Features:**
-- List all Helm releases across namespaces
-- View release status, chart version, and app version
-- Inspect release values (user-supplied and computed)
-- View release history and revisions
-- Navigate to resources created by the release
-- Filter by namespace
+- View all releases across namespaces with status, chart version, and app version
+- Inspect values, compare revisions, view release history
+- Upgrade, rollback, or uninstall releases directly from the UI
 
----
+### Traffic
 
-## API Reference
+Visualize live network traffic between services using Hubble or Caretta.
 
-The Explorer exposes a REST API for programmatic access:
+<p align="center">
+  <img src="docs/screenshots/traffic-view.png" alt="Traffic View" width="800">
+  <br><em>Traffic View — See how services communicate in real-time</em>
+</p>
 
-### Core Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/health` | Health check with resource counts |
-| `GET /api/cluster-info` | Cluster platform and version info |
-| `GET /api/topology` | Current topology graph |
-| `GET /api/namespaces` | List of namespaces |
-| `GET /api/api-resources` | Available API resources (for CRDs) |
-
-### Resource Operations
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/resources/{kind}` | List resources by kind |
-| `GET /api/resources/{kind}/{ns}/{name}` | Get single resource with relationships |
-| `PUT /api/resources/{kind}/{ns}/{name}` | Update resource from YAML |
-| `DELETE /api/resources/{kind}/{ns}/{name}` | Delete resource |
-
-### Events & History
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/events` | Recent Kubernetes events |
-| `GET /api/events/stream` | SSE stream for real-time events |
-| `GET /api/changes` | Resource change history |
-
-### Pod Operations
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/pods/{ns}/{name}/logs` | Fetch pod logs |
-| `GET /api/pods/{ns}/{name}/logs/stream` | Stream logs via SSE |
-| `GET /api/pods/{ns}/{name}/exec` | WebSocket terminal session |
-
-### Port Forwarding
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/portforwards` | List active sessions |
-| `POST /api/portforwards` | Start port forward |
-| `DELETE /api/portforwards/{id}` | Stop port forward |
-
-### Helm Management
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/helm/releases` | List all releases |
-| `GET /api/helm/releases/{ns}/{name}` | Release details |
-| `POST /api/helm/releases/{ns}/{name}/rollback` | Rollback release |
-| `DELETE /api/helm/releases/{ns}/{name}` | Uninstall release |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Your Machine                                │
-│                                                                     │
-│   ┌─────────────────┐              ┌───────────────────────────┐   │
-│   │     Browser     │◄────SSE─────►│    Explorer Binary        │   │
-│   │  (React + UI)   │◄───REST─────►│  (Go + Embedded Frontend) │   │
-│   │                 │◄──WebSocket──►│                           │   │
-│   └─────────────────┘              └───────────────────────────┘   │
-│                                              │                      │
-└──────────────────────────────────────────────│──────────────────────┘
-                                               │
-                                      ┌────────┴────────┐
-                                      │   Kubernetes    │
-                                      │   API Server    │
-                                      └─────────────────┘
-```
-
-**Key design decisions:**
-
-- **SharedInformers** — Efficient watch-based caching with 50-100x latency improvement over direct API calls
-- **Server-Sent Events (SSE)** — Real-time push updates to the browser without polling
-- **WebSocket** — Bidirectional communication for pod terminal access
-- **Embedded Frontend** — Single binary deployment with `go:embed`
-- **Read-Only by Default** — No cluster modifications unless explicitly enabled
+- Auto-detects Hubble (Cilium) or Caretta as traffic data sources
+- Animated flow graph showing requests per second between services
+- Filter by namespace, protocol, or status code
+- Setup wizard to install a traffic source if none is detected
 
 ---
 
@@ -351,7 +201,7 @@ The Explorer exposes a REST API for programmatic access:
 
 ## Development
 
-For developers contributing to Explorer or building custom versions, see the **[Development Guide](DEVELOPMENT.md)**.
+See the **[Development Guide](DEVELOPMENT.md)** for building from source, architecture details, API reference, and contributing.
 
 Quick start:
 ```bash
@@ -359,10 +209,10 @@ git clone https://github.com/skyhook-io/explorer.git
 cd explorer
 make deps
 
-# Terminal 1: Frontend (port 9273)
+# Terminal 1: Frontend with hot reload (port 9273)
 make watch-frontend
 
-# Terminal 2: Backend (port 9280)
+# Terminal 2: Backend with hot reload (port 9280)
 make watch-backend
 ```
 
@@ -370,22 +220,10 @@ make watch-backend
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on:
-
-- Code of Conduct
-- Development workflow
-- Pull request process
-- Coding standards
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on the development workflow, pull request process, and coding standards.
 
 ---
 
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE)
-
----
-
-## Related Projects
-
-- [Skyhook](https://skyhook.io) — The platform that makes Kubernetes simple
-- [skyhook-connector](https://github.com/skyhook-dev/skyhook-connector) — In-cluster agent for Skyhook platform
