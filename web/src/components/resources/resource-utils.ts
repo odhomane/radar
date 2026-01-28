@@ -752,6 +752,501 @@ export function cronToHuman(cron: string): string {
   return cron
 }
 
+// ============================================================================
+// PVC UTILITIES
+// ============================================================================
+
+export function getPVCStatus(pvc: any): StatusBadge {
+  const phase = pvc.status?.phase || 'Unknown'
+  switch (phase) {
+    case 'Bound':
+      return { text: 'Bound', color: healthColors.healthy, level: 'healthy' }
+    case 'Pending':
+      return { text: 'Pending', color: healthColors.degraded, level: 'degraded' }
+    case 'Lost':
+      return { text: 'Lost', color: healthColors.unhealthy, level: 'unhealthy' }
+    default:
+      return { text: phase, color: healthColors.unknown, level: 'unknown' }
+  }
+}
+
+export function getPVCCapacity(pvc: any): string {
+  return pvc.status?.capacity?.storage || pvc.spec?.resources?.requests?.storage || '-'
+}
+
+export function getPVCAccessModes(pvc: any): string {
+  const modes = pvc.status?.accessModes || pvc.spec?.accessModes || []
+  const shortModes = modes.map((m: string) => {
+    switch (m) {
+      case 'ReadWriteOnce': return 'RWO'
+      case 'ReadOnlyMany': return 'ROX'
+      case 'ReadWriteMany': return 'RWX'
+      case 'ReadWriteOncePod': return 'RWOP'
+      default: return m
+    }
+  })
+  return shortModes.join(', ') || '-'
+}
+
+// ============================================================================
+// ROLLOUT UTILITIES (Argo Rollouts CRD)
+// ============================================================================
+
+export function getRolloutStatus(rollout: any): StatusBadge {
+  const phase = rollout.status?.phase || 'Unknown'
+  switch (phase) {
+    case 'Healthy':
+      return { text: 'Healthy', color: healthColors.healthy, level: 'healthy' }
+    case 'Paused':
+      return { text: 'Paused', color: healthColors.degraded, level: 'degraded' }
+    case 'Progressing':
+      return { text: 'Progressing', color: healthColors.degraded, level: 'degraded' }
+    case 'Degraded':
+      return { text: 'Degraded', color: healthColors.unhealthy, level: 'unhealthy' }
+    default:
+      return { text: phase, color: healthColors.unknown, level: 'unknown' }
+  }
+}
+
+export function getRolloutStrategy(rollout: any): string {
+  if (rollout.spec?.strategy?.canary) return 'Canary'
+  if (rollout.spec?.strategy?.blueGreen) return 'BlueGreen'
+  return 'Unknown'
+}
+
+export function getRolloutReady(rollout: any): string {
+  const ready = rollout.status?.availableReplicas || 0
+  const desired = rollout.spec?.replicas || 0
+  return `${ready}/${desired}`
+}
+
+export function getRolloutStep(rollout: any): string | null {
+  const steps = rollout.spec?.strategy?.canary?.steps || []
+  const currentIndex = rollout.status?.currentStepIndex
+  if (steps.length === 0 || currentIndex === undefined) return null
+  return `${currentIndex}/${steps.length}`
+}
+
+// ============================================================================
+// WORKFLOW UTILITIES (Argo Workflows CRD)
+// ============================================================================
+
+export function getWorkflowStatus(workflow: any): StatusBadge {
+  const phase = workflow.status?.phase || 'Unknown'
+  switch (phase) {
+    case 'Succeeded':
+      return { text: 'Succeeded', color: healthColors.healthy, level: 'healthy' }
+    case 'Running':
+      return { text: 'Running', color: healthColors.degraded, level: 'degraded' }
+    case 'Failed':
+      return { text: 'Failed', color: healthColors.unhealthy, level: 'unhealthy' }
+    case 'Error':
+      return { text: 'Error', color: healthColors.unhealthy, level: 'unhealthy' }
+    case 'Pending':
+      return { text: 'Pending', color: healthColors.degraded, level: 'degraded' }
+    default:
+      return { text: phase, color: healthColors.unknown, level: 'unknown' }
+  }
+}
+
+export function getWorkflowDuration(workflow: any): string | null {
+  const startedAt = workflow.status?.startedAt
+  const finishedAt = workflow.status?.finishedAt
+  if (!startedAt) return null
+  const start = new Date(startedAt)
+  const end = finishedAt ? new Date(finishedAt) : new Date()
+  return formatDuration(end.getTime() - start.getTime())
+}
+
+export function getWorkflowProgress(workflow: any): string | null {
+  const nodes = workflow.status?.nodes
+  if (!nodes) return null
+  const nodeList = Object.values(nodes) as any[]
+  const podNodes = nodeList.filter((n: any) => n.type === 'Pod')
+  if (podNodes.length === 0) return null
+  const succeeded = podNodes.filter((n: any) => n.phase === 'Succeeded').length
+  return `${succeeded}/${podNodes.length}`
+}
+
+export function getWorkflowTemplate(workflow: any): string | null {
+  return workflow.spec?.workflowTemplateRef?.name || null
+}
+
+// ============================================================================
+// CERTIFICATE UTILITIES (cert-manager CRD)
+// ============================================================================
+
+export function getCertificateStatus(cert: any): StatusBadge {
+  const conditions = cert.status?.conditions || []
+  const readyCond = conditions.find((c: any) => c.type === 'Ready')
+  if (readyCond?.status === 'True') {
+    return { text: 'Ready', color: healthColors.healthy, level: 'healthy' }
+  }
+  if (readyCond?.status === 'False') {
+    return { text: 'Not Ready', color: healthColors.unhealthy, level: 'unhealthy' }
+  }
+  return { text: 'Unknown', color: healthColors.unknown, level: 'unknown' }
+}
+
+export function getCertificateDomains(cert: any): string {
+  const dnsNames = cert.spec?.dnsNames || []
+  if (dnsNames.length === 0) return '-'
+  if (dnsNames.length === 1) return dnsNames[0]
+  if (dnsNames.length <= 2) return dnsNames.join(', ')
+  return `${dnsNames[0]} +${dnsNames.length - 1}`
+}
+
+export function getCertificateIssuer(cert: any): string {
+  const ref = cert.spec?.issuerRef
+  if (!ref) return '-'
+  return ref.name || '-'
+}
+
+export function getCertificateExpiry(cert: any): { text: string; level: HealthLevel } {
+  const notAfter = cert.status?.notAfter
+  if (!notAfter) return { text: '-', level: 'unknown' }
+
+  const expiryDate = new Date(notAfter)
+  const now = new Date()
+  const daysUntilExpiry = Math.floor((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (daysUntilExpiry < 0) {
+    return { text: `Expired ${-daysUntilExpiry}d ago`, level: 'unhealthy' }
+  }
+  if (daysUntilExpiry < 7) {
+    return { text: `${daysUntilExpiry}d`, level: 'unhealthy' }
+  }
+  if (daysUntilExpiry < 30) {
+    return { text: `${daysUntilExpiry}d`, level: 'degraded' }
+  }
+  return { text: `${daysUntilExpiry}d`, level: 'healthy' }
+}
+
+// ============================================================================
+// PERSISTENT VOLUME UTILITIES
+// ============================================================================
+
+export function getPVStatus(pv: any): StatusBadge {
+  const phase = pv.status?.phase
+  switch (phase) {
+    case 'Bound':
+      return { text: 'Bound', color: healthColors.healthy, level: 'healthy' }
+    case 'Available':
+      return { text: 'Available', color: healthColors.healthy, level: 'healthy' }
+    case 'Released':
+      return { text: 'Released', color: healthColors.degraded, level: 'degraded' }
+    case 'Failed':
+      return { text: 'Failed', color: healthColors.unhealthy, level: 'unhealthy' }
+    default:
+      return { text: phase || 'Unknown', color: healthColors.unknown, level: 'unknown' }
+  }
+}
+
+export function getPVAccessModes(pv: any): string {
+  const shorthand: Record<string, string> = {
+    ReadWriteOnce: 'RWO', ReadOnlyMany: 'ROX', ReadWriteMany: 'RWX', ReadWriteOncePod: 'RWOP',
+  }
+  const modes = pv.spec?.accessModes || []
+  return modes.map((m: string) => shorthand[m] || m).join(', ') || '-'
+}
+
+export function getPVClaim(pv: any): string {
+  const ref = pv.spec?.claimRef
+  if (!ref) return '-'
+  return ref.namespace ? `${ref.namespace}/${ref.name}` : ref.name || '-'
+}
+
+// ============================================================================
+// STORAGE CLASS UTILITIES
+// ============================================================================
+
+export function getStorageClassProvisioner(sc: any): string {
+  return sc.provisioner || '-'
+}
+
+export function getStorageClassReclaimPolicy(sc: any): string {
+  return sc.reclaimPolicy || '-'
+}
+
+export function getStorageClassBindingMode(sc: any): string {
+  const mode = sc.volumeBindingMode
+  if (mode === 'WaitForFirstConsumer') return 'WaitForConsumer'
+  return mode || '-'
+}
+
+export function getStorageClassExpansion(sc: any): string {
+  return sc.allowVolumeExpansion ? 'Yes' : 'No'
+}
+
+// ============================================================================
+// CERTIFICATE REQUEST UTILITIES (cert-manager)
+// ============================================================================
+
+export function getCertificateRequestStatus(cr: any): StatusBadge {
+  const conditions = cr.status?.conditions || []
+  const denied = conditions.find((c: any) => c.type === 'Denied' && c.status === 'True')
+  if (denied) return { text: 'Denied', color: healthColors.unhealthy, level: 'unhealthy' }
+
+  const ready = conditions.find((c: any) => c.type === 'Ready')
+  if (ready?.status === 'True') return { text: 'Issued', color: healthColors.healthy, level: 'healthy' }
+  if (ready?.status === 'False') return { text: ready.reason || 'Failed', color: healthColors.unhealthy, level: 'unhealthy' }
+
+  const approved = conditions.find((c: any) => c.type === 'Approved' && c.status === 'True')
+  if (approved) return { text: 'Approved', color: healthColors.degraded, level: 'degraded' }
+
+  return { text: 'Pending', color: healthColors.degraded, level: 'degraded' }
+}
+
+export function getCertificateRequestIssuer(cr: any): string {
+  const ref = cr.spec?.issuerRef
+  if (!ref) return '-'
+  return ref.name || '-'
+}
+
+export function getCertificateRequestApproved(cr: any): string {
+  const conditions = cr.status?.conditions || []
+  const approved = conditions.find((c: any) => c.type === 'Approved')
+  if (!approved) return 'Pending'
+  return approved.status === 'True' ? 'Yes' : 'No'
+}
+
+// ============================================================================
+// CLUSTER ISSUER UTILITIES (cert-manager)
+// ============================================================================
+
+export function getClusterIssuerStatus(issuer: any): StatusBadge {
+  const conditions = issuer.status?.conditions || []
+  const ready = conditions.find((c: any) => c.type === 'Ready')
+  if (ready?.status === 'True') return { text: 'Ready', color: healthColors.healthy, level: 'healthy' }
+  if (ready?.status === 'False') return { text: ready.reason || 'Not Ready', color: healthColors.unhealthy, level: 'unhealthy' }
+  return { text: 'Unknown', color: healthColors.unknown, level: 'unknown' }
+}
+
+export function getClusterIssuerType(issuer: any): string {
+  const spec = issuer.spec || {}
+  if (spec.acme) return 'ACME'
+  if (spec.ca) return 'CA'
+  if (spec.selfSigned !== undefined) return 'SelfSigned'
+  if (spec.vault) return 'Vault'
+  if (spec.venafi) return 'Venafi'
+  return 'Unknown'
+}
+
+// ============================================================================
+// GATEWAY UTILITIES (Gateway API)
+// ============================================================================
+
+export function getGatewayStatus(gw: any): StatusBadge {
+  const conditions = gw.status?.conditions || []
+  const programmed = conditions.find((c: any) => c.type === 'Programmed')
+  const accepted = conditions.find((c: any) => c.type === 'Accepted')
+  if (programmed?.status === 'True') return { text: 'Programmed', color: healthColors.healthy, level: 'healthy' }
+  if (accepted?.status === 'True') return { text: 'Accepted', color: healthColors.degraded, level: 'degraded' }
+  if (accepted?.status === 'False') return { text: 'Not Accepted', color: healthColors.unhealthy, level: 'unhealthy' }
+  return { text: 'Unknown', color: healthColors.unknown, level: 'unknown' }
+}
+
+export function getGatewayClass(gw: any): string {
+  return gw.spec?.gatewayClassName || '-'
+}
+
+export function getGatewayListeners(gw: any): number {
+  return (gw.spec?.listeners || []).length
+}
+
+export function getGatewayAddresses(gw: any): string {
+  const addrs = gw.status?.addresses || gw.spec?.addresses || []
+  return addrs.map((a: any) => a.value).join(', ') || '-'
+}
+
+// ============================================================================
+// HTTPROUTE UTILITIES (Gateway API)
+// ============================================================================
+
+export function getHTTPRouteStatus(route: any): StatusBadge {
+  const parents = route.status?.parents || []
+  if (parents.length === 0) return { text: 'Unknown', color: healthColors.unknown, level: 'unknown' }
+  const allAccepted = parents.every((p: any) =>
+    (p.conditions || []).some((c: any) => c.type === 'Accepted' && c.status === 'True')
+  )
+  const anyRejected = parents.some((p: any) =>
+    (p.conditions || []).some((c: any) => c.type === 'Accepted' && c.status === 'False')
+  )
+  if (allAccepted) return { text: 'Accepted', color: healthColors.healthy, level: 'healthy' }
+  if (anyRejected) return { text: 'Not Accepted', color: healthColors.unhealthy, level: 'unhealthy' }
+  return { text: 'Pending', color: healthColors.degraded, level: 'degraded' }
+}
+
+export function getHTTPRouteParents(route: any): string {
+  const refs = route.spec?.parentRefs || []
+  return refs.map((r: any) => r.name).join(', ') || '-'
+}
+
+export function getHTTPRouteHostnames(route: any): string {
+  const hostnames = route.spec?.hostnames || []
+  return hostnames.join(', ') || 'Any'
+}
+
+export function getHTTPRouteRulesCount(route: any): number {
+  return (route.spec?.rules || []).length
+}
+
+// ============================================================================
+// SEALED SECRET UTILITIES (Bitnami)
+// ============================================================================
+
+export function getSealedSecretStatus(ss: any): StatusBadge {
+  const conditions = ss.status?.conditions || []
+  const synced = conditions.find((c: any) => c.type === 'Synced')
+  if (synced?.status === 'True') return { text: 'Synced', color: healthColors.healthy, level: 'healthy' }
+  if (synced?.status === 'False') return { text: 'Not Synced', color: healthColors.unhealthy, level: 'unhealthy' }
+  return { text: 'Unknown', color: healthColors.unknown, level: 'unknown' }
+}
+
+export function getSealedSecretKeyCount(ss: any): number {
+  return Object.keys(ss.spec?.encryptedData || {}).length
+}
+
+// ============================================================================
+// WORKFLOW TEMPLATE UTILITIES (Argo)
+// ============================================================================
+
+export function getWorkflowTemplateCount(wt: any): number {
+  return (wt.spec?.templates || []).length
+}
+
+export function getWorkflowTemplateEntrypoint(wt: any): string {
+  return wt.spec?.entrypoint || '-'
+}
+
+// ============================================================================
+// NETWORK POLICY UTILITIES
+// ============================================================================
+
+export function getNetworkPolicyTypes(np: any): string {
+  const types = np.spec?.policyTypes || []
+  return types.join(', ') || '-'
+}
+
+export function getNetworkPolicyRuleCount(np: any): { ingress: number; egress: number } {
+  return {
+    ingress: (np.spec?.ingress || []).length,
+    egress: (np.spec?.egress || []).length,
+  }
+}
+
+export function getNetworkPolicySelector(np: any): string {
+  const labels = np.spec?.podSelector?.matchLabels
+  if (!labels || Object.keys(labels).length === 0) return 'All pods'
+  return Object.entries(labels).map(([k, v]) => `${k}=${v}`).join(', ')
+}
+
+// ============================================================================
+// POD DISRUPTION BUDGET UTILITIES
+// ============================================================================
+
+export function getPDBStatus(pdb: any): StatusBadge {
+  const status = pdb.status || {}
+  const allowed = status.disruptionsAllowed
+  const healthy = status.currentHealthy || 0
+  const desired = status.desiredHealthy || 0
+
+  if (healthy < desired) return { text: 'Unhealthy', color: healthColors.unhealthy, level: 'unhealthy' }
+  if (allowed === 0 && (status.expectedPods || 0) > 0) return { text: 'Blocked', color: healthColors.degraded, level: 'degraded' }
+  if (allowed > 0) return { text: 'OK', color: healthColors.healthy, level: 'healthy' }
+  return { text: 'Unknown', color: healthColors.unknown, level: 'unknown' }
+}
+
+export function getPDBBudget(pdb: any): string {
+  const spec = pdb.spec || {}
+  if (spec.minAvailable !== undefined) return `min: ${spec.minAvailable}`
+  if (spec.maxUnavailable !== undefined) return `max unavail: ${spec.maxUnavailable}`
+  return '-'
+}
+
+export function getPDBHealthy(pdb: any): string {
+  const status = pdb.status || {}
+  return `${status.currentHealthy || 0}/${status.expectedPods || 0}`
+}
+
+export function getPDBAllowed(pdb: any): number {
+  return pdb.status?.disruptionsAllowed ?? 0
+}
+
+// ============================================================================
+// SERVICE ACCOUNT UTILITIES
+// ============================================================================
+
+export function getServiceAccountSecretCount(sa: any): number {
+  return (sa.secrets || []).length
+}
+
+export function getServiceAccountAutomount(sa: any): string {
+  return sa.automountServiceAccountToken === false ? 'No' : 'Yes'
+}
+
+// ============================================================================
+// ROLE / CLUSTER ROLE UTILITIES
+// ============================================================================
+
+export function getRoleRuleCount(role: any): number {
+  return (role.rules || []).length
+}
+
+// ============================================================================
+// ROLE BINDING / CLUSTER ROLE BINDING UTILITIES
+// ============================================================================
+
+export function getRoleBindingRole(rb: any): string {
+  const ref = rb.roleRef
+  if (!ref) return '-'
+  return ref.name || '-'
+}
+
+export function getRoleBindingSubjectCount(rb: any): number {
+  return (rb.subjects || []).length
+}
+
+// ============================================================================
+// WORKLOAD PROBLEM DETECTION (for table row indicators)
+// ============================================================================
+
+export function getWorkloadProblems(resource: any, kind: string): string[] {
+  const problems: string[] = []
+  const status = resource.status || {}
+  const spec = resource.spec || {}
+
+  if (kind === 'daemonsets') {
+    const ready = status.numberReady || 0
+    const desired = status.desiredNumberScheduled || 0
+    if (desired > 0 && ready < desired) {
+      problems.push(`${desired - ready} pods not ready`)
+    }
+  } else {
+    const ready = status.readyReplicas || 0
+    const desired = spec.replicas ?? 0
+    if (desired > 0 && ready < desired) {
+      problems.push(`${desired - ready} replicas not ready`)
+    }
+  }
+
+  const conditions = status.conditions || []
+  for (const cond of conditions) {
+    if (cond.status === 'True' && cond.type === 'ReplicaFailure') {
+      problems.push('ReplicaFailure')
+    }
+    if (cond.status === 'False' && cond.type === 'Available') {
+      problems.push('Unavailable')
+    }
+  }
+
+  return problems
+}
+
+// ============================================================================
+// FORMATTING UTILITIES
+// ============================================================================
+
 export function truncate(str: string, length: number): string {
   if (!str || str.length <= length) return str
   return str.slice(0, length - 1) + '…'

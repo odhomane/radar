@@ -27,6 +27,18 @@ import {
   getCronJobStatus,
   getHPAStatus,
   getServiceStatus,
+  getNodeStatus,
+  getPVCStatus,
+  getRolloutStatus,
+  getWorkflowStatus,
+  getCertificateStatus,
+  getPVStatus,
+  getClusterIssuerStatus,
+  getCertificateRequestStatus,
+  getGatewayStatus,
+  getHTTPRouteStatus,
+  getSealedSecretStatus,
+  getPDBStatus,
 } from './resource-utils'
 import {
   LabelsSection,
@@ -48,6 +60,24 @@ import {
   JobRenderer,
   CronJobRenderer,
   HPARenderer,
+  NodeRenderer,
+  PVCRenderer,
+  RolloutRenderer,
+  CertificateRenderer,
+  WorkflowRenderer,
+  PersistentVolumeRenderer,
+  StorageClassRenderer,
+  CertificateRequestRenderer,
+  ClusterIssuerRenderer,
+  GatewayRenderer,
+  HTTPRouteRenderer,
+  SealedSecretRenderer,
+  WorkflowTemplateRenderer,
+  NetworkPolicyRenderer,
+  PodDisruptionBudgetRenderer,
+  ServiceAccountRenderer,
+  RoleRenderer,
+  RoleBindingRenderer,
   GenericRenderer,
 } from './renderers'
 import { useOpenTerminal, useOpenLogs } from '../dock'
@@ -860,7 +890,12 @@ function ResourceContent({ resource, data, relationships, onCopy, copied, onNavi
   const knownKinds = [
     'pods', 'deployments', 'statefulsets', 'daemonsets', 'replicasets',
     'services', 'ingresses', 'configmaps', 'secrets', 'jobs', 'cronjobs',
-    'hpas', 'horizontalpodautoscalers'
+    'hpas', 'horizontalpodautoscalers', 'nodes', 'persistentvolumeclaims',
+    'rollouts', 'certificates', 'workflows', 'persistentvolumes',
+    'storageclasses', 'certificaterequests', 'clusterissuers',
+    'gateways', 'httproutes', 'sealedsecrets', 'workflowtemplates',
+    'networkpolicies', 'poddisruptionbudgets', 'serviceaccounts',
+    'roles', 'clusterroles', 'rolebindings', 'clusterrolebindings'
   ]
   const isKnownKind = knownKinds.includes(kind)
 
@@ -877,6 +912,24 @@ function ResourceContent({ resource, data, relationships, onCopy, copied, onNavi
       {kind === 'jobs' && <JobRenderer data={data} />}
       {kind === 'cronjobs' && <CronJobRenderer data={data} />}
       {(kind === 'hpas' || kind === 'horizontalpodautoscalers') && <HPARenderer data={data} />}
+      {kind === 'nodes' && <NodeRenderer data={data} />}
+      {kind === 'persistentvolumeclaims' && <PVCRenderer data={data} />}
+      {kind === 'rollouts' && <RolloutRenderer data={data} />}
+      {kind === 'certificates' && <CertificateRenderer data={data} />}
+      {kind === 'workflows' && <WorkflowRenderer data={data} />}
+      {kind === 'persistentvolumes' && <PersistentVolumeRenderer data={data} />}
+      {kind === 'storageclasses' && <StorageClassRenderer data={data} />}
+      {kind === 'certificaterequests' && <CertificateRequestRenderer data={data} />}
+      {kind === 'clusterissuers' && <ClusterIssuerRenderer data={data} />}
+      {kind === 'gateways' && <GatewayRenderer data={data} />}
+      {kind === 'httproutes' && <HTTPRouteRenderer data={data} />}
+      {kind === 'sealedsecrets' && <SealedSecretRenderer data={data} />}
+      {kind === 'workflowtemplates' && <WorkflowTemplateRenderer data={data} />}
+      {kind === 'networkpolicies' && <NetworkPolicyRenderer data={data} />}
+      {kind === 'poddisruptionbudgets' && <PodDisruptionBudgetRenderer data={data} />}
+      {kind === 'serviceaccounts' && <ServiceAccountRenderer data={data} />}
+      {(kind === 'roles' || kind === 'clusterroles') && <RoleRenderer data={data} />}
+      {(kind === 'rolebindings' || kind === 'clusterrolebindings') && <RoleBindingRenderer data={data} />}
 
       {/* Generic renderer for CRDs and unknown resource types */}
       {!isKnownKind && <GenericRenderer data={data} />}
@@ -931,6 +984,66 @@ function getResourceStatus(kind: string, data: any): { text: string; color: stri
 
   if (k === 'hpas' || k === 'horizontalpodautoscalers') {
     const status = getHPAStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'nodes') {
+    const status = getNodeStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'persistentvolumeclaims') {
+    const status = getPVCStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'rollouts') {
+    const status = getRolloutStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'workflows') {
+    const status = getWorkflowStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'certificates') {
+    const status = getCertificateStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'persistentvolumes') {
+    const status = getPVStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'certificaterequests') {
+    const status = getCertificateRequestStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'clusterissuers') {
+    const status = getClusterIssuerStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'gateways') {
+    const status = getGatewayStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'httproutes') {
+    const status = getHTTPRouteStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'sealedsecrets') {
+    const status = getSealedSecretStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'poddisruptionbudgets') {
+    const status = getPDBStatus(data)
     return { text: status.text, color: status.color }
   }
 

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { Search, X, Box, Server, Database, Globe, Settings, Layers, ChevronRight } from 'lucide-react'
+import { Search, X, ChevronRight } from 'lucide-react'
+import { getTopologyIcon } from '../../utils/resource-icons'
 import { clsx } from 'clsx'
 import type { TopologyNode } from '../../types'
 
@@ -11,26 +12,7 @@ interface TopologySearchProps {
 
 // Icon mapping for different resource kinds
 function getNodeIcon(kind: string) {
-  switch (kind) {
-    case 'Ingress':
-      return Globe
-    case 'Service':
-      return Server
-    case 'Deployment':
-    case 'Rollout':
-    case 'DaemonSet':
-    case 'StatefulSet':
-    case 'ReplicaSet':
-      return Layers
-    case 'Pod':
-    case 'PodGroup':
-      return Box
-    case 'ConfigMap':
-    case 'Secret':
-      return Settings
-    default:
-      return Database
-  }
+  return getTopologyIcon(kind)
 }
 
 // Color mapping for different resource kinds

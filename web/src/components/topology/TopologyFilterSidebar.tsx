@@ -1,51 +1,44 @@
 import { memo, useMemo } from 'react'
 import {
-  Globe,
-  Server,
-  Box,
-  Layers,
-  Settings,
-  Key,
-  Activity,
-  Clock,
-  Timer,
   ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { NodeKind, TopologyNode } from '../../types'
+import { getTopologyIcon } from '../../utils/resource-icons'
 
 // Resource kind configuration
 const RESOURCE_KINDS: {
   kind: NodeKind
   label: string
-  icon: typeof Globe
+  icon: LucideIcon
   color: string
   category: 'workloads' | 'networking' | 'config' | 'scaling'
 }[] = [
   // Networking
-  { kind: 'Ingress', label: 'Ingress', icon: Globe, color: 'text-purple-400', category: 'networking' },
-  { kind: 'Service', label: 'Service', icon: Server, color: 'text-blue-400', category: 'networking' },
+  { kind: 'Ingress', label: 'Ingress', icon: getTopologyIcon('Ingress'), color: 'text-purple-400', category: 'networking' },
+  { kind: 'Service', label: 'Service', icon: getTopologyIcon('Service'), color: 'text-blue-400', category: 'networking' },
 
   // Workloads
-  { kind: 'Deployment', label: 'Deployment', icon: Layers, color: 'text-emerald-400', category: 'workloads' },
-  { kind: 'Rollout', label: 'Rollout', icon: Layers, color: 'text-emerald-400', category: 'workloads' },
-  { kind: 'DaemonSet', label: 'DaemonSet', icon: Layers, color: 'text-teal-400', category: 'workloads' },
-  { kind: 'StatefulSet', label: 'StatefulSet', icon: Layers, color: 'text-cyan-400', category: 'workloads' },
-  { kind: 'ReplicaSet', label: 'ReplicaSet', icon: Layers, color: 'text-green-400', category: 'workloads' },
-  { kind: 'Pod', label: 'Pod', icon: Box, color: 'text-lime-400', category: 'workloads' },
-  { kind: 'PodGroup', label: 'Pod Group', icon: Box, color: 'text-lime-400', category: 'workloads' },
-  { kind: 'Job', label: 'Job', icon: Activity, color: 'text-orange-400', category: 'workloads' },
-  { kind: 'CronJob', label: 'CronJob', icon: Timer, color: 'text-orange-300', category: 'workloads' },
+  { kind: 'Deployment', label: 'Deployment', icon: getTopologyIcon('Deployment'), color: 'text-emerald-400', category: 'workloads' },
+  { kind: 'Rollout', label: 'Rollout', icon: getTopologyIcon('Rollout'), color: 'text-emerald-400', category: 'workloads' },
+  { kind: 'DaemonSet', label: 'DaemonSet', icon: getTopologyIcon('DaemonSet'), color: 'text-teal-400', category: 'workloads' },
+  { kind: 'StatefulSet', label: 'StatefulSet', icon: getTopologyIcon('StatefulSet'), color: 'text-cyan-400', category: 'workloads' },
+  { kind: 'ReplicaSet', label: 'ReplicaSet', icon: getTopologyIcon('ReplicaSet'), color: 'text-green-400', category: 'workloads' },
+  { kind: 'Pod', label: 'Pod', icon: getTopologyIcon('Pod'), color: 'text-lime-400', category: 'workloads' },
+  { kind: 'PodGroup', label: 'Pod Group', icon: getTopologyIcon('PodGroup'), color: 'text-lime-400', category: 'workloads' },
+  { kind: 'Job', label: 'Job', icon: getTopologyIcon('Job'), color: 'text-orange-400', category: 'workloads' },
+  { kind: 'CronJob', label: 'CronJob', icon: getTopologyIcon('CronJob'), color: 'text-orange-300', category: 'workloads' },
 
   // Config
-  { kind: 'ConfigMap', label: 'ConfigMap', icon: Settings, color: 'text-amber-400', category: 'config' },
-  { kind: 'Secret', label: 'Secret', icon: Key, color: 'text-red-400', category: 'config' },
+  { kind: 'ConfigMap', label: 'ConfigMap', icon: getTopologyIcon('ConfigMap'), color: 'text-amber-400', category: 'config' },
+  { kind: 'Secret', label: 'Secret', icon: getTopologyIcon('Secret'), color: 'text-red-400', category: 'config' },
 
   // Scaling
-  { kind: 'HPA', label: 'HPA', icon: Clock, color: 'text-pink-400', category: 'scaling' },
+  { kind: 'HPA', label: 'HPA', icon: getTopologyIcon('HPA'), color: 'text-pink-400', category: 'scaling' },
 ]
 
 const CATEGORIES = [

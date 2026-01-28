@@ -2,15 +2,11 @@ import { useState, useMemo, useEffect, useCallback, useRef, forwardRef } from 'r
 import { useLocation } from 'react-router-dom'
 import { useQueries } from '@tanstack/react-query'
 import {
-  Box,
   Search,
   RefreshCw,
   AlertTriangle,
-  Shield,
   Globe,
-  HardDrive,
-  Database,
-  Puzzle,
+  Shield,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -20,25 +16,6 @@ import {
   Clock,
   Filter,
   X,
-  // K8s resource icons
-  Rocket,
-  Rows3,
-  DatabaseZap,
-  Copy,
-  Play,
-  Timer,
-  Plug,
-  DoorOpen,
-  ShieldCheck,
-  Radio,
-  FileSliders,
-  KeyRound,
-  Cylinder,
-  Cpu,
-  FolderOpen,
-  UserCog,
-  Activity,
-  Scaling,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { SelectedResource, APIResource } from '../../types'
@@ -82,10 +59,62 @@ import {
   getNodeConditions,
   getNodeTaints,
   getNodeVersion,
+  getPVCStatus,
+  getPVCCapacity,
+  getPVCAccessModes,
+  getRolloutStatus,
+  getRolloutStrategy,
+  getRolloutReady,
+  getRolloutStep,
+  getWorkflowStatus,
+  getWorkflowDuration,
+  getWorkflowProgress,
+  getWorkflowTemplate,
+  getCertificateStatus,
+  getCertificateDomains,
+  getCertificateIssuer,
+  getCertificateExpiry,
+  getPVStatus,
+  getPVAccessModes,
+  getPVClaim,
+  getStorageClassProvisioner,
+  getStorageClassReclaimPolicy,
+  getStorageClassBindingMode,
+  getStorageClassExpansion,
+  getCertificateRequestStatus,
+  getCertificateRequestIssuer,
+  getCertificateRequestApproved,
+  getClusterIssuerStatus,
+  getClusterIssuerType,
+  getGatewayStatus,
+  getGatewayClass,
+  getGatewayListeners,
+  getGatewayAddresses,
+  getHTTPRouteStatus,
+  getHTTPRouteParents,
+  getHTTPRouteHostnames,
+  getHTTPRouteRulesCount,
+  getSealedSecretStatus,
+  getSealedSecretKeyCount,
+  getWorkflowTemplateCount,
+  getWorkflowTemplateEntrypoint,
+  getNetworkPolicyTypes,
+  getNetworkPolicyRuleCount,
+  getNetworkPolicySelector,
+  getPDBStatus,
+  getPDBBudget,
+  getPDBHealthy,
+  getPDBAllowed,
+  getServiceAccountAutomount,
+  getServiceAccountSecretCount,
+  getRoleRuleCount,
+  getRoleBindingRole,
+  getRoleBindingSubjectCount,
   formatAge,
   truncate,
 } from './resource-utils'
 import { Tooltip } from '../ui/Tooltip'
+import { getResourceIcon } from '../../utils/resource-icons'
 
 // Filter options for different resource kinds
 const POD_PHASES = ['Running', 'Pending', 'Succeeded', 'Failed', 'Unknown'] as const
@@ -95,57 +124,19 @@ const NODE_CONDITIONS = ['DiskPressure', 'MemoryPressure', 'PIDPressure', 'Netwo
 
 // Fallback resource types when API resources aren't loaded yet
 const CORE_RESOURCE_TYPES = [
-  { kind: 'pods', label: 'Pods', icon: Box },
-  { kind: 'deployments', label: 'Deployments', icon: Rocket },
-  { kind: 'daemonsets', label: 'DaemonSets', icon: Rows3 },
-  { kind: 'statefulsets', label: 'StatefulSets', icon: DatabaseZap },
-  { kind: 'replicasets', label: 'ReplicaSets', icon: Copy },
-  { kind: 'services', label: 'Services', icon: Plug },
-  { kind: 'ingresses', label: 'Ingresses', icon: DoorOpen },
-  { kind: 'configmaps', label: 'ConfigMaps', icon: FileSliders },
-  { kind: 'secrets', label: 'Secrets', icon: KeyRound },
-  { kind: 'jobs', label: 'Jobs', icon: Play },
-  { kind: 'cronjobs', label: 'CronJobs', icon: Timer },
-  { kind: 'hpas', label: 'HPAs', icon: Scaling },
+  { kind: 'pods', label: 'Pods' },
+  { kind: 'deployments', label: 'Deployments' },
+  { kind: 'daemonsets', label: 'DaemonSets' },
+  { kind: 'statefulsets', label: 'StatefulSets' },
+  { kind: 'replicasets', label: 'ReplicaSets' },
+  { kind: 'services', label: 'Services' },
+  { kind: 'ingresses', label: 'Ingresses' },
+  { kind: 'configmaps', label: 'ConfigMaps' },
+  { kind: 'secrets', label: 'Secrets' },
+  { kind: 'jobs', label: 'Jobs' },
+  { kind: 'cronjobs', label: 'CronJobs' },
+  { kind: 'hpas', label: 'HPAs' },
 ] as const
-
-// Map kind names to icons
-const KIND_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  // Workloads
-  pod: Box,
-  deployment: Rocket,
-  daemonset: Rows3,
-  statefulset: DatabaseZap,
-  replicaset: Copy,
-  job: Play,
-  cronjob: Timer,
-
-  // Networking
-  service: Plug,
-  ingress: DoorOpen,
-  networkpolicy: ShieldCheck,
-  endpoints: Radio,
-  endpointslice: Radio,
-
-  // Config & Storage
-  configmap: FileSliders,
-  secret: KeyRound,
-  persistentvolumeclaim: HardDrive,
-  persistentvolume: Cylinder,
-  storageclass: Database,
-
-  // Cluster
-  node: Cpu,
-  namespace: FolderOpen,
-  serviceaccount: UserCog,
-  event: Activity,
-
-  // Scaling
-  horizontalpodautoscaler: Scaling,
-
-  // Default for CRDs
-  default: Puzzle,
-}
 
 // Core kinds that are always shown even with 0 instances
 // These are the most commonly used Kubernetes resources (using Kind names, not plural names)
@@ -169,10 +160,6 @@ const ALWAYS_SHOWN_KINDS = new Set([
   'NetworkPolicy',
   'Event',
 ])
-
-function getIconForKind(kind: string): React.ComponentType<{ className?: string }> {
-  return KIND_ICONS[kind.toLowerCase()] || KIND_ICONS.default
-}
 
 // Selected resource type info (need both name for API and kind for display)
 interface SelectedKindInfo {
@@ -214,7 +201,7 @@ const KNOWN_COLUMNS: Record<string, Column[]> = {
     { key: 'ready', label: 'Ready', width: 'w-24', tooltip: 'Ready pods / Desired replicas' },
     { key: 'upToDate', label: 'Up-to-date', width: 'w-24', hideOnMobile: true, tooltip: 'Number of pods running the current pod template' },
     { key: 'available', label: 'Available', width: 'w-24', hideOnMobile: true, tooltip: 'Number of pods available (ready for minReadySeconds)' },
-    { key: 'conditions', label: 'Conditions', width: 'w-44', hideOnMobile: true, tooltip: 'Deployment conditions (Available, Progressing)' },
+    { key: 'images', label: 'Images', width: 'w-48', hideOnMobile: true },
     { key: 'age', label: 'Age', width: 'w-20' },
   ],
   daemonsets: [
@@ -224,6 +211,7 @@ const KNOWN_COLUMNS: Record<string, Column[]> = {
     { key: 'ready', label: 'Ready', width: 'w-20', tooltip: 'Number of pods that are ready (passing readiness probes)' },
     { key: 'upToDate', label: 'Up-to-date', width: 'w-24', hideOnMobile: true, tooltip: 'Number of pods running the current pod template spec' },
     { key: 'available', label: 'Available', width: 'w-24', hideOnMobile: true, tooltip: 'Number of pods available (ready for minReadySeconds duration)' },
+    { key: 'images', label: 'Images', width: 'w-48', hideOnMobile: true },
     { key: 'age', label: 'Age', width: 'w-20' },
   ],
   statefulsets: [
@@ -319,6 +307,157 @@ const KNOWN_COLUMNS: Record<string, Column[]> = {
     { key: 'status', label: 'Status', width: 'w-28' },
     { key: 'age', label: 'Age', width: 'w-20' },
   ],
+  persistentvolumeclaims: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Status', width: 'w-24' },
+    { key: 'capacity', label: 'Capacity', width: 'w-24' },
+    { key: 'storageClass', label: 'Storage Class', width: 'w-36', hideOnMobile: true },
+    { key: 'accessModes', label: 'Access', width: 'w-20', tooltip: 'Access modes: RWO=ReadWriteOnce, RWX=ReadWriteMany, ROX=ReadOnlyMany' },
+    { key: 'volume', label: 'Volume', width: 'w-48', hideOnMobile: true },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  rollouts: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Phase', width: 'w-28' },
+    { key: 'ready', label: 'Ready', width: 'w-24', tooltip: 'Available / Desired replicas' },
+    { key: 'strategy', label: 'Strategy', width: 'w-24' },
+    { key: 'step', label: 'Step', width: 'w-20', hideOnMobile: true, tooltip: 'Current canary step / Total steps' },
+    { key: 'images', label: 'Images', width: 'w-48', hideOnMobile: true },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  workflows: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Phase', width: 'w-28' },
+    { key: 'duration', label: 'Duration', width: 'w-24' },
+    { key: 'progress', label: 'Progress', width: 'w-24', hideOnMobile: true, tooltip: 'Succeeded steps / Total steps' },
+    { key: 'template', label: 'Template', width: 'w-40', hideOnMobile: true },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  certificates: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Ready', width: 'w-24' },
+    { key: 'domains', label: 'Domains', width: 'w-48' },
+    { key: 'issuer', label: 'Issuer', width: 'w-36', hideOnMobile: true },
+    { key: 'expires', label: 'Expires', width: 'w-24', tooltip: 'Days until certificate expires' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  persistentvolumes: [
+    { key: 'name', label: 'Name' },
+    { key: 'status', label: 'Status', width: 'w-24' },
+    { key: 'capacity', label: 'Capacity', width: 'w-24' },
+    { key: 'accessModes', label: 'Access', width: 'w-20', tooltip: 'RWO=ReadWriteOnce, ROX=ReadOnlyMany, RWX=ReadWriteMany' },
+    { key: 'reclaimPolicy', label: 'Reclaim', width: 'w-20' },
+    { key: 'storageClass', label: 'Storage Class', width: 'w-36', hideOnMobile: true },
+    { key: 'claim', label: 'Claim', width: 'w-48', hideOnMobile: true },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  storageclasses: [
+    { key: 'name', label: 'Name' },
+    { key: 'provisioner', label: 'Provisioner', width: 'w-48' },
+    { key: 'reclaimPolicy', label: 'Reclaim', width: 'w-20' },
+    { key: 'bindingMode', label: 'Binding Mode', width: 'w-36' },
+    { key: 'expansion', label: 'Expansion', width: 'w-24', tooltip: 'Whether volumes can be expanded after creation' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  certificaterequests: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Status', width: 'w-24' },
+    { key: 'issuer', label: 'Issuer', width: 'w-36' },
+    { key: 'approved', label: 'Approved', width: 'w-24' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  clusterissuers: [
+    { key: 'name', label: 'Name' },
+    { key: 'status', label: 'Ready', width: 'w-24' },
+    { key: 'issuerType', label: 'Type', width: 'w-24' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  gateways: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Status', width: 'w-28' },
+    { key: 'class', label: 'Class', width: 'w-36' },
+    { key: 'listeners', label: 'Listeners', width: 'w-24' },
+    { key: 'addresses', label: 'Addresses', width: 'w-48', hideOnMobile: true },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  httproutes: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Status', width: 'w-28' },
+    { key: 'hostnames', label: 'Hostnames', width: 'w-48' },
+    { key: 'parents', label: 'Gateways', width: 'w-36' },
+    { key: 'rules', label: 'Rules', width: 'w-20' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  sealedsecrets: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Synced', width: 'w-24' },
+    { key: 'keys', label: 'Keys', width: 'w-20' },
+    { key: 'type', label: 'Type', width: 'w-36', hideOnMobile: true },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  workflowtemplates: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'entrypoint', label: 'Entrypoint', width: 'w-36' },
+    { key: 'templates', label: 'Templates', width: 'w-24' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  networkpolicies: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'policyTypes', label: 'Types', width: 'w-28' },
+    { key: 'selector', label: 'Pod Selector', width: 'w-48' },
+    { key: 'rules', label: 'Rules', width: 'w-24', tooltip: 'Ingress / Egress rule count' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  poddisruptionbudgets: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Status', width: 'w-24' },
+    { key: 'budget', label: 'Budget', width: 'w-36' },
+    { key: 'healthy', label: 'Healthy', width: 'w-24' },
+    { key: 'allowed', label: 'Allowed', width: 'w-24', tooltip: 'Number of disruptions currently allowed' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  serviceaccounts: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'automount', label: 'Automount', width: 'w-24', tooltip: 'Whether token is automatically mounted in pods' },
+    { key: 'secrets', label: 'Secrets', width: 'w-20' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  roles: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'rules', label: 'Rules', width: 'w-20' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  clusterroles: [
+    { key: 'name', label: 'Name' },
+    { key: 'rules', label: 'Rules', width: 'w-20' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  rolebindings: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'role', label: 'Role', width: 'w-48' },
+    { key: 'subjects', label: 'Subjects', width: 'w-20' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  clusterrolebindings: [
+    { key: 'name', label: 'Name' },
+    { key: 'role', label: 'Role', width: 'w-48' },
+    { key: 'subjects', label: 'Subjects', width: 'w-20' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
 }
 
 function getColumnsForKind(kind: string): Column[] {
@@ -375,6 +514,7 @@ export function ResourcesView({ namespace, selectedResource, onResourceClick, on
   const [searchTerm, setSearchTerm] = useState(initialFilters.search)
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Workloads', 'Networking', 'Configuration']))
   const [showEmptyKinds, setShowEmptyKinds] = useState(false)
+  const [kindFilter, setKindFilter] = useState('')
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -939,6 +1079,32 @@ export function ResourcesView({ namespace, selectedResource, onResourceClick, on
     return { sortedCategories: visibleCategories, hiddenKindsCount: totalHiddenKinds, hiddenGroupsCount: totalHiddenGroups }
   }, [categories, counts, showEmptyKinds])
 
+  // Filter sidebar categories/kinds by the kind search term
+  const filteredCategories = useMemo(() => {
+    if (!sortedCategories || !kindFilter.trim()) return sortedCategories
+    const term = kindFilter.toLowerCase()
+    return sortedCategories
+      .map(category => {
+        const matchingResources = category.visibleResources.filter((resource: any) =>
+          resource.kind.toLowerCase().includes(term) ||
+          resource.name.toLowerCase().includes(term)
+        )
+        if (matchingResources.length === 0 && !category.name.toLowerCase().includes(term)) return null
+        return {
+          ...category,
+          visibleResources: matchingResources.length > 0 ? matchingResources : category.visibleResources,
+        }
+      })
+      .filter(Boolean) as typeof sortedCategories
+  }, [sortedCategories, kindFilter])
+
+  // Auto-expand all categories when filtering
+  const isKindFiltering = kindFilter.trim().length > 0
+  const effectiveExpandedCategories = useMemo(() => {
+    if (!isKindFiltering || !filteredCategories) return expandedCategories
+    return new Set(filteredCategories.map(c => c.name))
+  }, [isKindFiltering, filteredCategories, expandedCategories])
+
   const toggleCategory = (categoryName: string) => {
     setExpandedCategories(prev => {
       const next = new Set(prev)
@@ -1068,16 +1234,34 @@ export function ResourcesView({ namespace, selectedResource, onResourceClick, on
     <div className="flex h-full">
       {/* Sidebar - Resource Types */}
       <div className="w-72 bg-theme-surface border-r border-theme-border overflow-y-auto shrink-0">
-        <div className="p-3 border-b border-theme-border">
-          <h2 className="text-sm font-medium text-theme-text-secondary uppercase tracking-wide">
+        <div className="flex items-center gap-2 px-3 py-3 border-b border-theme-border">
+          <h2 className="text-sm font-medium text-theme-text-secondary uppercase tracking-wide shrink-0">
             Resources
           </h2>
+          <div className="flex-1 relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-theme-text-tertiary" />
+            <input
+              type="text"
+              placeholder="Filter kinds..."
+              value={kindFilter}
+              onChange={(e) => setKindFilter(e.target.value)}
+              className="w-full pl-7 pr-7 py-2 bg-theme-elevated border border-theme-border-light rounded-lg text-sm text-theme-text-primary placeholder-theme-text-disabled focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {kindFilter && (
+              <button
+                onClick={() => setKindFilter('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-theme-surface text-theme-text-tertiary hover:text-theme-text-secondary"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
         <nav className="p-2">
-          {sortedCategories ? (
+          {filteredCategories ? (
             // Dynamic categories from API
-            sortedCategories.map((category) => {
-              const isExpanded = expandedCategories.has(category.name)
+            filteredCategories.map((category) => {
+              const isExpanded = effectiveExpandedCategories.has(category.name)
               return (
                 <div key={category.name} className="mb-2">
                   <button
@@ -1118,12 +1302,12 @@ export function ResourcesView({ namespace, selectedResource, onResourceClick, on
           ) : (
             // Fallback to core resources while loading
             CORE_RESOURCE_TYPES.map((type) => {
-              const Icon = type.icon
               // Fallback: type.label is display name like 'Pods', counts are keyed by Kind like 'Pod'
               // Remove trailing 's' for singular kind lookup (hacky but works for fallback)
               const kindKey = type.label.endsWith('s') && !type.label.endsWith('ss')
                 ? type.label.slice(0, -1)
                 : type.label
+              const Icon = getResourceIcon(kindKey)
               const count = counts?.[kindKey] ?? 0
               const isSelected = selectedKind.name === type.kind
               return (
@@ -1501,7 +1685,7 @@ interface ResourceTypeButtonProps {
 }
 
 function ResourceTypeButton({ resource, count, isSelected, onClick }: ResourceTypeButtonProps) {
-  const Icon = getIconForKind(resource.kind)
+  const Icon = getResourceIcon(resource.kind)
   return (
     <button
       onClick={onClick}
@@ -1625,6 +1809,42 @@ function CellContent({ resource, kind, column }: CellContentProps) {
       return <HPACell resource={resource} column={column} />
     case 'nodes':
       return <NodeCell resource={resource} column={column} />
+    case 'persistentvolumeclaims':
+      return <PVCCell resource={resource} column={column} />
+    case 'rollouts':
+      return <RolloutCell resource={resource} column={column} />
+    case 'workflows':
+      return <WorkflowCell resource={resource} column={column} />
+    case 'certificates':
+      return <CertificateCell resource={resource} column={column} />
+    case 'persistentvolumes':
+      return <PersistentVolumeCell resource={resource} column={column} />
+    case 'storageclasses':
+      return <StorageClassCell resource={resource} column={column} />
+    case 'certificaterequests':
+      return <CertificateRequestCell resource={resource} column={column} />
+    case 'clusterissuers':
+      return <ClusterIssuerCell resource={resource} column={column} />
+    case 'gateways':
+      return <GatewayCell resource={resource} column={column} />
+    case 'httproutes':
+      return <HTTPRouteCell resource={resource} column={column} />
+    case 'sealedsecrets':
+      return <SealedSecretCell resource={resource} column={column} />
+    case 'workflowtemplates':
+      return <WorkflowTemplateCell resource={resource} column={column} />
+    case 'networkpolicies':
+      return <NetworkPolicyCell resource={resource} column={column} />
+    case 'poddisruptionbudgets':
+      return <PDBCell resource={resource} column={column} />
+    case 'serviceaccounts':
+      return <ServiceAccountCell resource={resource} column={column} />
+    case 'roles':
+    case 'clusterroles':
+      return <RoleCell resource={resource} column={column} />
+    case 'rolebindings':
+    case 'clusterrolebindings':
+      return <RoleBindingCell resource={resource} column={column} />
     default:
       // Generic cell for CRDs and unknown resources
       return <GenericCell resource={resource} column={column} />
@@ -1835,6 +2055,18 @@ function DaemonSetCell({ resource, column }: { resource: any; column: string }) 
       return <span className="text-sm text-theme-text-secondary">{status.updatedNumberScheduled || 0}</span>
     case 'available':
       return <span className="text-sm text-theme-text-secondary">{status.numberAvailable || 0}</span>
+    case 'images': {
+      const images = getWorkloadImages(resource)
+      if (images.length === 0) return <span className="text-sm text-theme-text-tertiary">-</span>
+      const display = images.length === 1 ? truncate(images[0], 40) : `${truncate(images[0], 30)} +${images.length - 1}`
+      return (
+        <Tooltip content={images.join('\n')}>
+          <span className="text-sm text-theme-text-secondary truncate">
+            {display}
+          </span>
+        </Tooltip>
+      )
+    }
     default:
       return <span className="text-sm text-theme-text-tertiary">-</span>
   }
@@ -2161,6 +2393,424 @@ function NodeCell({ resource, column }: { resource: any; column: string }) {
       const version = getNodeVersion(resource)
       return <span className="text-sm text-theme-text-secondary">{version}</span>
     }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function PVCCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getPVCStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'capacity': {
+      const capacity = getPVCCapacity(resource)
+      return <span className="text-sm text-theme-text-secondary">{capacity}</span>
+    }
+    case 'storageClass':
+      return <span className="text-sm text-theme-text-secondary">{resource.spec?.storageClassName || '-'}</span>
+    case 'accessModes': {
+      const modes = getPVCAccessModes(resource)
+      return <span className="text-sm text-theme-text-secondary">{modes}</span>
+    }
+    case 'volume':
+      return (
+        <Tooltip content={resource.spec?.volumeName}>
+          <span className="text-sm text-theme-text-secondary truncate block">{resource.spec?.volumeName || '-'}</span>
+        </Tooltip>
+      )
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function RolloutCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getRolloutStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'ready': {
+      const ready = getRolloutReady(resource)
+      const parts = ready.split('/')
+      const allReady = parts.length === 2 && parts[0] === parts[1] && parts[0] !== '0'
+      return (
+        <span className={clsx('text-sm font-medium', allReady ? 'text-green-400' : 'text-yellow-400')}>
+          {ready}
+        </span>
+      )
+    }
+    case 'strategy': {
+      const strategy = getRolloutStrategy(resource)
+      return <span className="text-sm text-theme-text-secondary">{strategy}</span>
+    }
+    case 'step': {
+      const step = getRolloutStep(resource)
+      return <span className="text-sm text-theme-text-secondary">{step || '-'}</span>
+    }
+    case 'images': {
+      const images = getWorkloadImages(resource)
+      if (images.length === 0) return <span className="text-sm text-theme-text-tertiary">-</span>
+      const display = images.length === 1 ? truncate(images[0], 40) : `${truncate(images[0], 30)} +${images.length - 1}`
+      return (
+        <Tooltip content={images.join('\n')}>
+          <span className="text-sm text-theme-text-secondary truncate">{display}</span>
+        </Tooltip>
+      )
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function WorkflowCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getWorkflowStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'duration': {
+      const duration = getWorkflowDuration(resource)
+      return <span className="text-sm text-theme-text-secondary">{duration || '-'}</span>
+    }
+    case 'progress': {
+      const progress = getWorkflowProgress(resource)
+      return <span className="text-sm text-theme-text-secondary">{progress || '-'}</span>
+    }
+    case 'template': {
+      const template = getWorkflowTemplate(resource)
+      return (
+        <Tooltip content={template}>
+          <span className="text-sm text-theme-text-secondary truncate block">{template || '-'}</span>
+        </Tooltip>
+      )
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function CertificateCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getCertificateStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'domains': {
+      const domains = getCertificateDomains(resource)
+      return (
+        <Tooltip content={domains}>
+          <span className="text-sm text-theme-text-secondary truncate block">{domains || '-'}</span>
+        </Tooltip>
+      )
+    }
+    case 'issuer': {
+      const issuer = getCertificateIssuer(resource)
+      return <span className="text-sm text-theme-text-secondary">{issuer}</span>
+    }
+    case 'expires': {
+      const expiry = getCertificateExpiry(resource)
+      return (
+        <span className={clsx(
+          'text-sm',
+          expiry.level === 'unhealthy' ? 'text-red-400' :
+          expiry.level === 'degraded' ? 'text-yellow-400' :
+          'text-theme-text-secondary'
+        )}>
+          {expiry.text}
+        </span>
+      )
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function PersistentVolumeCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getPVStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'capacity':
+      return <span className="text-sm text-theme-text-secondary">{resource.spec?.capacity?.storage || '-'}</span>
+    case 'accessModes': {
+      const modes = getPVAccessModes(resource)
+      return <span className="text-sm text-theme-text-secondary">{modes}</span>
+    }
+    case 'reclaimPolicy': {
+      const policy = resource.spec?.persistentVolumeReclaimPolicy || '-'
+      return (
+        <span className={clsx('text-sm', policy === 'Delete' ? 'text-red-400' : policy === 'Retain' ? 'text-green-400' : 'text-theme-text-secondary')}>
+          {policy}
+        </span>
+      )
+    }
+    case 'storageClass':
+      return <span className="text-sm text-theme-text-secondary">{resource.spec?.storageClassName || '-'}</span>
+    case 'claim': {
+      const claim = getPVClaim(resource)
+      return (
+        <Tooltip content={claim}>
+          <span className="text-sm text-theme-text-secondary truncate block">{claim}</span>
+        </Tooltip>
+      )
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function StorageClassCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'provisioner':
+      return (
+        <Tooltip content={getStorageClassProvisioner(resource)}>
+          <span className="text-sm text-theme-text-secondary truncate block">{getStorageClassProvisioner(resource)}</span>
+        </Tooltip>
+      )
+    case 'reclaimPolicy': {
+      const policy = getStorageClassReclaimPolicy(resource)
+      return (
+        <span className={clsx('text-sm', policy === 'Delete' ? 'text-red-400' : policy === 'Retain' ? 'text-green-400' : 'text-theme-text-secondary')}>
+          {policy}
+        </span>
+      )
+    }
+    case 'bindingMode':
+      return <span className="text-sm text-theme-text-secondary">{getStorageClassBindingMode(resource)}</span>
+    case 'expansion': {
+      const expansion = getStorageClassExpansion(resource)
+      return (
+        <span className={clsx('text-sm', expansion === 'Yes' ? 'text-green-400' : 'text-theme-text-secondary')}>
+          {expansion}
+        </span>
+      )
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function CertificateRequestCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getCertificateRequestStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'issuer':
+      return <span className="text-sm text-theme-text-secondary">{getCertificateRequestIssuer(resource)}</span>
+    case 'approved':
+      return <span className="text-sm text-theme-text-secondary">{getCertificateRequestApproved(resource)}</span>
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function ClusterIssuerCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getClusterIssuerStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'issuerType':
+      return <span className="text-sm text-theme-text-secondary">{getClusterIssuerType(resource)}</span>
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function GatewayCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getGatewayStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'class':
+      return <span className="text-sm text-theme-text-secondary">{getGatewayClass(resource)}</span>
+    case 'listeners':
+      return <span className="text-sm text-theme-text-secondary">{getGatewayListeners(resource)}</span>
+    case 'addresses': {
+      const addrs = getGatewayAddresses(resource)
+      return (
+        <Tooltip content={addrs}>
+          <span className="text-sm text-theme-text-secondary truncate block">{addrs}</span>
+        </Tooltip>
+      )
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function HTTPRouteCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getHTTPRouteStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'hostnames': {
+      const hostnames = getHTTPRouteHostnames(resource)
+      return (
+        <Tooltip content={hostnames}>
+          <span className="text-sm text-theme-text-secondary truncate block">{hostnames}</span>
+        </Tooltip>
+      )
+    }
+    case 'parents':
+      return <span className="text-sm text-theme-text-secondary">{getHTTPRouteParents(resource)}</span>
+    case 'rules':
+      return <span className="text-sm text-theme-text-secondary">{getHTTPRouteRulesCount(resource)}</span>
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function SealedSecretCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getSealedSecretStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'keys':
+      return <span className="text-sm text-theme-text-secondary">{getSealedSecretKeyCount(resource)}</span>
+    case 'type':
+      return <span className="text-sm text-theme-text-secondary">{resource.spec?.template?.type || 'Opaque'}</span>
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function WorkflowTemplateCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'entrypoint':
+      return <span className="text-sm text-theme-text-secondary">{getWorkflowTemplateEntrypoint(resource)}</span>
+    case 'templates':
+      return <span className="text-sm text-theme-text-secondary">{getWorkflowTemplateCount(resource)}</span>
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function NetworkPolicyCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'policyTypes':
+      return <span className="text-sm text-theme-text-secondary">{getNetworkPolicyTypes(resource)}</span>
+    case 'selector': {
+      const selector = getNetworkPolicySelector(resource)
+      return (
+        <Tooltip content={selector}>
+          <span className="text-sm text-theme-text-secondary truncate block">{selector}</span>
+        </Tooltip>
+      )
+    }
+    case 'rules': {
+      const { ingress, egress } = getNetworkPolicyRuleCount(resource)
+      return <span className="text-sm text-theme-text-secondary">{ingress}i / {egress}e</span>
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function PDBCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getPDBStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'budget':
+      return <span className="text-sm text-theme-text-secondary">{getPDBBudget(resource)}</span>
+    case 'healthy': {
+      const healthy = getPDBHealthy(resource)
+      return <span className="text-sm text-theme-text-secondary">{healthy}</span>
+    }
+    case 'allowed': {
+      const allowed = getPDBAllowed(resource)
+      return (
+        <span className={clsx('text-sm font-medium', allowed > 0 ? 'text-green-400' : 'text-red-400')}>
+          {allowed}
+        </span>
+      )
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function ServiceAccountCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'automount': {
+      const automount = getServiceAccountAutomount(resource)
+      return <span className={clsx('text-sm', automount === 'No' ? 'text-green-400' : 'text-yellow-400')}>{automount}</span>
+    }
+    case 'secrets':
+      return <span className="text-sm text-theme-text-secondary">{getServiceAccountSecretCount(resource)}</span>
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function RoleCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'rules':
+      return <span className="text-sm text-theme-text-secondary">{getRoleRuleCount(resource)}</span>
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+function RoleBindingCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'role':
+      return <span className="text-sm text-theme-text-secondary">{getRoleBindingRole(resource)}</span>
+    case 'subjects':
+      return <span className="text-sm text-theme-text-secondary">{getRoleBindingSubjectCount(resource)}</span>
     default:
       return <span className="text-sm text-theme-text-tertiary">-</span>
   }

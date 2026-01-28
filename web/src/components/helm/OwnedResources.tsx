@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { Link2, ExternalLink, Box, Server, FileJson, Lock, Network, Settings, Puzzle, AlertCircle, Terminal, FileText, Plug, X, Loader2 } from 'lucide-react'
+import { Link2, ExternalLink, AlertCircle, Terminal, FileText, Plug, X, Loader2 } from 'lucide-react'
+import { getResourceIcon } from '../../utils/resource-icons'
 import { clsx } from 'clsx'
 import type { HelmOwnedResource } from '../../types'
 import { kindToPlural } from './helm-utils'
@@ -15,21 +16,8 @@ interface OwnedResourcesProps {
   onNavigate?: (kind: string, namespace: string, name: string) => void
 }
 
-// Map kind names to icons
-const KIND_ICONS: Record<string, typeof Box> = {
-  deployment: Box,
-  statefulset: Box,
-  daemonset: Box,
-  service: Server,
-  configmap: FileJson,
-  secret: Lock,
-  ingress: Network,
-  serviceaccount: Settings,
-  pod: Box,
-}
-
 function getIconForKind(kind: string) {
-  return KIND_ICONS[kind.toLowerCase()] || Puzzle
+  return getResourceIcon(kind)
 }
 
 // Group resources by kind

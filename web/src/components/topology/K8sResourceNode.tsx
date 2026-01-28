@@ -1,23 +1,10 @@
 import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import {
-  Globe,
-  Network,
-  Server,
-  Box,
-  Layers,
-  Container,
-  FileJson,
-  Lock,
-  Gauge,
-  Clock,
-  CalendarClock,
-  Database,
-  HardDrive,
   ChevronDown,
   ChevronUp,
-  Boxes,
 } from 'lucide-react'
+import { getTopologyIcon } from '../../utils/resource-icons'
 import { clsx } from 'clsx'
 import type { NodeKind, HealthStatus } from '../../types'
 import { healthToSeverity, SEVERITY_DOT } from '../../utils/badge-colors'
@@ -114,41 +101,7 @@ export const NODE_DIMENSIONS: Record<NodeKind, { width: number; height: number }
 
 // Icon mapping for node kinds
 function getIcon(kind: NodeKind) {
-  switch (kind) {
-    case 'Internet':
-      return Globe
-    case 'Ingress':
-      return Network
-    case 'Service':
-      return Server
-    case 'Deployment':
-    case 'Rollout':
-    case 'DaemonSet':
-    case 'StatefulSet':
-      return Box
-    case 'ReplicaSet':
-      return Layers
-    case 'Pod':
-      return Container
-    case 'PodGroup':
-      return Boxes
-    case 'ConfigMap':
-      return FileJson
-    case 'Secret':
-      return Lock
-    case 'HPA':
-      return Gauge
-    case 'Job':
-      return Clock
-    case 'CronJob':
-      return CalendarClock
-    case 'PVC':
-      return HardDrive
-    case 'Namespace':
-      return Database
-    default:
-      return Box
-  }
+  return getTopologyIcon(kind)
 }
 
 // Status indicator color (for dot and left bar) - uses centralized severity colors
@@ -304,6 +257,8 @@ export const K8sResourceNode = memo(function K8sResourceNode({
   const issueTooltip = getIssueTooltip(statusIssue)
 
   // Special styling for Internet node
+  const InternetIcon = getTopologyIcon('Internet')
+
   if (isInternet) {
     return (
       <>
@@ -320,7 +275,7 @@ export const K8sResourceNode = memo(function K8sResourceNode({
             selected && 'ring-2 ring-blue-400'
           )}
         >
-          <Globe className="w-5 h-5 text-blue-400" />
+          <InternetIcon className="w-5 h-5 text-blue-400" />
           <span className="text-sm font-medium text-blue-300">Internet</span>
           <span className="w-2 h-2 rounded-full bg-green-500" />
         </div>
