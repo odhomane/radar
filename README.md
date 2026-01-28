@@ -1,6 +1,9 @@
 # Skyhook Explorer
 
 [![CI](https://github.com/skyhook-io/explorer/actions/workflows/ci.yml/badge.svg)](https://github.com/skyhook-io/explorer/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/skyhook-io/explorer?logo=github)](https://github.com/skyhook-io/explorer/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/skyhook-io/explorer)](https://goreportcard.com/report/github.com/skyhook-io/explorer)
+[![Downloads](https://img.shields.io/github/downloads/skyhook-io/explorer/total?logo=github)](https://github.com/skyhook-io/explorer/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 
