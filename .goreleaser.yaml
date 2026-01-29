@@ -117,5 +117,6 @@ brews:
     license: "Apache-2.0"
     install: |
       bin.install "kubectl-radar"
+      bin.install_symlink "kubectl-radar" => "radar"
     test: |
       system "#{bin}/kubectl-radar", "--version"
