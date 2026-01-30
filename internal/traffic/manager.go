@@ -533,6 +533,13 @@ func (m *Manager) SetContextName(name string) {
 		caretta.currentContext = name
 		caretta.mu.Unlock()
 	}
+
+	// Update hubble source context
+	if hubble, ok := m.sources["hubble"].(*HubbleSource); ok {
+		hubble.mu.Lock()
+		hubble.currentContext = name
+		hubble.mu.Unlock()
+	}
 }
 
 // DefaultFlowOptions returns sensible defaults

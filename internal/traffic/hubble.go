@@ -278,6 +278,9 @@ func (h *HubbleSource) Connect(ctx context.Context, contextName string) (*Metric
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
+		// Clean up port-forward on gRPC connection failure
+		StopMetricsPortForward()
+		h.localPort = 0
 		return &MetricsConnectionInfo{
 			Connected: false,
 			Error:     fmt.Sprintf("Failed to create gRPC connection: %v", err),
@@ -291,6 +294,8 @@ func (h *HubbleSource) Connect(ctx context.Context, contextName string) (*Metric
 	// Test the connection
 	if !h.testConnection(ctx) {
 		h.closeConnectionLocked()
+		// Also stop port-forward on connection test failure
+		StopMetricsPortForward()
 		return &MetricsConnectionInfo{
 			Connected: false,
 			Error:     "Failed to connect to Hubble Relay gRPC service",
@@ -393,12 +398,12 @@ func (h *HubbleSource) fetchFlowsViaGRPC(ctx context.Context, opts FlowOptions) 
 	}
 
 	// Add namespace filter if specified
+	// Use separate filters for source OR destination (each filter is AND within itself,
+	// but multiple filters are OR'd together)
 	if opts.Namespace != "" {
 		req.Whitelist = []*flowpb.FlowFilter{
-			{
-				SourcePod:      []string{opts.Namespace + "/"},
-				DestinationPod: []string{opts.Namespace + "/"},
-			},
+			{SourcePod: []string{opts.Namespace + "/"}},
+			{DestinationPod: []string{opts.Namespace + "/"}},
 		}
 	}
 
@@ -448,9 +453,16 @@ func (h *HubbleSource) fetchFlowsViaGRPC(ctx context.Context, opts FlowOptions) 
 
 // convertHubbleFlow converts a Hubble protobuf Flow to our internal Flow type
 func convertHubbleFlow(pbFlow *flowpb.Flow) Flow {
+	// Extract IP addresses safely (IP may be nil for some flow types)
+	var srcIP, dstIP string
+	if ip := pbFlow.GetIP(); ip != nil {
+		srcIP = ip.GetSource()
+		dstIP = ip.GetDestination()
+	}
+
 	flow := Flow{
-		Source:      convertEndpoint(pbFlow.GetSource(), pbFlow.GetIP().GetSource()),
-		Destination: convertEndpoint(pbFlow.GetDestination(), pbFlow.GetIP().GetDestination()),
+		Source:      convertEndpoint(pbFlow.GetSource(), srcIP),
+		Destination: convertEndpoint(pbFlow.GetDestination(), dstIP),
 		Verdict:     strings.ToLower(pbFlow.GetVerdict().String()),
 		Connections: 1,
 	}
@@ -584,10 +596,8 @@ func (h *HubbleSource) StreamFlows(ctx context.Context, opts FlowOptions) (<-cha
 
 		if opts.Namespace != "" {
 			req.Whitelist = []*flowpb.FlowFilter{
-				{
-					SourcePod:      []string{opts.Namespace + "/"},
-					DestinationPod: []string{opts.Namespace + "/"},
-				},
+				{SourcePod: []string{opts.Namespace + "/"}},
+				{DestinationPod: []string{opts.Namespace + "/"}},
 			}
 		}
 
