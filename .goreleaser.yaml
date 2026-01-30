@@ -111,6 +111,7 @@ brews:
     repository:
       owner: skyhook-io
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/skyhook-io/radar"
     description: "Modern Kubernetes visibility — topology, traffic, and Helm management"
