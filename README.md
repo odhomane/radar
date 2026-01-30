@@ -42,6 +42,12 @@ curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | 
 brew install skyhook-io/tap/radar
 ```
 
+### Krew (kubectl plugin manager)
+
+```bash
+kubectl krew install radar
+```
+
 ### Direct Download
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/skyhook-io/radar/releases):
