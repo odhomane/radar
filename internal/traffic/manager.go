@@ -501,12 +501,16 @@ func (m *Manager) Connect(ctx context.Context) (*MetricsConnectionInfo, error) {
 		}, nil
 	}
 
-	// Check if source supports Connect (only Caretta currently)
+	// Check if source supports Connect
 	if caretta, ok := source.(*CarettaSource); ok {
 		return caretta.Connect(ctx, contextName)
 	}
 
-	// For sources without Connect support (like Hubble), just return connected
+	if hubble, ok := source.(*HubbleSource); ok {
+		return hubble.Connect(ctx, contextName)
+	}
+
+	// For sources without Connect support, just return connected
 	return &MetricsConnectionInfo{
 		Connected: true,
 	}, nil
