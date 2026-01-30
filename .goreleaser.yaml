@@ -35,7 +35,7 @@ archives:
     formats:
       - tar.gz
     name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+      {{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}
     format_overrides:
       - goos: windows
         formats:
@@ -84,22 +84,22 @@ release:
 
     **Manual (macOS Apple Silicon):**
     ```bash
-    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_{{.Version}}_darwin_arm64.tar.gz
-    tar -xzf radar_{{.Version}}_darwin_arm64.tar.gz
+    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_v{{.Version}}_darwin_arm64.tar.gz
+    tar -xzf radar_v{{.Version}}_darwin_arm64.tar.gz
     sudo mv kubectl-radar /usr/local/bin/
     ```
 
     **Manual (macOS Intel):**
     ```bash
-    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_{{.Version}}_darwin_amd64.tar.gz
-    tar -xzf radar_{{.Version}}_darwin_amd64.tar.gz
+    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_v{{.Version}}_darwin_amd64.tar.gz
+    tar -xzf radar_v{{.Version}}_darwin_amd64.tar.gz
     sudo mv kubectl-radar /usr/local/bin/
     ```
 
     **Manual (Linux amd64):**
     ```bash
-    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_{{.Version}}_linux_amd64.tar.gz
-    tar -xzf radar_{{.Version}}_linux_amd64.tar.gz
+    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_v{{.Version}}_linux_amd64.tar.gz
+    tar -xzf radar_v{{.Version}}_linux_amd64.tar.gz
     sudo mv kubectl-radar /usr/local/bin/
     ```
 
