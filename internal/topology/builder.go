@@ -11,6 +11,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/skyhook-io/radar/internal/k8s"
 )
@@ -129,7 +130,13 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 	// 1b. Add Argo Rollout nodes (CRD - fetched via dynamic cache)
 	dynamicCache := k8s.GetDynamicResourceCache()
-	rolloutGVR, hasRollouts := k8s.GetResourceDiscovery().GetGVR("Rollout")
+	resourceDiscovery := k8s.GetResourceDiscovery()
+
+	var rolloutGVR schema.GroupVersionResource
+	hasRollouts := false
+	if resourceDiscovery != nil {
+		rolloutGVR, hasRollouts = resourceDiscovery.GetGVR("Rollout")
+	}
 	if hasRollouts && dynamicCache != nil {
 		rollouts, err := dynamicCache.List(rolloutGVR, opts.Namespace)
 		if err != nil {
@@ -202,7 +209,11 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 	// 1c. Add ArgoCD Application nodes (CRD - fetched via dynamic cache)
 	// Note: Application edges are created in a second pass after all resource IDs are populated
-	applicationGVR, hasApplications := k8s.GetResourceDiscovery().GetGVR("Application")
+	var applicationGVR schema.GroupVersionResource
+	hasApplications := false
+	if resourceDiscovery != nil {
+		applicationGVR, hasApplications = resourceDiscovery.GetGVR("Application")
+	}
 	applicationIDs := make(map[string]string)                          // ns/name -> applicationID
 	var applicationResources []*unstructured.Unstructured              // Store for second pass
 	applicationDestNamespaces := make(map[string]string)               // appID -> destNamespace
@@ -291,7 +302,11 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 	// 1d. Add FluxCD Kustomization nodes (CRD - fetched via dynamic cache)
 	// Note: Kustomization edges are created in a second pass after all resource IDs are populated
-	kustomizationGVR, hasKustomizations := k8s.GetResourceDiscovery().GetGVR("Kustomization")
+	var kustomizationGVR schema.GroupVersionResource
+	hasKustomizations := false
+	if resourceDiscovery != nil {
+		kustomizationGVR, hasKustomizations = resourceDiscovery.GetGVR("Kustomization")
+	}
 	kustomizationIDs := make(map[string]string)               // ns/name -> kustomizationID
 	var kustomizationResources []*unstructured.Unstructured   // Store for second pass
 	if hasKustomizations && dynamicCache != nil {
@@ -354,7 +369,11 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 1e. Add FluxCD GitRepository nodes (CRD - fetched via dynamic cache)
-	gitRepoGVR, hasGitRepos := k8s.GetResourceDiscovery().GetGVR("GitRepository")
+	var gitRepoGVR schema.GroupVersionResource
+	hasGitRepos := false
+	if resourceDiscovery != nil {
+		gitRepoGVR, hasGitRepos = resourceDiscovery.GetGVR("GitRepository")
+	}
 	gitRepoIDs := make(map[string]string) // ns/name -> gitRepoID
 	if hasGitRepos && dynamicCache != nil {
 		gitRepos, err := dynamicCache.List(gitRepoGVR, opts.Namespace)
@@ -411,7 +430,11 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 1f. Add FluxCD HelmRelease nodes (CRD - fetched via dynamic cache)
-	helmReleaseGVR, hasHelmReleases := k8s.GetResourceDiscovery().GetGVR("HelmRelease")
+	var helmReleaseGVR schema.GroupVersionResource
+	hasHelmReleases := false
+	if resourceDiscovery != nil {
+		helmReleaseGVR, hasHelmReleases = resourceDiscovery.GetGVR("HelmRelease")
+	}
 	helmReleaseIDs := make(map[string]string) // ns/name -> helmReleaseID
 	if hasHelmReleases && dynamicCache != nil {
 		helmReleases, err := dynamicCache.List(helmReleaseGVR, opts.Namespace)

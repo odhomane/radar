@@ -745,13 +745,15 @@ func (s *Server) getDashboardResourceCounts(cache *k8s.ResourceCache, namespace 
 		counts.ConfigMaps = len(cms)
 	}
 
-	// Secrets
-	if namespace != "" {
-		secrets, _ := cache.Secrets().Secrets(namespace).List(labels.Everything())
-		counts.Secrets = len(secrets)
-	} else {
-		secrets, _ := cache.Secrets().List(labels.Everything())
-		counts.Secrets = len(secrets)
+	// Secrets (may be nil if RBAC doesn't allow listing secrets)
+	if secretsLister := cache.Secrets(); secretsLister != nil {
+		if namespace != "" {
+			secrets, _ := secretsLister.Secrets(namespace).List(labels.Everything())
+			counts.Secrets = len(secrets)
+		} else {
+			secrets, _ := secretsLister.List(labels.Everything())
+			counts.Secrets = len(secrets)
+		}
 	}
 
 	// PVCs
