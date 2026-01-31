@@ -1159,6 +1159,253 @@ export function useArtifactHubChart(repoName: string, chartName: string, version
 }
 
 // ============================================================================
+// FluxCD API hooks
+// ============================================================================
+
+// Trigger reconciliation for a Flux resource
+export function useFluxReconcile() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ kind, namespace, name }: { kind: string; namespace: string; name: string }) => {
+      const response = await fetch(`${API_BASE}/flux/${kind}/${namespace}/${name}/reconcile`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to trigger reconciliation',
+      successMessage: 'Reconciliation triggered',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', variables.kind] })
+      queryClient.invalidateQueries({ queryKey: ['resource', variables.kind, variables.namespace, variables.name] })
+    },
+  })
+}
+
+// Suspend a Flux resource
+export function useFluxSuspend() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ kind, namespace, name }: { kind: string; namespace: string; name: string }) => {
+      const response = await fetch(`${API_BASE}/flux/${kind}/${namespace}/${name}/suspend`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to suspend resource',
+      successMessage: 'Resource suspended',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', variables.kind] })
+      queryClient.invalidateQueries({ queryKey: ['resource', variables.kind, variables.namespace, variables.name] })
+    },
+  })
+}
+
+// Resume a suspended Flux resource
+export function useFluxResume() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ kind, namespace, name }: { kind: string; namespace: string; name: string }) => {
+      const response = await fetch(`${API_BASE}/flux/${kind}/${namespace}/${name}/resume`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to resume resource',
+      successMessage: 'Resource resumed',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', variables.kind] })
+      queryClient.invalidateQueries({ queryKey: ['resource', variables.kind, variables.namespace, variables.name] })
+    },
+  })
+}
+
+// Sync with source - reconciles the source first, then the Kustomization/HelmRelease
+export function useFluxSyncWithSource() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ kind, namespace, name }: { kind: string; namespace: string; name: string }) => {
+      const response = await fetch(`${API_BASE}/flux/${kind}/${namespace}/${name}/sync-with-source`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to sync with source',
+      successMessage: 'Sync with source triggered',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', variables.kind] })
+      queryClient.invalidateQueries({ queryKey: ['resource', variables.kind, variables.namespace, variables.name] })
+      // Also invalidate source resources as they were reconciled too
+      queryClient.invalidateQueries({ queryKey: ['resources', 'gitrepositories'] })
+      queryClient.invalidateQueries({ queryKey: ['resources', 'ocirepositories'] })
+      queryClient.invalidateQueries({ queryKey: ['resources', 'helmrepositories'] })
+    },
+  })
+}
+
+// ============================================================================
+// ArgoCD API hooks
+// ============================================================================
+
+// Trigger sync for an ArgoCD Application
+export function useArgoSync() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ namespace, name }: { namespace: string; name: string }) => {
+      const response = await fetch(`${API_BASE}/argo/applications/${namespace}/${name}/sync`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to trigger sync',
+      successMessage: 'Sync initiated',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', 'applications'] })
+      queryClient.invalidateQueries({ queryKey: ['resource', 'applications', variables.namespace, variables.name] })
+    },
+  })
+}
+
+// Refresh an ArgoCD Application (re-read from git without syncing)
+export function useArgoRefresh() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ namespace, name, hard = false }: { namespace: string; name: string; hard?: boolean }) => {
+      const params = hard ? '?type=hard' : ''
+      const response = await fetch(`${API_BASE}/argo/applications/${namespace}/${name}/refresh${params}`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to refresh application',
+      successMessage: 'Application refreshed',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', 'applications'] })
+      queryClient.invalidateQueries({ queryKey: ['resource', 'applications', variables.namespace, variables.name] })
+    },
+  })
+}
+
+// Terminate an ongoing sync operation
+export function useArgoTerminate() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ namespace, name }: { namespace: string; name: string }) => {
+      const response = await fetch(`${API_BASE}/argo/applications/${namespace}/${name}/terminate`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to terminate sync',
+      successMessage: 'Sync terminated',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', 'applications'] })
+      queryClient.invalidateQueries({ queryKey: ['resource', 'applications', variables.namespace, variables.name] })
+    },
+  })
+}
+
+// Suspend an ArgoCD Application (disable automated sync)
+export function useArgoSuspend() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ namespace, name }: { namespace: string; name: string }) => {
+      const response = await fetch(`${API_BASE}/argo/applications/${namespace}/${name}/suspend`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to suspend application',
+      successMessage: 'Application suspended',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', 'applications'] })
+      queryClient.invalidateQueries({ queryKey: ['resource', 'applications', variables.namespace, variables.name] })
+    },
+  })
+}
+
+// Resume an ArgoCD Application (re-enable automated sync)
+export function useArgoResume() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ namespace, name }: { namespace: string; name: string }) => {
+      const response = await fetch(`${API_BASE}/argo/applications/${namespace}/${name}/resume`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to resume application',
+      successMessage: 'Application resumed',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', 'applications'] })
+      queryClient.invalidateQueries({ queryKey: ['resource', 'applications', variables.namespace, variables.name] })
+    },
+  })
+}
+
+// ============================================================================
 // Context Switching API hooks
 // ============================================================================
 

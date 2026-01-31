@@ -80,22 +80,30 @@ export function PropertyList({ children }: { children: React.ReactNode }) {
 
 interface PropertyProps {
   label: React.ReactNode
-  value: unknown
+  value: React.ReactNode
   copyable?: boolean
   onCopy?: (text: string, key: string) => void
   copied?: string | null
 }
 
+// Helper to check if value is a React element
+function isReactElement(value: unknown): value is React.ReactElement {
+  return value !== null && typeof value === 'object' && '$$typeof' in (value as object)
+}
+
 export function Property({ label, value, copyable, onCopy, copied }: PropertyProps) {
   if (value === undefined || value === null || value === '') return null
-  const strValue = String(value)
   const labelKey = typeof label === 'string' ? label : 'value'
+
+  // If value is a React element, render it directly; otherwise convert to string
+  const displayValue = isReactElement(value) ? value : String(value)
+  const strValue = isReactElement(value) ? '' : String(value)
 
   return (
     <div className="flex items-start gap-2 text-sm">
       <span className="text-theme-text-tertiary w-28 shrink-0">{label}</span>
-      <span className="text-theme-text-primary break-all flex-1">{strValue}</span>
-      {copyable && onCopy && (
+      <span className="text-theme-text-primary break-all flex-1">{displayValue}</span>
+      {copyable && onCopy && !isReactElement(value) && (
         <button
           onClick={() => onCopy(strValue, labelKey)}
           className="p-0.5 text-theme-text-tertiary hover:text-theme-text-primary shrink-0"

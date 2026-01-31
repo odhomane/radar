@@ -242,6 +242,9 @@ DELETE /api/helm/releases/{ns}/{name}              # Uninstall release
   - `traffic`: Network flow (Ingress → Service → Pod)
   - `resources`: Full hierarchy (Deployment → ReplicaSet → Pod)
 - Node types: Ingress, Service, Deployment, DaemonSet, StatefulSet, ReplicaSet, Pod, Job, CronJob, ConfigMap, Secret, HPA, PVC
+- GitOps nodes: Application (ArgoCD), Kustomization, HelmRelease, GitRepository (FluxCD)
+  - Connected to managed resources via status.resources (ArgoCD) or status.inventory (FluxCD Kustomization)
+  - HelmRelease connects to resources via FluxCD labels (`helm.toolkit.fluxcd.io/name`) or standard Helm label (`app.kubernetes.io/instance`)
 
 ### Timeline
 - In-memory or SQLite storage for event tracking (`--timeline-storage`)

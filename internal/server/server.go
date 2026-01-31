@@ -136,6 +136,19 @@ func (s *Server) setupRoutes() {
 		helmHandlers := helm.NewHandlers()
 		helmHandlers.RegisterRoutes(r)
 
+		// FluxCD routes
+		r.Post("/flux/{kind}/{namespace}/{name}/reconcile", s.handleFluxReconcile)
+		r.Post("/flux/{kind}/{namespace}/{name}/sync-with-source", s.handleFluxSyncWithSource)
+		r.Post("/flux/{kind}/{namespace}/{name}/suspend", s.handleFluxSuspend)
+		r.Post("/flux/{kind}/{namespace}/{name}/resume", s.handleFluxResume)
+
+		// ArgoCD routes
+		r.Post("/argo/applications/{namespace}/{name}/sync", s.handleArgoSync)
+		r.Post("/argo/applications/{namespace}/{name}/refresh", s.handleArgoRefresh)
+		r.Post("/argo/applications/{namespace}/{name}/terminate", s.handleArgoTerminate)
+		r.Post("/argo/applications/{namespace}/{name}/suspend", s.handleArgoSuspend)
+		r.Post("/argo/applications/{namespace}/{name}/resume", s.handleArgoResume)
+
 		// Debug routes (for event pipeline diagnostics)
 		r.Get("/debug/events", s.handleDebugEvents)
 		r.Get("/debug/events/diagnose", s.handleDebugEventsDiagnose)
