@@ -385,7 +385,8 @@ export function TrafficView({ namespace }: TrafficViewProps) {
   } = useTrafficFlows({
     namespace,
     since: timeRange,
-    enabled: wizardState === 'ready',
+    // Only fetch flows when connected (not connecting and no connection error)
+    enabled: wizardState === 'ready' && !isConnecting && !connectionError,
   })
   const [refetchFlows, isRefreshAnimating] = useRefreshAnimation(refetchFlowsRaw)
 
@@ -924,11 +925,11 @@ export function TrafficView({ namespace }: TrafficViewProps) {
 
         {/* Graph area */}
         <div className="flex-1 relative">
-          {flowsLoading && !flowsData ? (
+          {isConnecting || (flowsLoading && !flowsData) ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex items-center gap-2 text-theme-text-secondary">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                <span>Loading traffic data...</span>
+                <span>{isConnecting ? 'Connecting to traffic source...' : 'Loading traffic data...'}</span>
               </div>
             </div>
           ) : finalFlows.length > 0 ? (
@@ -939,6 +940,25 @@ export function TrafficView({ namespace }: TrafficViewProps) {
               serviceCategories={serviceCategories}
               addonMode={addonMode}
             />
+          ) : connectionError ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <Plug className="h-12 w-12 text-yellow-500 mx-auto" />
+                <p className="text-theme-text-secondary">Connection failed</p>
+                <p className="text-xs text-theme-text-tertiary max-w-md">
+                  {connectionError}
+                </p>
+                <button
+                  onClick={() => {
+                    hasAutoConnectedRef.current = false
+                    setConnectionError(null)
+                  }}
+                  className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  Retry Connection
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center space-y-2">
