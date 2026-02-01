@@ -96,7 +96,7 @@ import {
   AlertRenderer,
   ArgoApplicationRenderer,
 } from './renderers'
-import { useOpenTerminal, useOpenLogs } from '../dock'
+import { useOpenTerminal, useOpenLogs, useOpenWorkloadLogs } from '../dock'
 import { PortForwardButton } from '../portforward/PortForwardButton'
 import { useCanExec, useCanViewLogs, useCanPortForward } from '../../contexts/CapabilitiesContext'
 import { useToast } from '../ui/Toast'
@@ -421,6 +421,7 @@ function ActionsBar({ resource, data, onClose }: ActionsBarProps) {
   const { showCopied } = useToast()
   const openTerminal = useOpenTerminal()
   const openLogs = useOpenLogs()
+  const openWorkloadLogs = useOpenWorkloadLogs()
   const kind = resource.kind.toLowerCase()
 
   // Check capabilities
@@ -520,20 +521,35 @@ function ActionsBar({ resource, data, onClose }: ActionsBarProps) {
         />
       )}
 
-      {/* Workload actions - restart */}
+      {/* Workload actions - restart and logs */}
       {['deployments', 'statefulsets', 'daemonsets', 'rollouts'].includes(kind) && (
-        <button
-          onClick={() => restartWorkloadMutation.mutate({
-            kind: resource.kind,
-            namespace: resource.namespace,
-            name: resource.name,
-          })}
-          disabled={restartWorkloadMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-slate-600 hover:bg-slate-500 rounded-lg transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${restartWorkloadMutation.isPending ? 'animate-spin' : ''}`} />
-          {restartWorkloadMutation.isPending ? 'Restarting...' : 'Restart'}
-        </button>
+        <>
+          <button
+            onClick={() => restartWorkloadMutation.mutate({
+              kind: resource.kind,
+              namespace: resource.namespace,
+              name: resource.name,
+            })}
+            disabled={restartWorkloadMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-slate-600 hover:bg-slate-500 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${restartWorkloadMutation.isPending ? 'animate-spin' : ''}`} />
+            {restartWorkloadMutation.isPending ? 'Restarting...' : 'Restart'}
+          </button>
+          {canViewLogs && ['deployments', 'statefulsets', 'daemonsets'].includes(kind) && (
+            <button
+              onClick={() => openWorkloadLogs({
+                namespace: resource.namespace,
+                workloadKind: kind,
+                workloadName: resource.name,
+              })}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-slate-600 hover:bg-slate-500 rounded-lg transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Logs
+            </button>
+          )}
+        </>
       )}
 
       {/* CronJob actions */}

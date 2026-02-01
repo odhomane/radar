@@ -1408,7 +1408,7 @@ export function useSwitchContext() {
 // Image Filesystem Inspection
 // ============================================================================
 
-import type { ImageFilesystem, ImageMetadata } from '../types'
+import type { ImageFilesystem, ImageMetadata, WorkloadPodInfo } from '../types'
 
 // Fetch image metadata (lightweight, checks if cached)
 export function useImageMetadata(
@@ -1458,4 +1458,75 @@ export function useImageFilesystem(
     staleTime: 300000, // 5 minutes - image content doesn't change
     retry: false, // Don't retry on auth errors
   })
+}
+
+// ============================================================================
+// Workload Logs (aggregated from all pods)
+// ============================================================================
+
+// Response from workload pods endpoint
+export interface WorkloadPodsResponse {
+  pods: WorkloadPodInfo[]
+}
+
+// Response from workload logs endpoint (non-streaming)
+export interface WorkloadLogsResponse {
+  pods: WorkloadPodInfo[]
+  logs: {
+    pod: string
+    container: string
+    timestamp: string
+    content: string
+  }[]
+}
+
+// Fetch pods for a workload
+export function useWorkloadPods(kind: string, namespace: string, name: string) {
+  return useQuery<WorkloadPodsResponse>({
+    queryKey: ['workload-pods', kind, namespace, name],
+    queryFn: () => fetchJSON(`/workloads/${kind}/${namespace}/${name}/pods`),
+    enabled: Boolean(kind && namespace && name),
+    staleTime: 10000, // 10 seconds - pods can change
+  })
+}
+
+// Fetch logs for a workload (non-streaming)
+export function useWorkloadLogs(
+  kind: string,
+  namespace: string,
+  name: string,
+  options?: {
+    container?: string
+    tailLines?: number
+  }
+) {
+  const params = new URLSearchParams()
+  if (options?.container) params.set('container', options.container)
+  if (options?.tailLines) params.set('tailLines', String(options.tailLines))
+  const queryString = params.toString()
+
+  return useQuery<WorkloadLogsResponse>({
+    queryKey: ['workload-logs', kind, namespace, name, options?.container, options?.tailLines],
+    queryFn: () => fetchJSON(`/workloads/${kind}/${namespace}/${name}/logs${queryString ? `?${queryString}` : ''}`),
+    enabled: Boolean(kind && namespace && name),
+    staleTime: 5000,
+  })
+}
+
+// Create SSE connection for streaming workload logs
+export function createWorkloadLogStream(
+  kind: string,
+  namespace: string,
+  name: string,
+  options?: {
+    container?: string
+    tailLines?: number
+  }
+): EventSource {
+  const params = new URLSearchParams()
+  if (options?.container) params.set('container', options.container)
+  if (options?.tailLines) params.set('tailLines', String(options.tailLines))
+  const queryString = params.toString()
+
+  return new EventSource(`${API_BASE}/workloads/${kind}/${namespace}/${name}/logs/stream${queryString ? `?${queryString}` : ''}`)
 }

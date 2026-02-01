@@ -2,6 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePodLogs, createLogStream, type LogStreamEvent } from '../../api/client'
 import { Play, Pause, Download, Search, X, ChevronDown, Terminal, RotateCcw } from 'lucide-react'
 import { Tooltip } from '../ui/Tooltip'
+import {
+  formatLogTimestamp,
+  getLogLevelColor,
+  highlightSearchMatches,
+  parseLogLine,
+  escapeHtml,
+} from '../../utils/log-format'
 
 interface LogLine {
   timestamp: string
@@ -313,88 +320,22 @@ export function LogsViewer({ namespace, podName, containers, initialContainer }:
 
 // Individual log line component
 function LogLineItem({ line, searchQuery }: { line: LogLine; searchQuery: string }) {
-  // Determine log level from content for coloring
   const levelColor = getLogLevelColor(line.content)
-
-  // Highlight search matches
   const content = searchQuery
-    ? highlightMatches(line.content, searchQuery)
-    : line.content
+    ? highlightSearchMatches(line.content, searchQuery)
+    : escapeHtml(line.content)
 
   return (
     <div className="flex hover:bg-theme-surface/50 group leading-5">
-      {/* Timestamp */}
       {line.timestamp && (
         <span className="text-theme-text-tertiary select-none pr-2 whitespace-nowrap">
-          {formatTimestamp(line.timestamp)}
+          {formatLogTimestamp(line.timestamp)}
         </span>
       )}
-      {/* Content */}
       <span
         className={`whitespace-pre-wrap break-all ${levelColor}`}
         dangerouslySetInnerHTML={{ __html: content }}
       />
     </div>
   )
-}
-
-// Parse K8s log line format: 2024-01-20T10:30:00.123456789Z content
-function parseLogLine(line: string): { timestamp: string; content: string } {
-  if (line.length > 30 && line[4] === '-' && line[7] === '-' && line[10] === 'T') {
-    const spaceIdx = line.indexOf(' ')
-    if (spaceIdx > 20 && spaceIdx < 40) {
-      return { timestamp: line.slice(0, spaceIdx), content: line.slice(spaceIdx + 1) }
-    }
-  }
-  return { timestamp: '', content: line }
-}
-
-// Format timestamp for display
-function formatTimestamp(ts: string): string {
-  try {
-    const date = new Date(ts)
-    return date.toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-  } catch {
-    return ts.slice(11, 19) // Fallback: extract HH:MM:SS
-  }
-}
-
-// Get color class based on log level
-function getLogLevelColor(content: string): string {
-  const lower = content.toLowerCase()
-  if (lower.includes('error') || lower.includes('fatal') || lower.includes('panic')) {
-    return 'text-red-400'
-  }
-  if (lower.includes('warn')) {
-    return 'text-yellow-400'
-  }
-  if (lower.includes('debug') || lower.includes('trace')) {
-    return 'text-theme-text-secondary'
-  }
-  return 'text-theme-text-primary'
-}
-
-// Highlight search matches in text
-function highlightMatches(text: string, query: string): string {
-  if (!query) return escapeHtml(text)
-  const escaped = escapeHtml(text)
-  const escapedQuery = escapeHtml(query)
-  const regex = new RegExp(`(${escapeRegExp(escapedQuery)})`, 'gi')
-  return escaped.replace(regex, '<mark class="bg-yellow-500/30 text-yellow-200">$1</mark>')
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

@@ -1117,7 +1117,7 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 
 		// Check pod-level issues for unhealthy deployments
 		if dep.Status.ReadyReplicas < dep.Status.Replicas && dep.Status.Replicas > 0 {
-			pods := c.getPodsForWorkload(namespace, dep.Spec.Selector)
+			pods := c.GetPodsForWorkload(namespace, dep.Spec.Selector)
 			if len(pods) > 0 {
 				issueSummary := getPodsIssueSummary(pods)
 				if issueSummary.TopIssue != "" {
@@ -1155,7 +1155,7 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 
 		// Check pod-level issues for unhealthy statefulsets
 		if sts.Status.ReadyReplicas < replicas && replicas > 0 {
-			pods := c.getPodsForWorkload(namespace, sts.Spec.Selector)
+			pods := c.GetPodsForWorkload(namespace, sts.Spec.Selector)
 			if len(pods) > 0 {
 				issueSummary := getPodsIssueSummary(pods)
 				if issueSummary.TopIssue != "" {
@@ -1188,7 +1188,7 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 
 		// Get pods owned by this DaemonSet
 		if ds.Status.NumberReady < ds.Status.DesiredNumberScheduled {
-			pods := c.getPodsForWorkload(namespace, ds.Spec.Selector)
+			pods := c.GetPodsForWorkload(namespace, ds.Spec.Selector)
 			if len(pods) > 0 {
 				issueSummary := getPodsIssueSummary(pods)
 				if issueSummary.TopIssue != "" {
@@ -1460,8 +1460,8 @@ func (s *PodIssueSummary) FormatStatusSummary() string {
 	return fmt.Sprintf("%d/%d ready", s.Ready, s.Total)
 }
 
-// getPodsForWorkload returns pods matching the given label selector in a namespace
-func (c *ResourceCache) getPodsForWorkload(namespace string, selector *metav1.LabelSelector) []*corev1.Pod {
+// GetPodsForWorkload returns pods matching the given label selector in a namespace
+func (c *ResourceCache) GetPodsForWorkload(namespace string, selector *metav1.LabelSelector) []*corev1.Pod {
 	if c == nil || selector == nil {
 		return nil
 	}

@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { X, ChevronDown, ChevronUp, Terminal, FileText, Trash2 } from 'lucide-react'
+import { X, ChevronDown, ChevronUp, Terminal, FileText, Trash2, Layers } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useDock, DockTab } from './DockContext'
 import { TerminalTab } from './TerminalTab'
 import { LogsTab } from './LogsTab'
+import { WorkloadLogsTab } from './WorkloadLogsTab'
 
 const MIN_HEIGHT = 200
 const DEFAULT_HEIGHT = 300
@@ -135,7 +136,7 @@ function TabButton({
   onSelect: () => void
   onClose: () => void
 }) {
-  const Icon = tab.type === 'terminal' ? Terminal : FileText
+  const Icon = tab.type === 'terminal' ? Terminal : tab.type === 'workload-logs' ? Layers : FileText
 
   return (
     <div
@@ -182,6 +183,16 @@ function TabContent({ tab, isActive }: { tab: DockTab; isActive: boolean }) {
         podName={tab.podName!}
         containers={tab.containers!}
         initialContainer={tab.containerName}
+      />
+    )
+  }
+
+  if (tab.type === 'workload-logs') {
+    return (
+      <WorkloadLogsTab
+        namespace={tab.namespace!}
+        workloadKind={tab.workloadKind!}
+        workloadName={tab.workloadName!}
       />
     )
   }

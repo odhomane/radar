@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
 
-export type DockTabType = 'terminal' | 'logs'
+export type DockTabType = 'terminal' | 'logs' | 'workload-logs'
 
 export interface DockTab {
   id: string
@@ -13,6 +13,9 @@ export interface DockTab {
   containers?: string[]
   // Logs props
   // (namespace, podName, containers already covered)
+  // Workload logs props
+  workloadKind?: string
+  workloadName?: string
 }
 
 interface DockContextValue {
@@ -38,12 +41,17 @@ export function DockProvider({ children }: { children: ReactNode }) {
 
   const addTab = useCallback((tabData: Omit<DockTab, 'id'>) => {
     // Check if a similar tab already exists
-    const existingTab = tabs.find(t =>
-      t.type === tabData.type &&
-      t.namespace === tabData.namespace &&
-      t.podName === tabData.podName &&
-      t.containerName === tabData.containerName
-    )
+    const existingTab = tabs.find(t => {
+      if (t.type !== tabData.type) return false
+      if (t.type === 'workload-logs') {
+        return t.namespace === tabData.namespace &&
+               t.workloadKind === tabData.workloadKind &&
+               t.workloadName === tabData.workloadName
+      }
+      return t.namespace === tabData.namespace &&
+             t.podName === tabData.podName &&
+             t.containerName === tabData.containerName
+    })
 
     if (existingTab) {
       setActiveTabId(existingTab.id)
@@ -167,4 +175,25 @@ export function useOpenLogs() {
   }
 
   return openLogs
+}
+
+export function useOpenWorkloadLogs() {
+  const { addTab } = useDock()
+
+  // Return a function that opens a workload logs tab
+  const openWorkloadLogs = (opts: {
+    namespace: string
+    workloadKind: string
+    workloadName: string
+  }) => {
+    addTab({
+      type: 'workload-logs',
+      title: `${opts.workloadName} logs`,
+      namespace: opts.namespace,
+      workloadKind: opts.workloadKind,
+      workloadName: opts.workloadName,
+    })
+  }
+
+  return openWorkloadLogs
 }
