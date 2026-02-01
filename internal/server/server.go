@@ -3,13 +3,14 @@ package server
 import (
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,7 +24,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	explorerErrors "github.com/skyhook-io/radar/internal/errors"
 	"github.com/skyhook-io/radar/internal/helm"
 	"github.com/skyhook-io/radar/internal/images"
 	"github.com/skyhook-io/radar/internal/k8s"
@@ -38,6 +38,7 @@ type Server struct {
 	port        int
 	devMode     bool
 	staticFS    fs.FS
+	startTime   time.Time
 }
 
 // Config holds server configuration
@@ -55,6 +56,7 @@ func New(cfg Config) *Server {
 		broadcaster: NewSSEBroadcaster(),
 		port:        cfg.Port,
 		devMode:     cfg.DevMode,
+		startTime:   time.Now(),
 	}
 
 	// Set up static file system
@@ -84,6 +86,21 @@ func (s *Server) setupRoutes() {
 		AllowedHeaders:   []string{"Accept", "Content-Type"},
 		AllowCredentials: true,
 	}))
+
+	// pprof routes for profiling (dev mode only, but always available for debugging)
+	r.Route("/debug/pprof", func(r chi.Router) {
+		r.Get("/", pprof.Index)
+		r.Get("/cmdline", pprof.Cmdline)
+		r.Get("/profile", pprof.Profile)
+		r.Get("/symbol", pprof.Symbol)
+		r.Get("/trace", pprof.Trace)
+		r.Get("/allocs", pprof.Handler("allocs").ServeHTTP)
+		r.Get("/block", pprof.Handler("block").ServeHTTP)
+		r.Get("/goroutine", pprof.Handler("goroutine").ServeHTTP)
+		r.Get("/heap", pprof.Handler("heap").ServeHTTP)
+		r.Get("/mutex", pprof.Handler("mutex").ServeHTTP)
+		r.Get("/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
+	})
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
@@ -141,9 +158,23 @@ func (s *Server) setupRoutes() {
 		imageHandlers := images.NewHandlers()
 		imageHandlers.RegisterRoutes(r)
 
+		// FluxCD routes
+		r.Post("/flux/{kind}/{namespace}/{name}/reconcile", s.handleFluxReconcile)
+		r.Post("/flux/{kind}/{namespace}/{name}/sync-with-source", s.handleFluxSyncWithSource)
+		r.Post("/flux/{kind}/{namespace}/{name}/suspend", s.handleFluxSuspend)
+		r.Post("/flux/{kind}/{namespace}/{name}/resume", s.handleFluxResume)
+
+		// ArgoCD routes
+		r.Post("/argo/applications/{namespace}/{name}/sync", s.handleArgoSync)
+		r.Post("/argo/applications/{namespace}/{name}/refresh", s.handleArgoRefresh)
+		r.Post("/argo/applications/{namespace}/{name}/terminate", s.handleArgoTerminate)
+		r.Post("/argo/applications/{namespace}/{name}/suspend", s.handleArgoSuspend)
+		r.Post("/argo/applications/{namespace}/{name}/resume", s.handleArgoResume)
+
 		// Debug routes (for event pipeline diagnostics)
 		r.Get("/debug/events", s.handleDebugEvents)
 		r.Get("/debug/events/diagnose", s.handleDebugEventsDiagnose)
+		r.Get("/debug/informers", s.handleDebugInformers)
 
 		// Traffic routes
 		r.Get("/traffic/sources", s.handleGetTrafficSources)
@@ -231,10 +262,29 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Get runtime stats
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	runtimeStats := map[string]any{
+		"heapMB":        float64(m.HeapAlloc) / 1024 / 1024,
+		"heapObjectsK":  float64(m.HeapObjects) / 1000,
+		"goroutines":    runtime.NumGoroutine(),
+		"uptimeSeconds": int(time.Since(s.startTime).Seconds()),
+	}
+
+	// Get informer counts for diagnostics
+	dynamicInformerCount := 0
+	if dynCache := k8s.GetDynamicResourceCache(); dynCache != nil {
+		dynamicInformerCount = dynCache.GetInformerCount()
+	}
+	runtimeStats["typedInformers"] = 16  // Fixed count of typed informers in cache.go
+	runtimeStats["dynamicInformers"] = dynamicInformerCount
+
 	s.writeJSON(w, map[string]any{
 		"status":        status,
 		"resourceCount": cache.GetResourceCount(),
 		"timeline":      timelineStats,
+		"runtime":       runtimeStats,
 	})
 }
 
@@ -1042,40 +1092,6 @@ func (s *Server) writeError(w http.ResponseWriter, status int, message string) {
 	}
 }
 
-// writeExplorerError writes an ExplorerError as a structured JSON response.
-// It maps error codes to appropriate HTTP status codes.
-func (s *Server) writeExplorerError(w http.ResponseWriter, err error) {
-	var explorerErr *explorerErrors.ExplorerError
-	if !errors.As(err, &explorerErr) {
-		// Not an ExplorerError, use generic internal server error
-		s.writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// Map error codes to HTTP status
-	status := http.StatusInternalServerError
-	switch explorerErr.Code {
-	case explorerErrors.ErrBadRequest, explorerErrors.ErrValidation:
-		status = http.StatusBadRequest
-	case explorerErrors.ErrNotFound, explorerErrors.ErrK8sResourceNotFound, explorerErrors.ErrHelmReleaseNotFound:
-		status = http.StatusNotFound
-	case explorerErrors.ErrServiceUnavailable, explorerErrors.ErrCacheNotInitialized, explorerErrors.ErrK8sClientNotInitialized:
-		status = http.StatusServiceUnavailable
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	response := map[string]any{
-		"error": explorerErr.Message,
-		"code":  explorerErr.Code.String(),
-	}
-	if explorerErr.Details != nil {
-		response["details"] = explorerErr.Details
-	}
-	json.NewEncoder(w).Encode(response)
-}
-
 // Debug handlers for event pipeline diagnostics
 
 // handleDebugEvents returns event pipeline metrics and recent drops
@@ -1097,4 +1113,33 @@ func (s *Server) handleDebugEventsDiagnose(w http.ResponseWriter, r *http.Reques
 
 	response := timeline.GetDiagnosis(kind, namespace, name)
 	s.writeJSON(w, response)
+}
+
+// handleDebugInformers returns the list of dynamic informers currently running
+func (s *Server) handleDebugInformers(w http.ResponseWriter, r *http.Request) {
+	dynCache := k8s.GetDynamicResourceCache()
+	if dynCache == nil {
+		s.writeJSON(w, map[string]any{
+			"typedInformers":   16,
+			"dynamicInformers": 0,
+			"watchedResources": []string{},
+		})
+		return
+	}
+
+	gvrs := dynCache.GetWatchedResources()
+	resources := make([]string, len(gvrs))
+	for i, gvr := range gvrs {
+		if gvr.Group != "" {
+			resources[i] = gvr.Resource + "." + gvr.Group
+		} else {
+			resources[i] = gvr.Resource
+		}
+	}
+
+	s.writeJSON(w, map[string]any{
+		"typedInformers":   16,
+		"dynamicInformers": len(gvrs),
+		"watchedResources": resources,
+	})
 }

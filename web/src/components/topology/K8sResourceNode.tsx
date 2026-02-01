@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
-import { getTopologyIcon } from '../../utils/resource-icons'
 import { clsx } from 'clsx'
 import type { NodeKind, HealthStatus } from '../../types'
 import { healthToSeverity, SEVERITY_DOT } from '../../utils/badge-colors'
@@ -85,6 +84,10 @@ export const NODE_DIMENSIONS: Record<NodeKind, { width: number; height: number }
   Service: { width: 260, height: 56 },
   Deployment: { width: 280, height: 56 },
   Rollout: { width: 280, height: 56 },
+  Application: { width: 300, height: 56 }, // ArgoCD Application
+  Kustomization: { width: 300, height: 56 }, // FluxCD Kustomization
+  HelmRelease: { width: 280, height: 56 }, // FluxCD HelmRelease
+  GitRepository: { width: 280, height: 56 }, // FluxCD GitRepository
   DaemonSet: { width: 280, height: 56 },
   StatefulSet: { width: 280, height: 56 },
   ReplicaSet: { width: 280, height: 56 },
@@ -99,10 +102,6 @@ export const NODE_DIMENSIONS: Record<NodeKind, { width: number; height: number }
   Namespace: { width: 180, height: 48 },
 }
 
-// Icon mapping for node kinds
-function getIcon(kind: NodeKind) {
-  return getTopologyIcon(kind)
-}
 
 // Status indicator color (for dot and left bar) - uses centralized severity colors
 function getStatusDotColor(status: HealthStatus): string {
@@ -110,65 +109,24 @@ function getStatusDotColor(status: HealthStatus): string {
   return SEVERITY_DOT[severity]
 }
 
-// Border style for problem states - wraps entire card
-function getStatusBorderStyle(status: HealthStatus): React.CSSProperties {
-  switch (status) {
-    case 'degraded':
-      return { border: '2px solid rgb(234 179 8 / 0.6)' } // yellow-500/60
-    case 'unhealthy':
-      return { border: '2px solid rgb(239 68 68 / 0.7)' } // red-500/70
-    default:
-      return {}
-  }
+// Cached style objects for status states (avoid creating new objects each render)
+const STATUS_STYLES: Record<HealthStatus, React.CSSProperties> = {
+  degraded: {
+    border: '2px solid rgb(234 179 8 / 0.6)',
+    backgroundColor: 'rgb(251 146 60 / 0.12)',
+  },
+  unhealthy: {
+    border: '2px solid rgb(239 68 68 / 0.7)',
+    backgroundColor: 'rgb(248 113 113 / 0.15)',
+  },
+  healthy: {},
+  unknown: {},
 }
 
-// Background style for problem states - works in both light and dark mode
-function getStatusBgStyle(status: HealthStatus): React.CSSProperties {
-  switch (status) {
-    case 'degraded':
-      // Warm orange/yellow tint
-      return { backgroundColor: 'rgb(251 146 60 / 0.12)' } // orange-400/12
-    case 'unhealthy':
-      // Red tint
-      return { backgroundColor: 'rgb(248 113 113 / 0.15)' } // red-400/15
-    default:
-      return {}
-  }
+function getStatusStyle(status: HealthStatus): React.CSSProperties {
+  return STATUS_STYLES[status] || STATUS_STYLES.healthy
 }
 
-// Icon color based on kind
-function getIconColor(kind: NodeKind): string {
-  switch (kind) {
-    case 'Internet':
-      return 'text-blue-400'
-    case 'Ingress':
-      return 'text-violet-400'
-    case 'Service':
-      return 'text-blue-400'
-    case 'Deployment':
-    case 'Rollout':
-    case 'DaemonSet':
-    case 'StatefulSet':
-    case 'ReplicaSet':
-      return 'text-emerald-400'
-    case 'Pod':
-    case 'PodGroup':
-      return 'text-lime-400'
-    case 'ConfigMap':
-      return 'text-amber-400'
-    case 'Secret':
-      return 'text-red-400'
-    case 'HPA':
-      return 'text-pink-400'
-    case 'Job':
-    case 'CronJob':
-      return 'text-purple-400'
-    case 'PVC':
-      return 'text-cyan-400'
-    default:
-      return 'text-theme-text-secondary'
-  }
-}
 
 // Format subtitle based on node kind
 function getSubtitle(kind: NodeKind, nodeData: Record<string, unknown>): string {
@@ -186,6 +144,30 @@ function getSubtitle(kind: NodeKind, nodeData: Record<string, unknown>): string 
       const ready = nodeData.readyReplicas ?? 0
       const total = nodeData.totalReplicas ?? 0
       return `${ready}/${total} ready`
+    }
+    case 'Application': {
+      // ArgoCD Application - show sync and health status
+      const syncStatus = (nodeData.syncStatus as string) || 'Unknown'
+      const healthStatus = (nodeData.healthStatus as string) || 'Unknown'
+      return `${syncStatus} • ${healthStatus}`
+    }
+    case 'Kustomization': {
+      // FluxCD Kustomization - show ready status and resource count
+      const ready = (nodeData.ready as string) || 'Unknown'
+      const resources = nodeData.resourceCount as number
+      return resources ? `${ready} • ${resources} resources` : ready
+    }
+    case 'HelmRelease': {
+      // FluxCD HelmRelease - show ready status and revision
+      const ready = (nodeData.ready as string) || 'Unknown'
+      const revision = nodeData.revision as number
+      return revision ? `${ready} • rev ${revision}` : ready
+    }
+    case 'GitRepository': {
+      // FluxCD GitRepository - show ready status and branch/revision
+      const ready = (nodeData.ready as string) || 'Unknown'
+      const branch = nodeData.branch as string
+      return branch ? `${ready} • ${branch}` : ready
     }
     case 'Pod':
       return (nodeData.phase as string) || 'Unknown'
@@ -246,7 +228,6 @@ export const K8sResourceNode = memo(function K8sResourceNode({
   id,
 }: K8sResourceNodeProps) {
   const { kind, name, status, nodeData, selected, onExpand, onCollapse, isExpanded } = data
-  const Icon = getIcon(kind)
   const subtitle = getSubtitle(kind, nodeData)
   const isInternet = kind === 'Internet'
   const isPodGroup = kind === 'PodGroup'
@@ -256,8 +237,8 @@ export const K8sResourceNode = memo(function K8sResourceNode({
   const statusIssue = nodeData.statusIssue as string | undefined
   const issueTooltip = getIssueTooltip(statusIssue)
 
-  // Special styling for Internet node
-  const InternetIcon = getTopologyIcon('Internet')
+  // CSS class for icon (replaces Lucide SVG - saves ~5 DOM elements per node)
+  const iconClass = `topology-icon topology-icon-${kind.toLowerCase()}`
 
   if (isInternet) {
     return (
@@ -275,7 +256,7 @@ export const K8sResourceNode = memo(function K8sResourceNode({
             selected && 'ring-2 ring-blue-400'
           )}
         >
-          <InternetIcon className="w-5 h-5 text-blue-400" />
+          <span className="topology-icon topology-icon-internet" style={{ width: 20, height: 20 }} />
           <span className="text-sm font-medium text-blue-300">Internet</span>
           <span className="w-2 h-2 rounded-full bg-green-500" />
         </div>
@@ -300,26 +281,18 @@ export const K8sResourceNode = memo(function K8sResourceNode({
         className={clsx(
           'relative rounded-lg overflow-hidden',
           'bg-theme-surface topology-node-card',
-          'transition-all duration-150',
           selected && 'ring-2 ring-blue-400',
-          isSmallNode ? 'opacity-90' : ''
+          isSmallNode && 'opacity-90',
+          // Status bar via CSS pseudo-element (defined in index.css)
+          (status === 'healthy' || status === 'unknown') && 'topology-node-status-bar',
+          status === 'healthy' && 'topology-node-status-healthy',
+          status === 'unknown' && 'topology-node-status-unknown'
         )}
         style={{
           width: NODE_DIMENSIONS[kind]?.width || 180,
-          border: 'none',
-          ...getStatusBorderStyle(status),
-          ...getStatusBgStyle(status),
+          ...getStatusStyle(status),
         }}
       >
-        {/* Status bar on left - only shown for healthy/unknown states */}
-        {(status === 'healthy' || status === 'unknown') && (
-          <div
-            className={clsx(
-              'absolute left-0 top-0 bottom-0 w-1',
-              getStatusDotColor(status)
-            )}
-          />
-        )}
 
         {/* Content */}
         <div className={clsx(
@@ -328,7 +301,7 @@ export const K8sResourceNode = memo(function K8sResourceNode({
         )}>
           {/* Header row: icon + kind label + expand/collapse + status dot */}
           <div className="flex items-center gap-1.5 mb-0.5">
-            <Icon className={clsx('w-3.5 h-3.5', getIconColor(kind))} />
+            <span className={iconClass} />
             <span className="text-[10px] uppercase tracking-wide text-theme-text-tertiary font-medium">
               {isPodGroup ? 'Pod Group' : kind}
             </span>

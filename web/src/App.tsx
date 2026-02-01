@@ -3,6 +3,7 @@ import { useRefreshAnimation } from './hooks/useRefreshAnimation'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { HomeView } from './components/home/HomeView'
+import { DebugOverlay } from './components/DebugOverlay'
 import { TopologyGraph } from './components/topology/TopologyGraph'
 import { TopologyFilterSidebar } from './components/topology/TopologyFilterSidebar'
 import { TimelineView } from './components/timeline/TimelineView'
@@ -18,10 +19,11 @@ import { ContextSwitcher } from './components/ContextSwitcher'
 import { ContextSwitchProvider, useContextSwitch } from './context/ContextSwitchContext'
 import { CapabilitiesProvider } from './contexts/CapabilitiesContext'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
+import { NamespaceSelector } from './components/ui/NamespaceSelector'
 import { useEventSource } from './hooks/useEventSource'
 import { useNamespaces } from './api/client'
 import { Loader2 } from 'lucide-react'
-import { ChevronDown, RefreshCw, FolderTree, Network, List, Clock, Package, Sun, Moon, Activity, Home } from 'lucide-react'
+import { RefreshCw, FolderTree, Network, List, Clock, Package, Sun, Moon, Activity, Home } from 'lucide-react'
 import { useTheme } from './context/ThemeContext'
 import type { TopologyNode, GroupingMode, MainView, SelectedResource, SelectedHelmRelease, NodeKind, Topology } from './types'
 
@@ -484,22 +486,12 @@ function AppInner() {
 
         {/* Right: Controls */}
         <div className="flex items-center gap-3">
-          {/* Namespace selector - compact */}
-          <div className="relative">
-            <select
-              value={namespace}
-              onChange={(e) => setNamespace(e.target.value)}
-              className="appearance-none bg-theme-elevated text-theme-text-primary text-xs rounded px-2 py-1 pr-6 border border-theme-border-light focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[100px]"
-            >
-              <option value="">All Namespaces</option>
-              {namespaces?.slice().sort((a, b) => a.name.localeCompare(b.name)).map((ns) => (
-                <option key={ns.name} value={ns.name}>
-                  {ns.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-theme-text-secondary pointer-events-none" />
-          </div>
+          {/* Namespace selector with search */}
+          <NamespaceSelector
+            value={namespace}
+            onChange={setNamespace}
+            namespaces={namespaces}
+          />
 
           {/* Theme toggle */}
           <ThemeToggle />
@@ -595,6 +587,15 @@ function AppInner() {
               onHideAll={handleHideAllKinds}
               collapsed={filterSidebarCollapsed}
               onToggleCollapse={() => setFilterSidebarCollapsed(prev => !prev)}
+              hiddenKinds={topology?.hiddenKinds}
+              onEnableHiddenKind={(kind) => {
+                // Add the kind to visible kinds - the actual data is not available
+                // since it was hidden server-side, but this prepares for when
+                // we add query params to request specific kinds
+                setVisibleKinds(prev => new Set(prev).add(kind as NodeKind))
+                // TODO: Re-fetch topology with this kind enabled via query param
+                console.log(`[topology] User requested to show hidden kind: ${kind}`)
+              }}
             />
 
             <div className="flex-1 relative">
@@ -738,6 +739,9 @@ function AppInner() {
 
       {/* Spacer for dock */}
       <DockSpacer />
+
+      {/* Debug overlay - only in dev mode */}
+      {import.meta.env.DEV && <DebugOverlay />}
     </div>
   )
 }

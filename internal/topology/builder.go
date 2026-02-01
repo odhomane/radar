@@ -11,6 +11,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/skyhook-io/radar/internal/k8s"
 )
@@ -33,12 +34,147 @@ func (b *Builder) Build(opts BuildOptions) (*Topology, error) {
 		return nil, fmt.Errorf("resource cache not initialized")
 	}
 
+	// Detect large cluster and apply optimizations
+	isLargeCluster, hiddenKinds := b.detectLargeClusterAndOptimize(&opts)
+
+	var topo *Topology
+	var err error
+
 	switch opts.ViewMode {
 	case ViewModeTraffic:
-		return b.buildTrafficTopology(opts)
+		topo, err = b.buildTrafficTopology(opts)
 	default:
-		return b.buildResourcesTopology(opts)
+		topo, err = b.buildResourcesTopology(opts)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Set large cluster flags in response
+	if isLargeCluster {
+		topo.LargeCluster = true
+		topo.HiddenKinds = hiddenKinds
+	}
+
+	return topo, nil
+}
+
+// detectLargeClusterAndOptimize checks if cluster is large and applies optimizations
+// Returns true if large cluster detected, and list of hidden kinds
+func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []string) {
+	// Quick count of workload resources to estimate total node count
+	// This is a lightweight check - we count core resources that contribute most to topology
+	estimatedNodes := 0
+	var hiddenKinds []string
+
+	// Count deployments
+	deployments, _ := b.cache.Deployments().List(labels.Everything())
+	for _, d := range deployments {
+		if opts.Namespace == "" || d.Namespace == opts.Namespace {
+			estimatedNodes++
+		}
+	}
+
+	// Count statefulsets
+	statefulsets, _ := b.cache.StatefulSets().List(labels.Everything())
+	for _, s := range statefulsets {
+		if opts.Namespace == "" || s.Namespace == opts.Namespace {
+			estimatedNodes++
+		}
+	}
+
+	// Count daemonsets
+	daemonsets, _ := b.cache.DaemonSets().List(labels.Everything())
+	for _, d := range daemonsets {
+		if opts.Namespace == "" || d.Namespace == opts.Namespace {
+			estimatedNodes++
+		}
+	}
+
+	// Count services
+	services, _ := b.cache.Services().List(labels.Everything())
+	for _, s := range services {
+		if opts.Namespace == "" || s.Namespace == opts.Namespace {
+			estimatedNodes++
+		}
+	}
+
+	// Count pods (this is usually the largest contributor)
+	pods, _ := b.cache.Pods().List(labels.Everything())
+	podCount := 0
+	for _, p := range pods {
+		if opts.Namespace == "" || p.Namespace == opts.Namespace {
+			podCount++
+		}
+	}
+	// Estimate pod nodes after grouping (assume ~5 pods per group on average)
+	estimatedNodes += (podCount + 4) / 5
+
+	// Count jobs and cronjobs
+	jobs, _ := b.cache.Jobs().List(labels.Everything())
+	for _, j := range jobs {
+		if opts.Namespace == "" || j.Namespace == opts.Namespace {
+			estimatedNodes++
+		}
+	}
+	cronjobs, _ := b.cache.CronJobs().List(labels.Everything())
+	for _, c := range cronjobs {
+		if opts.Namespace == "" || c.Namespace == opts.Namespace {
+			estimatedNodes++
+		}
+	}
+
+	// Count ingresses
+	ingresses, _ := b.cache.Ingresses().List(labels.Everything())
+	for _, i := range ingresses {
+		if opts.Namespace == "" || i.Namespace == opts.Namespace {
+			estimatedNodes++
+		}
+	}
+
+	// Count configmaps (only if currently included)
+	if opts.IncludeConfigMaps {
+		configmaps, _ := b.cache.ConfigMaps().List(labels.Everything())
+		for _, c := range configmaps {
+			if opts.Namespace == "" || c.Namespace == opts.Namespace {
+				estimatedNodes++
+			}
+		}
+	}
+
+	// Count PVCs (only if currently included)
+	if opts.IncludePVCs {
+		pvcs, _ := b.cache.PersistentVolumeClaims().List(labels.Everything())
+		for _, p := range pvcs {
+			if opts.Namespace == "" || p.Namespace == opts.Namespace {
+				estimatedNodes++
+			}
+		}
+	}
+
+	// Check if large cluster
+	if estimatedNodes < LargeClusterThreshold {
+		return false, nil
+	}
+
+	// Large cluster detected - apply optimizations
+	log.Printf("INFO [topology] Large cluster detected (%d estimated nodes >= %d threshold), applying optimizations", estimatedNodes, LargeClusterThreshold)
+
+	// 1. More aggressive pod grouping (threshold 2 instead of 5)
+	opts.MaxIndividualPods = 2
+
+	// 2. Auto-hide ConfigMaps and PVCs
+	if opts.IncludeConfigMaps {
+		opts.IncludeConfigMaps = false
+		hiddenKinds = append(hiddenKinds, "ConfigMap")
+	}
+	if opts.IncludePVCs {
+		opts.IncludePVCs = false
+		hiddenKinds = append(hiddenKinds, "PVC")
+	}
+
+	return true, hiddenKinds
 }
 
 // buildResourcesTopology creates a comprehensive resource view
@@ -129,7 +265,13 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 	// 1b. Add Argo Rollout nodes (CRD - fetched via dynamic cache)
 	dynamicCache := k8s.GetDynamicResourceCache()
-	rolloutGVR, hasRollouts := k8s.GetResourceDiscovery().GetGVR("Rollout")
+	resourceDiscovery := k8s.GetResourceDiscovery()
+
+	var rolloutGVR schema.GroupVersionResource
+	hasRollouts := false
+	if resourceDiscovery != nil {
+		rolloutGVR, hasRollouts = resourceDiscovery.GetGVR("Rollout")
+	}
 	if hasRollouts && dynamicCache != nil {
 		rollouts, err := dynamicCache.List(rolloutGVR, opts.Namespace)
 		if err != nil {
@@ -197,6 +339,296 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 					workloadPVCRefs[rolloutID] = refs.pvcs
 				}
 			}
+		}
+	}
+
+	// 1c. Add ArgoCD Application nodes (CRD - fetched via dynamic cache)
+	// Note: Application edges are created in a second pass after all resource IDs are populated
+	var applicationGVR schema.GroupVersionResource
+	hasApplications := false
+	if resourceDiscovery != nil {
+		applicationGVR, hasApplications = resourceDiscovery.GetGVR("Application")
+	}
+	applicationIDs := make(map[string]string)                          // ns/name -> applicationID
+	var applicationResources []*unstructured.Unstructured              // Store for second pass
+	applicationDestNamespaces := make(map[string]string)               // appID -> destNamespace
+	if hasApplications && dynamicCache != nil {
+		applications, err := dynamicCache.List(applicationGVR, opts.Namespace)
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list ArgoCD Applications: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list ArgoCD Applications: %v", err))
+		}
+		for _, app := range applications {
+			ns := app.GetNamespace()
+			name := app.GetName()
+
+			appID := fmt.Sprintf("application/%s/%s", ns, name)
+			applicationIDs[ns+"/"+name] = appID
+
+			// Extract status fields
+			status, _, _ := unstructured.NestedMap(app.Object, "status")
+			spec, _, _ := unstructured.NestedMap(app.Object, "spec")
+
+			// Get sync and health status
+			syncStatus := "Unknown"
+			healthStatus := "Unknown"
+			if status != nil {
+				if sync, ok, _ := unstructured.NestedMap(status, "sync"); ok && sync != nil {
+					if s, ok := sync["status"].(string); ok {
+						syncStatus = s
+					}
+				}
+				if health, ok, _ := unstructured.NestedMap(status, "health"); ok && health != nil {
+					if h, ok := health["status"].(string); ok {
+						healthStatus = h
+					}
+				}
+			}
+
+			// Map to topology status
+			var nodeStatus HealthStatus
+			switch healthStatus {
+			case "Healthy":
+				nodeStatus = StatusHealthy
+			case "Progressing":
+				nodeStatus = StatusDegraded
+			case "Degraded", "Missing":
+				nodeStatus = StatusUnhealthy
+			default:
+				nodeStatus = StatusUnknown
+			}
+
+			// Get destination info
+			destination := ""
+			destNamespace := ""
+			if spec != nil {
+				if dest, ok, _ := unstructured.NestedMap(spec, "destination"); ok && dest != nil {
+					if server, ok := dest["server"].(string); ok {
+						destination = server
+					} else if name, ok := dest["name"].(string); ok {
+						destination = name
+					}
+					if ns, ok := dest["namespace"].(string); ok {
+						destNamespace = ns
+					}
+				}
+			}
+
+			nodes = append(nodes, Node{
+				ID:     appID,
+				Kind:   KindApplication,
+				Name:   name,
+				Status: nodeStatus,
+				Data: map[string]any{
+					"namespace":         ns,
+					"syncStatus":        syncStatus,
+					"healthStatus":      healthStatus,
+					"destination":       destination,
+					"destNamespace":     destNamespace,
+					"labels":            app.GetLabels(),
+				},
+			})
+
+			// Store for second pass edge creation
+			applicationResources = append(applicationResources, app)
+			applicationDestNamespaces[appID] = destNamespace
+		}
+	}
+
+	// 1d. Add FluxCD Kustomization nodes (CRD - fetched via dynamic cache)
+	// Note: Kustomization edges are created in a second pass after all resource IDs are populated
+	var kustomizationGVR schema.GroupVersionResource
+	hasKustomizations := false
+	if resourceDiscovery != nil {
+		kustomizationGVR, hasKustomizations = resourceDiscovery.GetGVR("Kustomization")
+	}
+	kustomizationIDs := make(map[string]string)               // ns/name -> kustomizationID
+	var kustomizationResources []*unstructured.Unstructured   // Store for second pass
+	if hasKustomizations && dynamicCache != nil {
+		kustomizations, err := dynamicCache.List(kustomizationGVR, opts.Namespace)
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list FluxCD Kustomizations: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list FluxCD Kustomizations: %v", err))
+		}
+		for _, ks := range kustomizations {
+			ns := ks.GetNamespace()
+			name := ks.GetName()
+
+			ksID := fmt.Sprintf("kustomization/%s/%s", ns, name)
+			kustomizationIDs[ns+"/"+name] = ksID
+
+			// Extract status fields
+			status, _, _ := unstructured.NestedMap(ks.Object, "status")
+
+			// Get ready condition
+			readyStatus, nodeStatus := getFluxReadyStatus(status)
+
+			// Get inventory count
+			resourceCount := 0
+			if status != nil {
+				if inventory, ok, _ := unstructured.NestedSlice(status, "inventory", "entries"); ok {
+					resourceCount = len(inventory)
+				}
+			}
+
+			// Get source reference
+			sourceRef := ""
+			spec, _, _ := unstructured.NestedMap(ks.Object, "spec")
+			if spec != nil {
+				if ref, ok, _ := unstructured.NestedMap(spec, "sourceRef"); ok && ref != nil {
+					kind := ref["kind"]
+					refName := ref["name"]
+					if kind != nil && refName != nil {
+						sourceRef = fmt.Sprintf("%s/%s", kind, refName)
+					}
+				}
+			}
+
+			nodes = append(nodes, Node{
+				ID:     ksID,
+				Kind:   KindKustomization,
+				Name:   name,
+				Status: nodeStatus,
+				Data: map[string]any{
+					"namespace":     ns,
+					"ready":         readyStatus,
+					"resourceCount": resourceCount,
+					"sourceRef":     sourceRef,
+					"labels":        ks.GetLabels(),
+				},
+			})
+
+			// Store for second pass edge creation
+			kustomizationResources = append(kustomizationResources, ks)
+		}
+	}
+
+	// 1e. Add FluxCD GitRepository nodes (CRD - fetched via dynamic cache)
+	var gitRepoGVR schema.GroupVersionResource
+	hasGitRepos := false
+	if resourceDiscovery != nil {
+		gitRepoGVR, hasGitRepos = resourceDiscovery.GetGVR("GitRepository")
+	}
+	gitRepoIDs := make(map[string]string) // ns/name -> gitRepoID
+	if hasGitRepos && dynamicCache != nil {
+		gitRepos, err := dynamicCache.List(gitRepoGVR, opts.Namespace)
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list FluxCD GitRepositories: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list FluxCD GitRepositories: %v", err))
+		}
+		for _, repo := range gitRepos {
+			ns := repo.GetNamespace()
+			name := repo.GetName()
+
+			repoID := fmt.Sprintf("gitrepository/%s/%s", ns, name)
+			gitRepoIDs[ns+"/"+name] = repoID
+
+			// Extract status fields
+			status, _, _ := unstructured.NestedMap(repo.Object, "status")
+
+			// Get ready condition
+			readyStatus, nodeStatus := getFluxReadyStatus(status)
+
+			// Get branch from spec
+			branch := ""
+			spec, _, _ := unstructured.NestedMap(repo.Object, "spec")
+			if spec != nil {
+				if ref, ok, _ := unstructured.NestedMap(spec, "ref"); ok && ref != nil {
+					if b, ok := ref["branch"].(string); ok {
+						branch = b
+					}
+				}
+			}
+
+			// Get URL
+			url := ""
+			if spec != nil {
+				if u, ok := spec["url"].(string); ok {
+					url = u
+				}
+			}
+
+			nodes = append(nodes, Node{
+				ID:     repoID,
+				Kind:   KindGitRepository,
+				Name:   name,
+				Status: nodeStatus,
+				Data: map[string]any{
+					"namespace": ns,
+					"ready":     readyStatus,
+					"branch":    branch,
+					"url":       url,
+					"labels":    repo.GetLabels(),
+				},
+			})
+		}
+	}
+
+	// 1f. Add FluxCD HelmRelease nodes (CRD - fetched via dynamic cache)
+	var helmReleaseGVR schema.GroupVersionResource
+	hasHelmReleases := false
+	if resourceDiscovery != nil {
+		helmReleaseGVR, hasHelmReleases = resourceDiscovery.GetGVR("HelmRelease")
+	}
+	helmReleaseIDs := make(map[string]string) // ns/name -> helmReleaseID
+	if hasHelmReleases && dynamicCache != nil {
+		helmReleases, err := dynamicCache.List(helmReleaseGVR, opts.Namespace)
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list FluxCD HelmReleases: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list FluxCD HelmReleases: %v", err))
+		}
+		for _, hr := range helmReleases {
+			ns := hr.GetNamespace()
+			name := hr.GetName()
+
+			hrID := fmt.Sprintf("helmrelease/%s/%s", ns, name)
+			helmReleaseIDs[ns+"/"+name] = hrID
+
+			// Extract status fields
+			status, _, _ := unstructured.NestedMap(hr.Object, "status")
+
+			// Get ready condition
+			readyStatus, nodeStatus := getFluxReadyStatus(status)
+
+			// Get last release revision
+			revision := 0
+			if status != nil {
+				if rev, ok, _ := unstructured.NestedInt64(status, "lastReleaseRevision"); ok {
+					revision = int(rev)
+				}
+			}
+
+			// Get chart info
+			chartName := ""
+			chartVersion := ""
+			spec, _, _ := unstructured.NestedMap(hr.Object, "spec")
+			if spec != nil {
+				if chart, ok, _ := unstructured.NestedMap(spec, "chart"); ok && chart != nil {
+					if chartSpec, ok, _ := unstructured.NestedMap(chart, "spec"); ok && chartSpec != nil {
+						if n, ok := chartSpec["chart"].(string); ok {
+							chartName = n
+						}
+						if v, ok := chartSpec["version"].(string); ok {
+							chartVersion = v
+						}
+					}
+				}
+			}
+
+			nodes = append(nodes, Node{
+				ID:     hrID,
+				Kind:   KindHelmRelease,
+				Name:   name,
+				Status: nodeStatus,
+				Data: map[string]any{
+					"namespace":    ns,
+					"ready":        readyStatus,
+					"revision":     revision,
+					"chartName":    chartName,
+					"chartVersion": chartVersion,
+					"labels":       hr.GetLabels(),
+				},
+			})
 		}
 	}
 
@@ -506,17 +938,24 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		})
 
 		// Create nodes and edges for each group
-		for _, group := range groupingResult.Groups {
-			if len(group.Pods) == 1 {
-				// Single pod - add as individual node
-				pod := group.Pods[0]
-				podID := GetPodID(pod)
-				nodes = append(nodes, CreatePodNode(pod, b.cache, true)) // includeNodeName=true for resources view
+		// Use MaxIndividualPods threshold to decide whether to show individual pods or group them
+		maxIndividualPods := opts.MaxIndividualPods
+		if maxIndividualPods <= 0 {
+			maxIndividualPods = 5 // Default threshold
+		}
 
-				// Connect to owner (resources view specific)
-				edges = append(edges, b.createPodOwnerEdges(pod, podID, opts, replicaSetIDs, replicaSetToDeployment, replicaSetToRollout, jobIDs, jobToCronJob)...)
+		for _, group := range groupingResult.Groups {
+			if len(group.Pods) <= maxIndividualPods {
+				// Small group - add as individual nodes
+				for _, pod := range group.Pods {
+					podID := GetPodID(pod)
+					nodes = append(nodes, CreatePodNode(pod, b.cache, true)) // includeNodeName=true for resources view
+
+					// Connect to owner (resources view specific)
+					edges = append(edges, b.createPodOwnerEdges(pod, podID, opts, replicaSetIDs, replicaSetToDeployment, replicaSetToRollout, jobIDs, jobToCronJob)...)
+				}
 			} else {
-				// Multiple pods - create PodGroup
+				// Large group - create PodGroup
 				podGroupID := GetPodGroupID(group)
 				nodes = append(nodes, CreatePodGroupNode(group, b.cache))
 
@@ -924,7 +1363,264 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		}
 	}
 
-	return &Topology{Nodes: nodes, Edges: edges, Warnings: warnings}, nil
+	// 12. Second pass: Create ArgoCD Application edges to managed resources
+	// This is done after all resource IDs are populated
+	for _, app := range applicationResources {
+		ns := app.GetNamespace()
+		name := app.GetName()
+		appID := applicationIDs[ns+"/"+name]
+		destNamespace := applicationDestNamespaces[appID]
+
+		status, _, _ := unstructured.NestedMap(app.Object, "status")
+		if status == nil {
+			continue
+		}
+
+		resources, _, _ := unstructured.NestedSlice(status, "resources")
+		for _, res := range resources {
+			resMap, ok := res.(map[string]any)
+			if !ok {
+				continue
+			}
+			resKind, _ := resMap["kind"].(string)
+			resName, _ := resMap["name"].(string)
+			resNS, _ := resMap["namespace"].(string)
+			if resNS == "" {
+				resNS = destNamespace
+			}
+
+			// Build target ID based on kind
+			var targetID string
+			resKey := resNS + "/" + resName
+			switch resKind {
+			case "Deployment":
+				targetID = deploymentIDs[resKey]
+			case "StatefulSet":
+				targetID = statefulSetIDs[resKey]
+			case "DaemonSet":
+				targetID = fmt.Sprintf("daemonset/%s/%s", resNS, resName)
+			case "Service":
+				targetID = serviceIDs[resKey]
+			case "Rollout":
+				targetID = rolloutIDs[resKey]
+			case "Job":
+				targetID = jobIDs[resKey]
+			case "CronJob":
+				targetID = cronJobIDs[resKey]
+			}
+
+			// Only create edge if target exists in current cluster view
+			if targetID != "" {
+				edges = append(edges, Edge{
+					ID:     fmt.Sprintf("%s-to-%s", appID, targetID),
+					Source: appID,
+					Target: targetID,
+					Type:   EdgeManages,
+				})
+			}
+		}
+	}
+
+	// 13. Second pass: Create FluxCD Kustomization edges to managed resources
+	// Kustomization inventory contains refs like "Deployment/ns/name" or "_namespace_name_Kind"
+	for _, ks := range kustomizationResources {
+		ns := ks.GetNamespace()
+		name := ks.GetName()
+		ksID := kustomizationIDs[ns+"/"+name]
+
+		status, _, _ := unstructured.NestedMap(ks.Object, "status")
+		if status == nil {
+			continue
+		}
+
+		inventory, _, _ := unstructured.NestedSlice(status, "inventory", "entries")
+		for _, entry := range inventory {
+			entryMap, ok := entry.(map[string]any)
+			if !ok {
+				continue
+			}
+			// FluxCD inventory entry has "id" field with format "namespace_name_group_kind" or "id" field
+			entryID, _ := entryMap["id"].(string)
+			if entryID == "" {
+				continue
+			}
+
+			// Parse the inventory ID (format: namespace_name_group_kind)
+			// Example: "default_my-deployment_apps_Deployment"
+			parts := strings.Split(entryID, "_")
+			if len(parts) < 3 {
+				continue
+			}
+
+			resNS := parts[0]
+			resName := parts[1]
+			// Last part is kind, second to last is group (might be empty)
+			resKind := parts[len(parts)-1]
+
+			// Build target ID based on kind
+			var targetID string
+			resKey := resNS + "/" + resName
+			switch resKind {
+			case "Deployment":
+				targetID = deploymentIDs[resKey]
+			case "StatefulSet":
+				targetID = statefulSetIDs[resKey]
+			case "DaemonSet":
+				targetID = fmt.Sprintf("daemonset/%s/%s", resNS, resName)
+			case "Service":
+				targetID = serviceIDs[resKey]
+			case "Rollout":
+				targetID = rolloutIDs[resKey]
+			case "Job":
+				targetID = jobIDs[resKey]
+			case "CronJob":
+				targetID = cronJobIDs[resKey]
+			case "Ingress":
+				targetID = fmt.Sprintf("ingress/%s/%s", resNS, resName)
+			}
+
+			// Only create edge if target exists in current cluster view
+			if targetID != "" {
+				edges = append(edges, Edge{
+					ID:     fmt.Sprintf("%s-to-%s", ksID, targetID),
+					Source: ksID,
+					Target: targetID,
+					Type:   EdgeManages,
+				})
+			}
+		}
+
+		// Also create edge from GitRepository to Kustomization if source ref exists
+		spec, _, _ := unstructured.NestedMap(ks.Object, "spec")
+		if spec != nil {
+			if sourceRef, ok, _ := unstructured.NestedMap(spec, "sourceRef"); ok && sourceRef != nil {
+				refKind, _ := sourceRef["kind"].(string)
+				refName, _ := sourceRef["name"].(string)
+				refNS, _ := sourceRef["namespace"].(string)
+				if refNS == "" {
+					refNS = ns // Default to same namespace
+				}
+
+				if refKind == "GitRepository" {
+					gitRepoID := gitRepoIDs[refNS+"/"+refName]
+					if gitRepoID != "" {
+						edges = append(edges, Edge{
+							ID:     fmt.Sprintf("%s-to-%s", gitRepoID, ksID),
+							Source: gitRepoID,
+							Target: ksID,
+							Type:   EdgeManages, // GitRepo provides source for Kustomization
+						})
+					}
+				}
+			}
+		}
+	}
+
+	// 14. Create FluxCD HelmRelease edges to managed resources
+	// HelmReleases don't have inventory - match by labels:
+	// - helm.toolkit.fluxcd.io/name (FluxCD-specific, preferred)
+	// - app.kubernetes.io/instance (standard Helm label)
+	for hrKey, hrID := range helmReleaseIDs {
+		parts := strings.Split(hrKey, "/")
+		if len(parts) != 2 {
+			continue
+		}
+		hrNS := parts[0]
+		hrName := parts[1]
+
+		// Find Deployments with matching label
+		for depKey, depID := range deploymentIDs {
+			depParts := strings.Split(depKey, "/")
+			if len(depParts) != 2 {
+				continue
+			}
+			depNS := depParts[0]
+			depName := depParts[1]
+
+			// Must be in same namespace
+			if depNS != hrNS {
+				continue
+			}
+
+			// Check if deployment has matching label
+			dep, err := b.cache.Deployments().Deployments(depNS).Get(depName)
+			if err != nil || dep == nil {
+				continue
+			}
+
+			if matchesHelmRelease(dep.Labels, hrName, hrNS) {
+				edges = append(edges, Edge{
+					ID:     fmt.Sprintf("%s-to-%s", hrID, depID),
+					Source: hrID,
+					Target: depID,
+					Type:   EdgeManages,
+				})
+			}
+		}
+
+		// Find Services with matching label
+		for svcKey, svcID := range serviceIDs {
+			svcParts := strings.Split(svcKey, "/")
+			if len(svcParts) != 2 {
+				continue
+			}
+			svcNS := svcParts[0]
+			svcName := svcParts[1]
+
+			// Must be in same namespace
+			if svcNS != hrNS {
+				continue
+			}
+
+			// Check if service has matching label
+			svc, err := b.cache.Services().Services(svcNS).Get(svcName)
+			if err != nil || svc == nil {
+				continue
+			}
+
+			if matchesHelmRelease(svc.Labels, hrName, hrNS) {
+				edges = append(edges, Edge{
+					ID:     fmt.Sprintf("%s-to-%s", hrID, svcID),
+					Source: hrID,
+					Target: svcID,
+					Type:   EdgeManages,
+				})
+			}
+		}
+
+		// Find StatefulSets with matching label
+		for stsKey, stsID := range statefulSetIDs {
+			stsParts := strings.Split(stsKey, "/")
+			if len(stsParts) != 2 {
+				continue
+			}
+			stsNS := stsParts[0]
+			stsName := stsParts[1]
+
+			// Must be in same namespace
+			if stsNS != hrNS {
+				continue
+			}
+
+			// Check if statefulset has matching label
+			sts, err := b.cache.StatefulSets().StatefulSets(stsNS).Get(stsName)
+			if err != nil || sts == nil {
+				continue
+			}
+
+			if matchesHelmRelease(sts.Labels, hrName, hrNS) {
+				edges = append(edges, Edge{
+					ID:     fmt.Sprintf("%s-to-%s", hrID, stsID),
+					Source: hrID,
+					Target: stsID,
+					Type:   EdgeManages,
+				})
+			}
+		}
+	}
+
+	topo := &Topology{Nodes: nodes, Edges: edges, Warnings: warnings}
+	return truncateTopologyIfNeeded(topo, opts), nil
 }
 
 // buildTrafficTopology creates a network-focused view
@@ -1118,24 +1814,31 @@ func (b *Builder) buildTrafficTopology(opts BuildOptions) (*Topology, error) {
 	})
 
 	// Create nodes and edges for each group
-	for _, group := range groupingResult.Groups {
-		if len(group.Pods) == 1 {
-			// Single pod - show as individual node
-			pod := group.Pods[0]
-			podID := GetPodID(pod)
-			nodes = append(nodes, CreatePodNode(pod, b.cache, false)) // includeNodeName=false for traffic view
+	// Use MaxIndividualPods threshold to decide whether to show individual pods or group them
+	maxIndividualPods := opts.MaxIndividualPods
+	if maxIndividualPods <= 0 {
+		maxIndividualPods = 5 // Default threshold
+	}
 
-			// Add edges from services to pod (traffic view specific)
-			for svcID := range group.ServiceIDs {
-				edges = append(edges, Edge{
-					ID:     fmt.Sprintf("%s-to-%s", svcID, podID),
-					Source: svcID,
-					Target: podID,
-					Type:   EdgeRoutesTo,
-				})
+	for _, group := range groupingResult.Groups {
+		if len(group.Pods) <= maxIndividualPods {
+			// Small group - show as individual nodes
+			for _, pod := range group.Pods {
+				podID := GetPodID(pod)
+				nodes = append(nodes, CreatePodNode(pod, b.cache, false)) // includeNodeName=false for traffic view
+
+				// Add edges from services to pod (traffic view specific)
+				for svcID := range group.ServiceIDs {
+					edges = append(edges, Edge{
+						ID:     fmt.Sprintf("%s-to-%s", svcID, podID),
+						Source: svcID,
+						Target: podID,
+						Type:   EdgeRoutesTo,
+					})
+				}
 			}
 		} else {
-			// Multiple pods - create PodGroup node
+			// Large group - create PodGroup node
 			podGroupID := GetPodGroupID(group)
 			nodes = append(nodes, CreatePodGroupNode(group, b.cache))
 
@@ -1151,7 +1854,8 @@ func (b *Builder) buildTrafficTopology(opts BuildOptions) (*Topology, error) {
 		}
 	}
 
-	return &Topology{Nodes: nodes, Edges: edges, Warnings: warnings}, nil
+	topo := &Topology{Nodes: nodes, Edges: edges, Warnings: warnings}
+	return truncateTopologyIfNeeded(topo, opts), nil
 }
 
 // Helper functions
@@ -1299,6 +2003,37 @@ func getPVCStatus(phase corev1.PersistentVolumeClaimPhase) HealthStatus {
 	}
 }
 
+// getFluxReadyStatus extracts the Ready condition status from a FluxCD resource's status map.
+// Returns the ready status string ("True", "False", "Unknown") and the corresponding HealthStatus.
+func getFluxReadyStatus(status map[string]any) (string, HealthStatus) {
+	if status == nil {
+		return "Unknown", StatusUnknown
+	}
+	conditions, ok, _ := unstructured.NestedSlice(status, "conditions")
+	if !ok {
+		return "Unknown", StatusUnknown
+	}
+	for _, c := range conditions {
+		cond, ok := c.(map[string]any)
+		if !ok || cond["type"] != "Ready" {
+			continue
+		}
+		s, ok := cond["status"].(string)
+		if !ok {
+			return "Unknown", StatusUnknown
+		}
+		switch s {
+		case "True":
+			return s, StatusHealthy
+		case "False":
+			return s, StatusUnhealthy
+		default:
+			return s, StatusUnknown
+		}
+	}
+	return "Unknown", StatusUnknown
+}
+
 func matchesSelector(labels, selector map[string]string) bool {
 	if len(selector) == 0 {
 		return false
@@ -1309,6 +2044,28 @@ func matchesSelector(labels, selector map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// matchesHelmRelease checks if a resource's labels indicate it's managed by a FluxCD HelmRelease
+// Checks both FluxCD-specific labels and standard Helm labels
+func matchesHelmRelease(labels map[string]string, hrName, hrNamespace string) bool {
+	// FluxCD adds these labels to resources deployed by HelmRelease
+	// helm.toolkit.fluxcd.io/name: <helmrelease-name>
+	// helm.toolkit.fluxcd.io/namespace: <helmrelease-namespace>
+	fluxName := labels["helm.toolkit.fluxcd.io/name"]
+	fluxNS := labels["helm.toolkit.fluxcd.io/namespace"]
+	if fluxName == hrName && (fluxNS == "" || fluxNS == hrNamespace) {
+		return true
+	}
+
+	// Fallback to standard Helm label (app.kubernetes.io/instance)
+	// This is set by charts that follow Helm best practices
+	instanceLabel := labels["app.kubernetes.io/instance"]
+	if instanceLabel == hrName {
+		return true
+	}
+
+	return false
 }
 
 type workloadRefs struct {
@@ -1463,6 +2220,44 @@ func extractWorkloadReferencesFromMap(spec map[string]any) workloadRefs {
 	}
 
 	return refs
+}
+
+// truncateTopologyIfNeeded truncates the topology if it exceeds the max nodes limit
+// Returns the truncated topology with appropriate metadata set
+func truncateTopologyIfNeeded(topo *Topology, opts BuildOptions) *Topology {
+	if opts.MaxNodes <= 0 || len(topo.Nodes) <= opts.MaxNodes {
+		return topo
+	}
+
+	totalNodes := len(topo.Nodes)
+
+	// Keep only the first MaxNodes nodes
+	topo.Nodes = topo.Nodes[:opts.MaxNodes]
+	topo.Truncated = true
+	topo.TotalNodes = totalNodes
+
+	// Build a set of kept node IDs for fast lookup
+	keptNodeIDs := make(map[string]bool, len(topo.Nodes))
+	for _, node := range topo.Nodes {
+		keptNodeIDs[node.ID] = true
+	}
+
+	// Filter edges to only include those between kept nodes
+	filteredEdges := make([]Edge, 0, len(topo.Edges))
+	for _, edge := range topo.Edges {
+		if keptNodeIDs[edge.Source] && keptNodeIDs[edge.Target] {
+			filteredEdges = append(filteredEdges, edge)
+		}
+	}
+	topo.Edges = filteredEdges
+
+	// Add warning about truncation
+	topo.Warnings = append(topo.Warnings, fmt.Sprintf(
+		"Topology truncated: showing %d of %d nodes. Filter by namespace for better performance.",
+		opts.MaxNodes, totalNodes,
+	))
+
+	return topo
 }
 
 // Unused but needed for imports
