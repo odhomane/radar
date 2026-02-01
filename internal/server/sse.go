@@ -90,6 +90,9 @@ func (b *SSEBroadcaster) Start() {
 // This broadcasts connection_state events to all clients for graceful startup UI
 func (b *SSEBroadcaster) registerConnectionStateCallback() {
 	k8s.OnConnectionChange(func(status k8s.ConnectionStatus) {
+		log.Printf("SSE broadcaster: connection state changed to %q (context=%s, progress=%q)",
+			status.State, status.Context, status.ProgressMsg)
+
 		b.Broadcast(SSEEvent{
 			Event: "connection_state",
 			Data: map[string]any{
@@ -102,9 +105,10 @@ func (b *SSEBroadcaster) registerConnectionStateCallback() {
 			},
 		})
 
-		// When we become connected, build initial topology cache
+		// When we become connected, build and broadcast topology to all clients
 		if status.State == k8s.StateConnected {
-			go b.initCachedTopology()
+			log.Printf("SSE broadcaster: connection became connected, scheduling topology broadcast")
+			go b.broadcastTopologyUpdate()
 		}
 	})
 }
@@ -132,6 +136,11 @@ func (b *SSEBroadcaster) registerContextSwitchCallback() {
 		b.cachedTopologyMu.Unlock()
 
 		// Broadcast context_changed event to all clients
+		b.mu.RLock()
+		clientCount := len(b.clients)
+		b.mu.RUnlock()
+		log.Printf("SSE broadcaster: broadcasting context_changed to %d clients", clientCount)
+
 		b.Broadcast(SSEEvent{
 			Event: "context_changed",
 			Data: map[string]any{
@@ -141,6 +150,7 @@ func (b *SSEBroadcaster) registerContextSwitchCallback() {
 
 		// Broadcast the new topology so clients can complete the switch
 		// Run in goroutine to not block the context switch
+		log.Printf("SSE broadcaster: scheduling topology broadcast")
 		go b.broadcastTopologyUpdate()
 	})
 }
@@ -278,6 +288,8 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 	}
 	b.mu.RUnlock()
 
+	log.Printf("Broadcasting topology update to %d clients", len(clients))
+
 	builder := topology.NewBuilder()
 
 	// Always build and cache a full topology (all namespaces, resources view)
@@ -292,6 +304,7 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 	}
 
 	if len(clients) == 0 {
+		log.Printf("No SSE clients to broadcast topology to")
 		return
 	}
 
@@ -328,6 +341,8 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 		for _, ch := range channels {
 			safeSend(ch, event)
 		}
+		log.Printf("Sent topology (%d nodes, %d edges) to %d clients (ns=%q, view=%s)",
+			len(topo.Nodes), len(topo.Edges), len(channels), key.namespace, key.viewMode)
 	}
 }
 

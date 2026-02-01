@@ -1087,9 +1087,22 @@ func (s *Server) handleSwitchContext(w http.ResponseWriter, r *http.Request) {
 
 	// Perform the context switch
 	if err := k8s.PerformContextSwitch(name); err != nil {
+		k8s.SetConnectionStatus(k8s.ConnectionStatus{
+			State:     k8s.StateDisconnected,
+			Context:   name,
+			Error:     err.Error(),
+			ErrorType: k8s.ClassifyError(err),
+		})
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Set connected state after successful switch
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnected,
+		Context:     k8s.GetContextName(),
+		ClusterName: k8s.GetClusterName(),
+	})
 
 	// Return the new cluster info
 	info, err := k8s.GetClusterInfo(r.Context())
@@ -1142,7 +1155,13 @@ func (s *Server) handleConnectionRetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connection successful - status is already set by PerformContextSwitch callback
+	// Set connected state after successful reconnection
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnected,
+		Context:     k8s.GetContextName(),
+		ClusterName: k8s.GetClusterName(),
+	})
+
 	s.writeJSON(w, k8s.GetConnectionStatus())
 }
 
