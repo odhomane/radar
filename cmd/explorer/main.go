@@ -140,6 +140,11 @@ func main() {
 	// Warm up dynamic cache for common CRDs so they appear in initial timeline
 	k8s.WarmupCommonCRDs()
 
+	// Start full CRD discovery in background (for generic CRD topology support)
+	if dynamicCache := k8s.GetDynamicResourceCache(); dynamicCache != nil {
+		dynamicCache.DiscoverAllCRDs()
+	}
+
 	// Initialize metrics history collection (polls metrics-server every 30s)
 	k8s.InitMetricsHistory()
 

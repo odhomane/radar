@@ -630,8 +630,9 @@ function ViewportController({ structureKey }: { structureKey: string }) {
   const updateZoomOffset = useCallback((viewport: Viewport) => {
     const { zoom } = viewport
     // Match the headerScale formula from GroupNode
-    const headerScale = Math.max(0.35, Math.min(1, 0.5 / zoom))
-    // At scale 1.0, offset is 0. At scale 0.35, offset is ~45px (header shrinks by ~45px)
+    // Min 0.5 = header never shrinks below 50%, formula 0.7/zoom = less aggressive scaling
+    const headerScale = Math.max(0.5, Math.min(1, 0.7 / zoom))
+    // At scale 1.0, offset is 0. At scale 0.5, offset is ~35px (header shrinks by ~35px)
     const headerOffset = (1 - headerScale) * 70
     document.documentElement.style.setProperty('--group-header-offset', `${-headerOffset}px`)
     document.documentElement.style.setProperty('--group-header-scale', String(headerScale))

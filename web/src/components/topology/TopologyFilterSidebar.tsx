@@ -18,7 +18,7 @@ const RESOURCE_KINDS: {
   label: string
   icon: LucideIcon
   color: string
-  category: 'gitops' | 'workloads' | 'networking' | 'config' | 'scaling'
+  category: 'gitops' | 'workloads' | 'networking' | 'config' | 'scaling' | 'custom'
 }[] = [
   // GitOps (ArgoCD + FluxCD)
   { kind: 'Application', label: 'Application', icon: getTopologyIcon('Application'), color: 'text-orange-400', category: 'gitops' },
@@ -55,6 +55,7 @@ const CATEGORIES = [
   { id: 'workloads', label: 'Workloads' },
   { id: 'config', label: 'Configuration' },
   { id: 'scaling', label: 'Scaling' },
+  { id: 'custom', label: 'Custom Resources' },
 ] as const
 
 interface TopologyFilterSidebarProps {
@@ -94,8 +95,28 @@ export const TopologyFilterSidebar = memo(function TopologyFilterSidebar({
   }, [nodes])
 
   // Filter to only show kinds that exist in the topology
+  // Also include dynamic CRD kinds not in RESOURCE_KINDS
   const availableKinds = useMemo(() => {
-    return RESOURCE_KINDS.filter(k => kindCounts.has(k.kind))
+    // Start with known kinds that exist
+    const known = RESOURCE_KINDS.filter(k => kindCounts.has(k.kind))
+
+    // Find CRD kinds not in RESOURCE_KINDS (dynamic CRDs)
+    const knownKindSet = new Set(RESOURCE_KINDS.map(k => k.kind))
+    const dynamicKinds: typeof RESOURCE_KINDS = []
+
+    for (const [kind] of kindCounts) {
+      if (!knownKindSet.has(kind) && kind !== 'Internet') {
+        dynamicKinds.push({
+          kind: kind as NodeKind,
+          label: kind, // Use the kind name as label
+          icon: getTopologyIcon(kind), // Returns Puzzle for unknown kinds
+          color: 'text-gray-400',
+          category: 'custom',
+        })
+      }
+    }
+
+    return [...known, ...dynamicKinds]
   }, [kindCounts])
 
   // Group by category

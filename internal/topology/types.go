@@ -69,13 +69,14 @@ type Edge struct {
 
 // Topology represents the complete graph
 type Topology struct {
-	Nodes        []Node   `json:"nodes"`
-	Edges        []Edge   `json:"edges"`
-	Warnings     []string `json:"warnings,omitempty"`     // Warnings about resources that failed to load
-	Truncated    bool     `json:"truncated,omitempty"`    // True if topology was truncated due to size limit
-	TotalNodes   int      `json:"totalNodes,omitempty"`   // Total nodes before truncation (only set if truncated)
-	LargeCluster bool     `json:"largeCluster,omitempty"` // True if cluster exceeds large cluster threshold
-	HiddenKinds  []string `json:"hiddenKinds,omitempty"`  // Resource kinds auto-hidden for performance
+	Nodes              []Node   `json:"nodes"`
+	Edges              []Edge   `json:"edges"`
+	Warnings           []string `json:"warnings,omitempty"`           // Warnings about resources that failed to load
+	Truncated          bool     `json:"truncated,omitempty"`          // True if topology was truncated due to size limit
+	TotalNodes         int      `json:"totalNodes,omitempty"`         // Total nodes before truncation (only set if truncated)
+	LargeCluster       bool     `json:"largeCluster,omitempty"`       // True if cluster exceeds large cluster threshold
+	HiddenKinds        []string `json:"hiddenKinds,omitempty"`        // Resource kinds auto-hidden for performance
+	CRDDiscoveryStatus string   `json:"crdDiscoveryStatus,omitempty"` // CRD discovery status: idle, discovering, ready
 }
 
 // ViewMode determines how the topology is built
@@ -99,6 +100,7 @@ type BuildOptions struct {
 	IncludeConfigMaps  bool     // Include ConfigMap nodes
 	IncludePVCs        bool     // Include PersistentVolumeClaim nodes
 	IncludeReplicaSets bool     // Include ReplicaSet nodes (noisy intermediate objects)
+	IncludeGenericCRDs bool     // Include CRDs with owner refs to topology nodes (default: true)
 }
 
 // DefaultBuildOptions returns sensible defaults
@@ -112,6 +114,7 @@ func DefaultBuildOptions() BuildOptions {
 		IncludeConfigMaps:  true,
 		IncludePVCs:        true,
 		IncludeReplicaSets: false, // Hidden by default - noisy intermediate between Deployment and Pod
+		IncludeGenericCRDs: true,  // Show CRDs with owner refs to topology nodes
 	}
 }
 

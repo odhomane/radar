@@ -18,15 +18,26 @@ import (
 	"github.com/skyhook-io/radar/internal/timeline"
 )
 
+// CRDDiscoveryStatus represents the state of CRD discovery
+type CRDDiscoveryStatus string
+
+const (
+	CRDDiscoveryIdle        CRDDiscoveryStatus = "idle"        // Not started
+	CRDDiscoveryInProgress  CRDDiscoveryStatus = "discovering" // Discovery in progress
+	CRDDiscoveryComplete    CRDDiscoveryStatus = "ready"       // Discovery complete
+)
+
 // DynamicResourceCache provides on-demand caching for CRDs and other dynamic resources
 type DynamicResourceCache struct {
-	factory      dynamicinformer.DynamicSharedInformerFactory
-	informers    map[schema.GroupVersionResource]cache.SharedIndexInformer
-	syncComplete map[schema.GroupVersionResource]bool // Track which informers have completed initial sync
-	stopCh       chan struct{}
-	stopOnce     sync.Once
-	mu           sync.RWMutex
-	changes      chan ResourceChange // Channel for change notifications (shared with typed cache)
+	factory         dynamicinformer.DynamicSharedInformerFactory
+	informers       map[schema.GroupVersionResource]cache.SharedIndexInformer
+	syncComplete    map[schema.GroupVersionResource]bool // Track which informers have completed initial sync
+	stopCh          chan struct{}
+	stopOnce        sync.Once
+	mu              sync.RWMutex
+	changes         chan ResourceChange // Channel for change notifications (shared with typed cache)
+	discoveryStatus CRDDiscoveryStatus  // Status of CRD discovery
+	discoveryMu     sync.RWMutex        // Mutex for discovery status
 }
 
 var (
@@ -52,11 +63,12 @@ func InitDynamicResourceCache(changeCh chan ResourceChange) error {
 		)
 
 		dynamicResourceCache = &DynamicResourceCache{
-			factory:      factory,
-			informers:    make(map[schema.GroupVersionResource]cache.SharedIndexInformer),
-			syncComplete: make(map[schema.GroupVersionResource]bool),
-			stopCh:       make(chan struct{}),
-			changes:      changeCh,
+			factory:         factory,
+			informers:       make(map[schema.GroupVersionResource]cache.SharedIndexInformer),
+			syncComplete:    make(map[schema.GroupVersionResource]bool),
+			stopCh:          make(chan struct{}),
+			changes:         changeCh,
+			discoveryStatus: CRDDiscoveryIdle,
 		}
 
 		log.Println("Dynamic resource cache initialized")
@@ -490,6 +502,95 @@ func (d *DynamicResourceCache) GetInformerCount() int {
 	defer d.mu.RUnlock()
 
 	return len(d.informers)
+}
+
+// GetDiscoveryStatus returns the current CRD discovery status
+func (d *DynamicResourceCache) GetDiscoveryStatus() CRDDiscoveryStatus {
+	if d == nil {
+		return CRDDiscoveryIdle
+	}
+
+	d.discoveryMu.RLock()
+	defer d.discoveryMu.RUnlock()
+
+	return d.discoveryStatus
+}
+
+// DiscoverAllCRDs discovers and starts watching all CRDs that support list/watch.
+// This runs asynchronously and updates the discovery status.
+// Call GetDiscoveryStatus() to check progress.
+func (d *DynamicResourceCache) DiscoverAllCRDs() {
+	if d == nil {
+		log.Println("[CRD Discovery] Cache is nil, skipping")
+		return
+	}
+
+	// Check if already discovering or complete
+	d.discoveryMu.Lock()
+	if d.discoveryStatus != CRDDiscoveryIdle {
+		log.Printf("[CRD Discovery] Already in status: %s, skipping", d.discoveryStatus)
+		d.discoveryMu.Unlock()
+		return
+	}
+	d.discoveryStatus = CRDDiscoveryInProgress
+	d.discoveryMu.Unlock()
+	log.Println("[CRD Discovery] Starting CRD discovery...")
+
+	// Run discovery in background
+	go func() {
+		defer func() {
+			d.discoveryMu.Lock()
+			d.discoveryStatus = CRDDiscoveryComplete
+			d.discoveryMu.Unlock()
+			log.Println("CRD discovery complete")
+		}()
+
+		discovery := GetResourceDiscovery()
+		if discovery == nil {
+			log.Println("Resource discovery not available for CRD discovery")
+			return
+		}
+
+		resources, err := discovery.GetAPIResources()
+		if err != nil {
+			log.Printf("Failed to get API resources for CRD discovery: %v", err)
+			return
+		}
+
+		// Collect all CRDs that support watch
+		var gvrs []schema.GroupVersionResource
+		for _, res := range resources {
+			if !res.IsCRD {
+				continue
+			}
+			// Check if it supports list/watch
+			hasList := false
+			hasWatch := false
+			for _, verb := range res.Verbs {
+				if verb == "list" {
+					hasList = true
+				}
+				if verb == "watch" {
+					hasWatch = true
+				}
+			}
+			if hasList && hasWatch {
+				gvrs = append(gvrs, schema.GroupVersionResource{
+					Group:    res.Group,
+					Version:  res.Version,
+					Resource: res.Name,
+				})
+			}
+		}
+
+		if len(gvrs) == 0 {
+			log.Println("No watchable CRDs found")
+			return
+		}
+
+		log.Printf("Discovering %d CRDs...", len(gvrs))
+		d.WarmupParallel(gvrs, 30*time.Second)
+	}()
 }
 
 // WarmupParallel starts watching multiple resources in parallel and waits for all to sync

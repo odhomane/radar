@@ -65,8 +65,10 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
 
   /* Topology node styling */
-  --topology-node-border: var(--border-light);
-  --topology-node-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --topology-node-border: rgba(255, 255, 255, 0.08);
+  --topology-node-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.2);
 
   /* Scrollbar */
   --scrollbar-track: #1e293b;
@@ -130,8 +132,10 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 
   /* Topology node styling */
-  --topology-node-border: rgba(0, 0, 0, 0.05);
-  --topology-node-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --topology-node-border: rgba(0, 0, 0, 0.10);
+  --topology-node-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.05);
 
   /* Scrollbar */
   --scrollbar-track: #f1f5f9;
@@ -220,13 +224,25 @@ body {
    REACT FLOW CUSTOMIZATIONS
    ============================================ */
 
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__pane:active {
+  cursor: grabbing;
+}
+
 .react-flow__node {
-  cursor: pointer;
+  cursor: pointer !important;
+}
+
+.react-flow__node:active {
+  cursor: pointer !important;
 }
 
 /* Topology node card styling - uses theme CSS variables */
 .topology-node-card {
-  border: none;
+  border: 1px solid var(--topology-node-border);
   box-shadow: var(--topology-node-shadow);
 }
 
@@ -259,6 +275,7 @@ body {
   font-weight: 700;
   color: white;
   flex-shrink: 0;
+  background: #6b7280; /* gray-500 - default for unknown CRD kinds */
 }
 .topology-icon-internet { background: #3b82f6; border-radius: 50%; }
 .topology-icon-ingress { background: #8b5cf6; }

@@ -77,6 +77,9 @@ function getIssueTooltip(issue: string | undefined): React.ReactNode {
   )
 }
 
+// Default dimensions for unknown CRD kinds
+export const DEFAULT_NODE_DIMENSIONS = { width: 260, height: 56 }
+
 // Node dimensions for ELK layout - sized for typical K8s resource names
 export const NODE_DIMENSIONS: Record<NodeKind, { width: number; height: number }> = {
   Internet: { width: 120, height: 52 },
@@ -289,7 +292,7 @@ export const K8sResourceNode = memo(function K8sResourceNode({
           status === 'unknown' && 'topology-node-status-unknown'
         )}
         style={{
-          width: NODE_DIMENSIONS[kind]?.width || 180,
+          width: NODE_DIMENSIONS[kind]?.width ?? DEFAULT_NODE_DIMENSIONS.width,
           ...getStatusStyle(status),
         }}
       >

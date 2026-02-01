@@ -27,16 +27,18 @@ import { RefreshCw, FolderTree, Network, List, Clock, Package, Sun, Moon, Activi
 import { useTheme } from './context/ThemeContext'
 import type { TopologyNode, GroupingMode, MainView, SelectedResource, SelectedHelmRelease, NodeKind, Topology } from './types'
 
-// All possible node kinds
+// All possible node kinds (core + GitOps)
 const ALL_NODE_KINDS: NodeKind[] = [
-  'Internet', 'Ingress', 'Service', 'Deployment', 'DaemonSet', 'StatefulSet',
-  'ReplicaSet', 'Pod', 'PodGroup', 'ConfigMap', 'Secret', 'HPA', 'Job', 'CronJob', 'PVC', 'Namespace'
+  'Internet', 'Ingress', 'Service', 'Deployment', 'Rollout', 'DaemonSet', 'StatefulSet',
+  'ReplicaSet', 'Pod', 'PodGroup', 'ConfigMap', 'Secret', 'HPA', 'Job', 'CronJob', 'PVC', 'Namespace',
+  'Application', 'Kustomization', 'HelmRelease', 'GitRepository'
 ]
 
 // Default visible kinds (ReplicaSet hidden by default - noisy intermediate object)
 const DEFAULT_VISIBLE_KINDS: NodeKind[] = [
   'Internet', 'Ingress', 'Service', 'Deployment', 'Rollout', 'DaemonSet', 'StatefulSet',
-  'Pod', 'PodGroup', 'ConfigMap', 'Secret', 'HPA', 'Job', 'CronJob', 'PVC', 'Namespace'
+  'Pod', 'PodGroup', 'ConfigMap', 'Secret', 'HPA', 'Job', 'CronJob', 'PVC', 'Namespace',
+  'Application', 'Kustomization', 'HelmRelease', 'GitRepository'
 ]
 
 // Convert node kind to plural API resource name
@@ -209,7 +211,7 @@ function AppInner() {
   // Hide group header when viewing single namespace with "no grouping" selected
   const hideGroupHeader = isSingleNamespace && groupingMode === 'none'
 
-  // Fetch cluster info and namespaces
+  // Fetch namespaces
   const { data: namespaces } = useNamespaces()
 
   // Context switch state
@@ -231,6 +233,17 @@ function AppInner() {
     },
   })
   const [reconnect, isReconnecting] = useRefreshAnimation(reconnectSSE)
+
+  // Track CRD discovery status from topology (more direct than cluster-info)
+  // When discovery completes, topology will auto-update via SSE with new CRD nodes
+  const crdDiscoveryStatus = topology?.crdDiscoveryStatus
+
+  // Debug: log discovery status changes
+  useEffect(() => {
+    if (crdDiscoveryStatus) {
+      console.log('[CRD Discovery] Status:', crdDiscoveryStatus)
+    }
+  }, [crdDiscoveryStatus])
 
   // Handle node selection - convert TopologyNode to SelectedResource for the drawer
   const handleNodeClick = useCallback((node: TopologyNode) => {
@@ -370,8 +383,15 @@ function AppInner() {
   }, [])
 
   const handleShowAllKinds = useCallback(() => {
-    setVisibleKinds(new Set(ALL_NODE_KINDS))
-  }, [])
+    // Include all static kinds plus any dynamic CRD kinds from the topology
+    const allKinds = new Set<NodeKind>(ALL_NODE_KINDS)
+    if (topology?.nodes) {
+      for (const node of topology.nodes) {
+        allKinds.add(node.kind)
+      }
+    }
+    setVisibleKinds(allKinds)
+  }, [topology])
 
   const handleHideAllKinds = useCallback(() => {
     setVisibleKinds(new Set())
@@ -411,6 +431,13 @@ function AppInner() {
                 </button>
               )}
             </div>
+            {/* CRD Discovery indicator */}
+            {crdDiscoveryStatus === 'discovering' && (
+              <div className="flex items-center gap-1.5 ml-2 text-xs text-amber-400">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span className="hidden sm:inline">Discovering CRDs...</span>
+              </div>
+            )}
           </div>
         </div>
 
