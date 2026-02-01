@@ -36,8 +36,9 @@ type HubbleSource struct {
 	localPort      int    // Port-forward local port
 	currentContext string // K8s context for port-forward validation
 	relayNamespace string // Discovered namespace where hubble-relay lives
-	relayPort      int    // Hubble relay service port
-	useTLS         bool   // Whether TLS is required
+	relayPort      int    // Hubble relay container port (for port-forward)
+	servicePort    int    // Hubble relay service port (443 hints TLS, 80 hints plaintext)
+	useTLS         bool   // Whether TLS certs are available
 	tlsConfig      *tls.Config
 	isConnected    bool
 	mu             sync.RWMutex
@@ -119,6 +120,7 @@ func (h *HubbleSource) Detect(ctx context.Context) (*DetectionResult, error) {
 	h.mu.Lock()
 	h.relayNamespace = relayNamespace
 	h.relayPort = h.resolveTargetPort(ctx, relaySvc)
+	h.servicePort = servicePort
 	h.useTLS = useTLS
 	h.tlsConfig = tlsConfig
 	h.mu.Unlock()
@@ -327,56 +329,88 @@ func (h *HubbleSource) Connect(ctx context.Context, contextName string) (*Metric
 	}
 
 	h.localPort = connInfo.LocalPort
-
-	// Create gRPC connection with or without TLS
 	grpcAddr := fmt.Sprintf("localhost:%d", h.localPort)
-	log.Printf("[hubble] Connecting to gRPC at %s (TLS: %v)", grpcAddr, h.useTLS)
+
+	// Use service port as heuristic: port 443 suggests TLS, otherwise try plaintext first
+	// This avoids unnecessary latency from failed connection attempts
+	tryTLSFirst := h.servicePort == 443 && h.tlsConfig != nil
 
 	var conn *grpc.ClientConn
-	if h.useTLS && h.tlsConfig != nil {
-		conn, err = grpc.NewClient(grpcAddr,
-			grpc.WithTransportCredentials(credentials.NewTLS(h.tlsConfig)),
-		)
-	} else {
+	var lastErr error
+
+	// Define connection attempt functions
+	tryPlaintext := func() bool {
+		log.Printf("[hubble] Connecting to gRPC at %s (plaintext)", grpcAddr)
+		var err error
 		conn, err = grpc.NewClient(grpcAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
-	}
-
-	if err != nil {
-		// Clean up port-forward on gRPC connection failure
-		StopMetricsPortForward()
-		h.localPort = 0
-		return &MetricsConnectionInfo{
-			Connected: false,
-			Error:     fmt.Sprintf("Failed to create gRPC connection: %v", err),
-		}, nil
-	}
-
-	h.grpcConn = conn
-	h.observerClient = observerpb.NewObserverClient(conn)
-	h.isConnected = true
-
-	// Test the connection
-	if !h.testConnection(ctx) {
+		if err != nil {
+			lastErr = err
+			return false
+		}
+		h.grpcConn = conn
+		h.observerClient = observerpb.NewObserverClient(conn)
+		h.isConnected = true
+		if h.testConnection(ctx) {
+			log.Printf("[hubble] Connected to Hubble Relay at %s (plaintext)", grpcAddr)
+			return true
+		}
+		lastErr = fmt.Errorf("plaintext gRPC connection test failed")
 		h.closeConnectionLocked()
-		// Also stop port-forward on connection test failure
-		StopMetricsPortForward()
+		return false
+	}
+
+	tryTLS := func() bool {
+		if h.tlsConfig == nil {
+			return false
+		}
+		log.Printf("[hubble] Connecting to gRPC at %s (TLS)", grpcAddr)
+		var err error
+		conn, err = grpc.NewClient(grpcAddr,
+			grpc.WithTransportCredentials(credentials.NewTLS(h.tlsConfig)),
+		)
+		if err != nil {
+			lastErr = fmt.Errorf("TLS connection failed: %w", err)
+			return false
+		}
+		h.grpcConn = conn
+		h.observerClient = observerpb.NewObserverClient(conn)
+		h.isConnected = true
+		if h.testConnection(ctx) {
+			log.Printf("[hubble] Connected to Hubble Relay at %s (TLS)", grpcAddr)
+			return true
+		}
+		lastErr = fmt.Errorf("TLS gRPC connection test failed")
+		h.closeConnectionLocked()
+		return false
+	}
+
+	// Try connections in order based on service port heuristic
+	var connected bool
+	if tryTLSFirst {
+		connected = tryTLS() || tryPlaintext()
+	} else {
+		connected = tryPlaintext() || tryTLS()
+	}
+
+	if connected {
 		return &MetricsConnectionInfo{
-			Connected: false,
-			Error:     "Failed to connect to Hubble Relay gRPC service",
+			Connected:   true,
+			LocalPort:   h.localPort,
+			Address:     grpcAddr,
+			Namespace:   namespace,
+			ServiceName: hubbleRelayService,
+			ContextName: contextName,
 		}, nil
 	}
 
-	log.Printf("[hubble] Connected to Hubble Relay at %s", grpcAddr)
-
+	// Both attempts failed
+	StopMetricsPortForward()
+	h.localPort = 0
 	return &MetricsConnectionInfo{
-		Connected:   true,
-		LocalPort:   h.localPort,
-		Address:     grpcAddr,
-		Namespace:   namespace,
-		ServiceName: hubbleRelayService,
-		ContextName: contextName,
+		Connected: false,
+		Error:     fmt.Sprintf("Failed to connect to Hubble Relay: %v", lastErr),
 	}, nil
 }
 
