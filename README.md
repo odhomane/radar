@@ -7,7 +7,7 @@ Topology, event timeline, and service traffic — plus resource browsing, Helm m
 
 [![CI](https://github.com/skyhook-io/radar/actions/workflows/ci.yml/badge.svg)](https://github.com/skyhook-io/radar/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/skyhook-io/radar?logo=github)](https://github.com/skyhook-io/radar/releases/latest)
-[![Go Report Card](https://goreportcard.com/badge/github.com/skyhook-io/radar)](https://goreportcard.com/report/github.com/skyhook-io/radar)
+[![Go Report Card](https://goreportcard.com/badge/github.com/skyhook-io/radar?v=2)](https://goreportcard.com/report/github.com/skyhook-io/radar)
 [![Downloads](https://img.shields.io/github/downloads/skyhook-io/radar/total?logo=github)](https://github.com/skyhook-io/radar/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
