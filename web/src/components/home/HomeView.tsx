@@ -1,4 +1,4 @@
-import { useDashboard } from '../../api/client'
+import { useDashboard, useDashboardCRDs } from '../../api/client'
 import type { DashboardResponse } from '../../api/client'
 import type { ExtendedMainView, Topology, SelectedResource } from '../../types'
 import { TopologyPreview } from './TopologyPreview'
@@ -19,11 +19,16 @@ interface HomeViewProps {
 
 export function HomeView({ namespace, topology, onNavigateToView, onNavigateToResourceKind, onNavigateToResource }: HomeViewProps) {
   const { data, isLoading, error } = useDashboard(namespace || undefined)
+  // CRDs load lazily after main dashboard to keep initial load fast
+  const { data: crdsData } = useDashboardCRDs(namespace || undefined)
 
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-theme-text-tertiary" />
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-6 h-6 animate-spin text-theme-text-tertiary" />
+          <span className="text-sm text-theme-text-tertiary">Loading dashboard...</span>
+        </div>
       </div>
     )
   }
@@ -47,7 +52,7 @@ export function HomeView({ namespace, topology, onNavigateToView, onNavigateToRe
           counts={data.resourceCounts}
           cluster={data.cluster}
           metrics={data.metrics}
-          topCRDs={data.topCRDs}
+          topCRDs={crdsData?.topCRDs}
           problems={data.problems ?? []}
           onNavigateToKind={onNavigateToResourceKind}
           onNavigateToView={() => onNavigateToView('resources')}

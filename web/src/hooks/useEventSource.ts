@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Topology, K8sEvent, ViewMode } from '../types'
+import type { ConnectionState } from '../context/ConnectionContext'
 
 interface UseEventSourceReturn {
   topology: Topology | null
@@ -12,6 +13,7 @@ interface UseEventSourceOptions {
   onContextSwitchComplete?: () => void
   onContextSwitchProgress?: (message: string) => void
   onContextChanged?: (context: string) => void
+  onConnectionStateChange?: (status: ConnectionState) => void
 }
 
 const MAX_EVENTS = 100 // Keep last 100 events
@@ -182,6 +184,16 @@ export function useEventSource(
         optionsRef.current?.onContextChanged?.(data.context)
       } catch (e) {
         console.error('Failed to parse context_changed event:', e)
+      }
+    })
+
+    // Handle connection state events (for graceful startup)
+    es.addEventListener('connection_state', (event) => {
+      try {
+        const data = JSON.parse(event.data) as ConnectionState
+        optionsRef.current?.onConnectionStateChange?.(data)
+      } catch (e) {
+        console.error('Failed to parse connection_state event:', e)
       }
     })
   }, [namespace, viewMode])

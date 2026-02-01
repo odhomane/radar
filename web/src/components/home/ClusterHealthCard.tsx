@@ -13,7 +13,7 @@ interface ClusterHealthCardProps {
   counts: DashboardResponse['resourceCounts']
   cluster: DashboardResponse['cluster']
   metrics: DashboardMetrics | null
-  topCRDs: DashboardCRDCount[]
+  topCRDs?: DashboardCRDCount[] // Loaded lazily, may be undefined
   problems: DashboardProblem[]
   onNavigateToKind: (kind: string, group?: string) => void
   onNavigateToView: () => void

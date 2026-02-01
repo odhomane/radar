@@ -33,7 +33,11 @@ type DashboardResponse struct {
 	TrafficSummary  *DashboardTrafficSummary `json:"trafficSummary"`
 	HelmReleases    DashboardHelmSummary     `json:"helmReleases"`
 	Metrics         *DashboardMetrics        `json:"metrics"`
-	TopCRDs         []DashboardCRDCount      `json:"topCRDs"`
+}
+
+// DashboardCRDsResponse is the response for CRD counts (loaded lazily)
+type DashboardCRDsResponse struct {
+	TopCRDs []DashboardCRDCount `json:"topCRDs"`
 }
 
 type DashboardCluster struct {
@@ -228,11 +232,19 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// Helm releases summary
 	resp.HelmReleases = s.getDashboardHelmSummary(namespace)
 
-	// CRD counts
-	resp.TopCRDs = s.getDashboardCRDCounts(r.Context(), namespace)
-
 	// Cluster metrics (best-effort, nil if metrics-server unavailable)
 	resp.Metrics = s.getDashboardMetrics(r.Context())
+
+	s.writeJSON(w, resp)
+}
+
+// handleDashboardCRDs returns CRD counts - loaded lazily to keep main dashboard fast
+func (s *Server) handleDashboardCRDs(w http.ResponseWriter, r *http.Request) {
+	namespace := r.URL.Query().Get("namespace")
+
+	resp := DashboardCRDsResponse{
+		TopCRDs: s.getDashboardCRDCounts(r.Context(), namespace),
+	}
 
 	s.writeJSON(w, resp)
 }
