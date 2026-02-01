@@ -18,6 +18,12 @@ Visualize your cluster topology, browse resources, stream logs, exec into pods, 
   <img src="docs/screenshot.png" alt="Radar Screenshot" width="800">
 </p>
 
+**Install and run in 30 seconds:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | bash && kubectl radar
+```
+[More installation options ↓](#installation)
+
 ## Why Radar?
 
 - **Zero install on your cluster** — runs on your laptop, talks to the K8s API directly
@@ -30,37 +36,24 @@ Visualize your cluster topology, browse resources, stream logs, exec into pods, 
 
 ## Installation
 
-### Quick Install (Recommended)
-
+**Quick Install**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | bash
 ```
 
-### Homebrew (macOS/Linux)
-
+**Homebrew (macOS/Linux)**
 ```bash
 brew install skyhook-io/tap/radar
 ```
 
-### Krew (kubectl plugin manager)
-
+**Krew (kubectl plugin manager)**
 ```bash
 kubectl krew install radar
 ```
 
-### Direct Download
+**Direct Download** — [Download from GitHub Releases](https://github.com/skyhook-io/radar/releases) for macOS, Linux, or Windows.
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/skyhook-io/radar/releases):
-
-| Platform | Architecture | Download |
-|----------|--------------|----------|
-| macOS | Apple Silicon (M1/M2/M3) | `radar_*_darwin_arm64.tar.gz` |
-| macOS | Intel | `radar_*_darwin_amd64.tar.gz` |
-| Linux | x86_64 | `radar_*_linux_amd64.tar.gz` |
-| Linux | ARM64 | `radar_*_linux_arm64.tar.gz` |
-| Windows | x86_64 | `radar_*_windows_amd64.zip` |
-
-### In-Cluster Deployment
+**In-Cluster Deployment**
 
 Deploy Radar to your Kubernetes cluster for shared team access:
 
@@ -79,31 +72,22 @@ See the [In-Cluster Deployment Guide](docs/in-cluster.md) for ingress, authentic
 # Opens browser automatically
 kubectl radar
 
-# Filter to a specific namespace
-kubectl radar --namespace production
-
-# Custom port
-kubectl radar --port 8080
-
-# Use a specific kubeconfig
-kubectl radar --kubeconfig /path/to/kubeconfig
-
-# Persist timeline events across restarts
-kubectl radar --timeline-storage sqlite
+# Or simply
+radar
 ```
 
-### CLI Flags
+**CLI Flags**
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--kubeconfig` | `~/.kube/config` | Path to kubeconfig file |
+| `--kubeconfig-dir` | | Comma-separated directories containing kubeconfig files |
 | `--namespace` | (all) | Initial namespace filter |
 | `--port` | `9280` | Server port |
 | `--no-browser` | `false` | Don't auto-open browser |
 | `--timeline-storage` | `memory` | Timeline storage backend: `memory` or `sqlite` |
 | `--timeline-db` | `~/.radar/timeline.db` | Path to SQLite database (when using sqlite storage) |
 | `--history-limit` | `10000` | Maximum events to retain in timeline |
-| `--debug-events` | `false` | Enable verbose event debugging (logs all event drops) |
 | `--version` | | Show version and exit |
 
 ---
