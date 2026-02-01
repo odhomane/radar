@@ -150,6 +150,11 @@ func (s *Server) setupRoutes() {
 		// Workload restart
 		r.Post("/workloads/{kind}/{namespace}/{name}/restart", s.handleRestartWorkload)
 
+		// Workload logs (aggregated from all pods)
+		r.Get("/workloads/{kind}/{namespace}/{name}/logs", s.handleWorkloadLogs)
+		r.Get("/workloads/{kind}/{namespace}/{name}/logs/stream", s.handleWorkloadLogsStream)
+		r.Get("/workloads/{kind}/{namespace}/{name}/pods", s.handleWorkloadPods)
+
 		// Helm routes
 		helmHandlers := helm.NewHandlers()
 		helmHandlers.RegisterRoutes(r)

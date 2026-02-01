@@ -692,3 +692,42 @@ export interface ImageMetadata {
   filesystem?: ImageFilesystem  // Included if cached
   authMethod: string   // "anonymous", "google", "credentials", etc.
 }
+
+// ============================================================================
+// Workload Logs Types
+// ============================================================================
+
+// Pod info returned from workload pods endpoint
+export interface WorkloadPodInfo {
+  name: string
+  containers: string[]
+  ready: boolean
+}
+
+// SSE event types for workload log streaming
+export type WorkloadLogEventType =
+  | 'connected'
+  | 'log'
+  | 'pod_added'
+  | 'pod_removed'
+  | 'end'
+  | 'error'
+
+// Workload log stream event data
+export interface WorkloadLogStreamEvent {
+  event: WorkloadLogEventType
+  // connected event
+  workload?: string
+  namespace?: string
+  kind?: string
+  pods?: WorkloadPodInfo[]
+  // log event
+  pod?: string
+  container?: string
+  timestamp?: string
+  content?: string
+  // pod_added/pod_removed events
+  reason?: string
+  // error event
+  message?: string
+}
