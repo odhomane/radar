@@ -52,6 +52,12 @@ brew install skyhook-io/tap/radar
 kubectl krew install radar
 ```
 
+**Scoop (Windows)**
+```powershell
+scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
+scoop install radar
+```
+
 **Direct Download** — [Download from GitHub Releases](https://github.com/skyhook-io/radar/releases) for macOS, Linux, or Windows.
 
 **In-Cluster Deployment**
