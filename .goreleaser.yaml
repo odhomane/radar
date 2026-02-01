@@ -87,6 +87,11 @@ release:
     scoop install radar
     ```
 
+    **PowerShell (Windows):**
+    ```powershell
+    irm https://raw.githubusercontent.com/skyhook-io/radar/main/install.ps1 | iex
+    ```
+
     **Manual (macOS Apple Silicon):**
     ```bash
     curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_v{{.Version}}_darwin_arm64.tar.gz

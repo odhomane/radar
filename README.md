@@ -59,6 +59,11 @@ scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
 scoop install radar
 ```
 
+**PowerShell (Windows)**
+```powershell
+irm https://raw.githubusercontent.com/skyhook-io/radar/main/install.ps1 | iex
+```
+
 **Direct Download** — [Download from GitHub Releases](https://github.com/skyhook-io/radar/releases) for macOS, Linux, or Windows.
 
 **In-Cluster Deployment**
