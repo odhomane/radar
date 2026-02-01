@@ -29,14 +29,14 @@ jobs:
         uses: snyk/actions/setup@master
 
       - name: Snyk test
-        run: snyk test --severity-threshold=high
+        run: snyk test --severity-threshold=high --org=skyhook
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
       - name: Snyk code test
         id: snyk-code
-        run: snyk code test --sarif-file-output=snyk-code.sarif
+        run: snyk code test --sarif-file-output=snyk-code.sarif --org=skyhook
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -70,14 +70,14 @@ jobs:
         uses: snyk/actions/setup@master
 
       - name: Snyk test
-        run: snyk test --severity-threshold=high
+        run: snyk test --severity-threshold=high --org=skyhook
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         working-directory: web
         continue-on-error: true
 
       - name: Snyk monitor
-        run: snyk monitor
+        run: snyk monitor --org=skyhook
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         working-directory: web
