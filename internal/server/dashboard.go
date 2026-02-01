@@ -33,7 +33,11 @@ type DashboardResponse struct {
 	TrafficSummary  *DashboardTrafficSummary `json:"trafficSummary"`
 	HelmReleases    DashboardHelmSummary     `json:"helmReleases"`
 	Metrics         *DashboardMetrics        `json:"metrics"`
-	TopCRDs         []DashboardCRDCount      `json:"topCRDs"`
+}
+
+// DashboardCRDsResponse is the response for CRD counts (loaded lazily)
+type DashboardCRDsResponse struct {
+	TopCRDs []DashboardCRDCount `json:"topCRDs"`
 }
 
 type DashboardCluster struct {
@@ -228,11 +232,19 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// Helm releases summary
 	resp.HelmReleases = s.getDashboardHelmSummary(namespace)
 
-	// CRD counts
-	resp.TopCRDs = s.getDashboardCRDCounts(r.Context(), namespace)
-
 	// Cluster metrics (best-effort, nil if metrics-server unavailable)
 	resp.Metrics = s.getDashboardMetrics(r.Context())
+
+	s.writeJSON(w, resp)
+}
+
+// handleDashboardCRDs returns CRD counts - loaded lazily to keep main dashboard fast
+func (s *Server) handleDashboardCRDs(w http.ResponseWriter, r *http.Request) {
+	namespace := r.URL.Query().Get("namespace")
+
+	resp := DashboardCRDsResponse{
+		TopCRDs: s.getDashboardCRDCounts(r.Context(), namespace),
+	}
 
 	s.writeJSON(w, resp)
 }
@@ -1221,7 +1233,7 @@ func truncate(s string, maxLen int) string {
 }
 
 // getDashboardCRDCounts returns counts of CRD instances in the cluster.
-func (s *Server) getDashboardCRDCounts(reqCtx context.Context, namespace string) []DashboardCRDCount {
+func (s *Server) getDashboardCRDCounts(_ context.Context, namespace string) []DashboardCRDCount {
 	discovery := k8s.GetResourceDiscovery()
 	if discovery == nil {
 		return []DashboardCRDCount{}
@@ -1253,9 +1265,6 @@ func (s *Server) getDashboardCRDCounts(reqCtx context.Context, namespace string)
 		return []DashboardCRDCount{}
 	}
 
-	ctx, cancel := context.WithTimeout(reqCtx, 3*time.Second)
-	defer cancel()
-
 	type result struct {
 		kind  string
 		name  string
@@ -1276,22 +1285,18 @@ func (s *Server) getDashboardCRDCounts(reqCtx context.Context, namespace string)
 				return
 			}
 
-			var count int
-			if dynamicCache.IsSynced(gvr) {
-				// Fast path: count from in-memory cache
-				items, err := dynamicCache.List(gvr, namespace)
-				if err == nil {
-					count = len(items)
-				}
-			} else {
-				// Slow path: one-shot API call
-				items, err := dynamicCache.ListDirect(ctx, gvr, namespace)
-				if err == nil {
-					count = len(items)
-				}
+			// Only count CRDs that are already synced in cache
+			// Skip unsynced CRDs to avoid slow API calls that trigger throttling
+			if !dynamicCache.IsSynced(gvr) {
+				return
 			}
 
-			results[idx] = result{kind: r.Kind, name: r.Name, group: r.Group, count: count}
+			items, err := dynamicCache.List(gvr, namespace)
+			if err != nil {
+				return
+			}
+
+			results[idx] = result{kind: r.Kind, name: r.Name, group: r.Group, count: len(items)}
 		}(i, crd)
 	}
 

@@ -17,6 +17,8 @@ import { PortForwardManager, usePortForwardCount } from './components/portforwar
 import { DockProvider, BottomDock, useDock } from './components/dock'
 import { ContextSwitcher } from './components/ContextSwitcher'
 import { ContextSwitchProvider, useContextSwitch } from './context/ContextSwitchContext'
+import { ConnectionProvider, useConnection } from './context/ConnectionContext'
+import { ConnectionErrorView } from './components/ConnectionErrorView'
 import { CapabilitiesProvider } from './contexts/CapabilitiesContext'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { NamespaceSelector } from './components/ui/NamespaceSelector'
@@ -217,6 +219,9 @@ function AppInner() {
   // Context switch state
   const { isSwitching, targetContext, progressMessage, updateProgress, endSwitch } = useContextSwitch()
 
+  // Connection state (for graceful startup)
+  const { connection, retry: retryConnection, isRetrying, updateFromSSE: updateConnectionFromSSE } = useConnection()
+
   // Query client for cache invalidation
   const queryClient = useQueryClient()
 
@@ -231,6 +236,7 @@ function AppInner() {
       queryClient.removeQueries()
       queryClient.invalidateQueries()
     },
+    onConnectionStateChange: updateConnectionFromSSE,
   })
   const [reconnect, isReconnecting] = useRefreshAnimation(reconnectSSE)
 
@@ -525,6 +531,33 @@ function AppInner() {
         </div>
       </header>
 
+      {/* Connection error view - show when disconnected */}
+      {!isSwitching && connection.state === 'disconnected' && (
+        <ConnectionErrorView
+          connection={connection}
+          onRetry={retryConnection}
+          isRetrying={isRetrying}
+        />
+      )}
+
+      {/* Connecting view - show during initial connection or retry */}
+      {!isSwitching && connection.state === 'connecting' && (
+        <div className="flex-1 flex items-center justify-center bg-theme-base">
+          <div className="flex flex-col items-center gap-4 text-theme-text-secondary">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+            <div className="text-center">
+              <p className="font-medium text-theme-text-primary">Connecting to cluster</p>
+              <p className="text-sm text-theme-text-secondary mt-1">{connection.context || 'Loading...'}</p>
+              {connection.progressMessage && (
+                <p className="text-xs text-theme-text-tertiary animate-pulse mt-3">
+                  {connection.progressMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Context switching overlay */}
       {isSwitching && (
         <div className="flex-1 flex items-center justify-center bg-theme-base">
@@ -567,8 +600,8 @@ function AppInner() {
         </div>
       )}
 
-      {/* Main content */}
-      {!isSwitching && <div className="flex-1 flex overflow-hidden">
+      {/* Main content - only show when connected */}
+      {!isSwitching && connection.state === 'connected' && <div className="flex-1 flex overflow-hidden">
         <ErrorBoundary>
         {/* Home dashboard */}
         {mainView === 'home' && (
@@ -783,13 +816,15 @@ function DockSpacer() {
 // Main App component wrapped with providers
 function App() {
   return (
-    <CapabilitiesProvider>
-      <ContextSwitchProvider>
-        <DockProvider>
-          <AppInner />
-        </DockProvider>
-      </ContextSwitchProvider>
-    </CapabilitiesProvider>
+    <ConnectionProvider>
+      <CapabilitiesProvider>
+        <ContextSwitchProvider>
+          <DockProvider>
+            <AppInner />
+          </DockProvider>
+        </ContextSwitchProvider>
+      </CapabilitiesProvider>
+    </ConnectionProvider>
   )
 }
 

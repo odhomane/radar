@@ -70,15 +70,47 @@ func NewSSEBroadcaster() *SSEBroadcaster {
 
 // Start begins the broadcaster's main loop
 func (b *SSEBroadcaster) Start() {
-	// Build initial topology cache
-	b.initCachedTopology()
+	// Build initial topology cache (only if connected)
+	if k8s.IsConnected() {
+		b.initCachedTopology()
+	}
 
 	// Register for context switch notifications
 	b.registerContextSwitchCallback()
 
+	// Register for connection state changes (for graceful startup)
+	b.registerConnectionStateCallback()
+
 	go b.run()
 	go b.watchResourceChanges()
 	go b.heartbeat()
+}
+
+// registerConnectionStateCallback registers for connection state changes
+// This broadcasts connection_state events to all clients for graceful startup UI
+func (b *SSEBroadcaster) registerConnectionStateCallback() {
+	k8s.OnConnectionChange(func(status k8s.ConnectionStatus) {
+		log.Printf("SSE broadcaster: connection state changed to %q (context=%s, progress=%q)",
+			status.State, status.Context, status.ProgressMsg)
+
+		b.Broadcast(SSEEvent{
+			Event: "connection_state",
+			Data: map[string]any{
+				"state":           status.State,
+				"context":         status.Context,
+				"clusterName":     status.ClusterName,
+				"error":           status.Error,
+				"errorType":       status.ErrorType,
+				"progressMessage": status.ProgressMsg,
+			},
+		})
+
+		// When we become connected, build and broadcast topology to all clients
+		if status.State == k8s.StateConnected {
+			log.Printf("SSE broadcaster: connection became connected, scheduling topology broadcast")
+			go b.broadcastTopologyUpdate()
+		}
+	})
 }
 
 // registerContextSwitchCallback registers for context switch notifications
@@ -104,6 +136,11 @@ func (b *SSEBroadcaster) registerContextSwitchCallback() {
 		b.cachedTopologyMu.Unlock()
 
 		// Broadcast context_changed event to all clients
+		b.mu.RLock()
+		clientCount := len(b.clients)
+		b.mu.RUnlock()
+		log.Printf("SSE broadcaster: broadcasting context_changed to %d clients", clientCount)
+
 		b.Broadcast(SSEEvent{
 			Event: "context_changed",
 			Data: map[string]any{
@@ -113,6 +150,7 @@ func (b *SSEBroadcaster) registerContextSwitchCallback() {
 
 		// Broadcast the new topology so clients can complete the switch
 		// Run in goroutine to not block the context switch
+		log.Printf("SSE broadcaster: scheduling topology broadcast")
 		go b.broadcastTopologyUpdate()
 	})
 }
@@ -250,6 +288,8 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 	}
 	b.mu.RUnlock()
 
+	log.Printf("Broadcasting topology update to %d clients", len(clients))
+
 	builder := topology.NewBuilder()
 
 	// Always build and cache a full topology (all namespaces, resources view)
@@ -264,6 +304,7 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 	}
 
 	if len(clients) == 0 {
+		log.Printf("No SSE clients to broadcast topology to")
 		return
 	}
 
@@ -300,6 +341,8 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 		for _, ch := range channels {
 			safeSend(ch, event)
 		}
+		log.Printf("Sent topology (%d nodes, %d edges) to %d clients (ns=%q, view=%s)",
+			len(topo.Nodes), len(topo.Edges), len(channels), key.namespace, key.viewMode)
 	}
 }
 
@@ -400,20 +443,37 @@ func (b *SSEBroadcaster) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 	defer b.Unsubscribe(eventCh)
 
-	// Send initial topology immediately
-	builder := topology.NewBuilder()
-	opts := topology.DefaultBuildOptions()
-	opts.Namespace = namespace
-	if viewMode == "traffic" {
-		opts.ViewMode = topology.ViewModeTraffic
+	// Send current connection state immediately so client knows current status
+	status := k8s.GetConnectionStatus()
+	connData, err := json.Marshal(map[string]any{
+		"state":           status.State,
+		"context":         status.Context,
+		"clusterName":     status.ClusterName,
+		"error":           status.Error,
+		"errorType":       status.ErrorType,
+		"progressMessage": status.ProgressMsg,
+	})
+	if err == nil {
+		fmt.Fprintf(w, "event: connection_state\ndata: %s\n\n", connData)
+		flusher.Flush()
 	}
-	if topo, err := builder.Build(opts); err == nil {
-		data, marshalErr := json.Marshal(topo)
-		if marshalErr != nil {
-			log.Printf("SSE: failed to marshal initial topology: %v", marshalErr)
-		} else {
-			fmt.Fprintf(w, "event: topology\ndata: %s\n\n", data)
-			flusher.Flush()
+
+	// Send initial topology immediately (only if connected)
+	if status.State == k8s.StateConnected {
+		builder := topology.NewBuilder()
+		opts := topology.DefaultBuildOptions()
+		opts.Namespace = namespace
+		if viewMode == "traffic" {
+			opts.ViewMode = topology.ViewModeTraffic
+		}
+		if topo, err := builder.Build(opts); err == nil {
+			data, marshalErr := json.Marshal(topo)
+			if marshalErr != nil {
+				log.Printf("SSE: failed to marshal initial topology: %v", marshalErr)
+			} else {
+				fmt.Fprintf(w, "event: topology\ndata: %s\n\n", data)
+				flusher.Flush()
+			}
 		}
 	}
 

@@ -183,7 +183,19 @@ export function TopologyPreview({ topology, summary, onNavigate }: TopologyPrevi
               )}
             </>
           ) : (
-            <span className="text-[11px] text-theme-text-tertiary">Loading...</span>
+            // Show summary-based placeholder while full topology loads via SSE
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5 text-[10px] leading-tight">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                <span className="text-theme-text-primary font-medium w-5 text-right tabular-nums">{summary.nodeCount}</span>
+                <span className="text-theme-text-tertiary">resources</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] leading-tight">
+                <span className="w-1.5 h-1.5 rounded-full bg-theme-text-tertiary shrink-0" />
+                <span className="text-theme-text-primary font-medium w-5 text-right tabular-nums">{summary.edgeCount}</span>
+                <span className="text-theme-text-tertiary">connections</span>
+              </div>
+            </div>
           )}
         </div>
 

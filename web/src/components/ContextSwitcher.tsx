@@ -270,9 +270,9 @@ export function ContextSwitcher({ className = '' }: ContextSwitcherProps) {
         onClick={() => setIsOpen(!isOpen)}
         disabled={switchContext.isPending || contextsLoading}
         className={`
-          flex items-center gap-1.5 px-2 py-1
-          bg-theme-elevated rounded text-sm font-medium
-          text-blue-300 hover:bg-theme-hover
+          flex items-center gap-1.5 px-2.5 py-1.5
+          bg-theme-elevated border border-theme-border rounded text-sm font-medium
+          text-theme-text-primary hover:bg-theme-hover hover:border-theme-border-light
           transition-colors cursor-pointer
           disabled:opacity-50 disabled:cursor-not-allowed
         `}
@@ -281,9 +281,9 @@ export function ContextSwitcher({ className = '' }: ContextSwitcherProps) {
         {switchContext.isPending ? (
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
         ) : (
-          <Server className="w-3.5 h-3.5 text-blue-400" />
+          <Server className="w-3.5 h-3.5 text-theme-text-secondary" />
         )}
-        <span className="max-w-[180px] truncate">
+        <span className="max-w-[220px] truncate">
           {switchContext.isPending ? 'Switching...' : currentDisplayName}
         </span>
         <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -332,7 +332,7 @@ export function ContextSwitcher({ className = '' }: ContextSwitcherProps) {
                     >
                       <div className="shrink-0 w-4 h-4 flex items-center justify-center">
                         {item.context.isCurrent ? (
-                          <Check className="w-3.5 h-3.5 text-blue-400" />
+                          <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                         ) : (
                           <div className="w-1.5 h-1.5 rounded-full bg-theme-text-tertiary/30" />
                         )}
@@ -340,7 +340,7 @@ export function ContextSwitcher({ className = '' }: ContextSwitcherProps) {
                       <div className="flex-1 min-w-0">
                         {/* Main line: cluster name + region */}
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-sm font-medium truncate ${item.context.isCurrent ? 'text-blue-300' : 'text-theme-text-primary'}`}>
+                          <span className={`text-sm font-medium truncate ${item.context.isCurrent ? 'text-blue-600 dark:text-blue-400' : 'text-theme-text-primary'}`}>
                             {item.clusterName}
                           </span>
                           {item.region && (
@@ -349,7 +349,7 @@ export function ContextSwitcher({ className = '' }: ContextSwitcherProps) {
                             </span>
                           )}
                           {item.context.isCurrent && (
-                            <span className="shrink-0 text-[9px] text-blue-400">
+                            <span className="shrink-0 text-[9px] text-blue-600 dark:text-blue-400">
                               ●
                             </span>
                           )}

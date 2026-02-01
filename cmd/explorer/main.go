@@ -94,13 +94,14 @@ func main() {
 		log.Printf("Using in-cluster config")
 	}
 
-	// Preflight check: verify cluster connectivity before starting informers
-	if err := checkClusterAccess(); err != nil {
-		// Error already printed with helpful message
-		os.Exit(1)
-	}
+	// Set initial connecting state
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnecting,
+		Context:     k8s.GetContextName(),
+		ProgressMsg: "Starting server...",
+	})
 
-	// Initialize timeline event store (unified storage for all events)
+	// Initialize timeline store config (needed for context switch reinit)
 	timelineStoreCfg := timeline.StoreConfig{
 		Type:    timeline.StoreTypeMemory,
 		MaxSize: *historyLimit,
@@ -114,46 +115,8 @@ func main() {
 		}
 		timelineStoreCfg.Path = dbPath
 	}
-	if err := timeline.InitStore(timelineStoreCfg); err != nil {
-		log.Fatalf("Failed to initialize timeline store: %v", err)
-	}
 
-	// Initialize resource cache (typed informers for core resources)
-	if err := k8s.InitResourceCache(); err != nil {
-		log.Fatalf("Failed to initialize resource cache: %v", err)
-	}
-
-	log.Printf("Resource cache initialized with %d resources", k8s.GetResourceCache().GetResourceCount())
-
-	// Initialize resource discovery (for CRD support)
-	if err := k8s.InitResourceDiscovery(); err != nil {
-		log.Printf("Warning: Failed to initialize resource discovery: %v", err)
-	}
-
-	// Initialize dynamic resource cache (for CRDs)
-	// Share the change channel with the typed cache so all changes go to SSE
-	changeCh := k8s.GetResourceCache().ChangesRaw()
-	if err := k8s.InitDynamicResourceCache(changeCh); err != nil {
-		log.Printf("Warning: Failed to initialize dynamic resource cache: %v", err)
-	}
-
-	// Warm up dynamic cache for common CRDs so they appear in initial timeline
-	k8s.WarmupCommonCRDs()
-
-	// Start full CRD discovery in background (for generic CRD topology support)
-	if dynamicCache := k8s.GetDynamicResourceCache(); dynamicCache != nil {
-		dynamicCache.DiscoverAllCRDs()
-	}
-
-	// Initialize metrics history collection (polls metrics-server every 30s)
-	k8s.InitMetricsHistory()
-
-	// Initialize Helm client
-	if err := helm.Initialize(k8s.GetKubeconfigPath()); err != nil {
-		log.Printf("Warning: Failed to initialize Helm client: %v", err)
-	}
-
-	// Register Helm reset/reinit functions for context switching
+	// Register Helm reset/reinit functions for context switching (before any init)
 	k8s.RegisterHelmFuncs(helm.ResetClient, helm.ReinitClient)
 
 	// Register timeline store reset/reinit functions for context switching
@@ -161,17 +124,12 @@ func main() {
 		return timeline.ReinitStore(timelineStoreCfg)
 	})
 
-	// Initialize traffic source manager with full config for port-forward support
-	if err := traffic.InitializeWithConfig(k8s.GetClient(), k8s.GetConfig(), k8s.GetContextName()); err != nil {
-		log.Printf("Warning: Failed to initialize traffic manager: %v", err)
-	}
-
 	// Register traffic reset/reinit functions for context switching
 	k8s.RegisterTrafficFuncs(traffic.Reset, func() error {
 		return traffic.ReinitializeWithConfig(k8s.GetClient(), k8s.GetConfig(), k8s.GetContextName())
 	})
 
-	// Create and start server
+	// Create server (but don't start yet)
 	cfg := server.Config{
 		Port:       *port,
 		DevMode:    *devMode,
@@ -200,7 +158,17 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// Open browser unless disabled
+	// Start server in background so browser can connect while we initialize
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	// Give server a moment to start accepting connections
+	time.Sleep(100 * time.Millisecond)
+
+	// Open browser - it can now connect and see progress updates
 	if !*noBrowser {
 		url := fmt.Sprintf("http://localhost:%d", *port)
 		if *namespace != "" {
@@ -209,10 +177,107 @@ func main() {
 		go openBrowser(url)
 	}
 
-	// Start server (blocks)
-	if err := srv.Start(); err != nil {
-		log.Fatalf("Server error: %v", err)
+	// Now initialize cluster connection and caches (browser will see progress via SSE)
+	initializeCluster(timelineStoreCfg)
+
+	// Block forever (server is running in background)
+	select {}
+}
+
+// initializeCluster connects to the cluster and initializes all caches.
+// Progress is broadcast via SSE so the browser can show updates.
+func initializeCluster(timelineStoreCfg timeline.StoreConfig) {
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnecting,
+		Context:     k8s.GetContextName(),
+		ProgressMsg: "Testing cluster connectivity...",
+	})
+
+	// Preflight check: verify cluster connectivity before starting informers
+	clusterAccessErr := checkClusterAccess()
+
+	// If cluster access failed, set disconnected state and skip cache initialization
+	if clusterAccessErr != nil {
+		k8s.SetConnectionStatus(k8s.ConnectionStatus{
+			State:     k8s.StateDisconnected,
+			Context:   k8s.GetContextName(),
+			Error:     clusterAccessErr.Error(),
+			ErrorType: k8s.ClassifyError(clusterAccessErr),
+		})
+		log.Printf("Warning: Cluster not reachable, starting in disconnected mode")
+		return
 	}
+
+	// Cluster is accessible - initialize all caches with progress updates
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnecting,
+		Context:     k8s.GetContextName(),
+		ProgressMsg: "Initializing timeline...",
+	})
+	if err := timeline.InitStore(timelineStoreCfg); err != nil {
+		log.Fatalf("Failed to initialize timeline store: %v", err)
+	}
+
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnecting,
+		Context:     k8s.GetContextName(),
+		ProgressMsg: "Loading workloads...",
+	})
+	if err := k8s.InitResourceCache(); err != nil {
+		log.Fatalf("Failed to initialize resource cache: %v", err)
+	}
+	log.Printf("Resource cache initialized with %d resources", k8s.GetResourceCache().GetResourceCount())
+
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnecting,
+		Context:     k8s.GetContextName(),
+		ProgressMsg: "Discovering API resources...",
+	})
+	if err := k8s.InitResourceDiscovery(); err != nil {
+		log.Printf("Warning: Failed to initialize resource discovery: %v", err)
+	}
+
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnecting,
+		Context:     k8s.GetContextName(),
+		ProgressMsg: "Loading custom resources...",
+	})
+	changeCh := k8s.GetResourceCache().ChangesRaw()
+	if err := k8s.InitDynamicResourceCache(changeCh); err != nil {
+		log.Printf("Warning: Failed to initialize dynamic resource cache: %v", err)
+	}
+
+	// Warm up dynamic cache for common CRDs so they appear in initial timeline
+	k8s.WarmupCommonCRDs()
+
+	// Start full CRD discovery in background (for generic CRD topology support)
+	if dynamicCache := k8s.GetDynamicResourceCache(); dynamicCache != nil {
+		dynamicCache.DiscoverAllCRDs()
+	}
+
+	// Initialize metrics history collection (polls metrics-server every 30s)
+	k8s.InitMetricsHistory()
+
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnecting,
+		Context:     k8s.GetContextName(),
+		ProgressMsg: "Loading Helm releases...",
+	})
+	if err := helm.Initialize(k8s.GetKubeconfigPath()); err != nil {
+		log.Printf("Warning: Failed to initialize Helm client: %v", err)
+	}
+
+	// Initialize traffic source manager with full config for port-forward support
+	if err := traffic.InitializeWithConfig(k8s.GetClient(), k8s.GetConfig(), k8s.GetContextName()); err != nil {
+		log.Printf("Warning: Failed to initialize traffic manager: %v", err)
+	}
+
+	// Set connected state
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnected,
+		Context:     k8s.GetContextName(),
+		ClusterName: k8s.GetClusterName(),
+	})
 }
 
 func openBrowser(url string) {
@@ -237,7 +302,8 @@ func openBrowser(url string) {
 }
 
 // checkClusterAccess verifies connectivity to the Kubernetes cluster before starting informers.
-// Returns a user-friendly error if authentication or connection fails.
+// Returns the error from the K8s API if connection or authentication fails.
+// The error is handled gracefully - the UI will show it with retry options.
 func checkClusterAccess() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -249,100 +315,5 @@ func checkClusterAccess() error {
 
 	// Try to list namespaces as a basic connectivity check
 	_, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
-	if err == nil {
-		return nil
-	}
-
-	errStr := err.Error()
-	errLower := strings.ToLower(errStr)
-
-	// Detect authentication/authorization errors
-	if strings.Contains(errLower, "unauthorized") ||
-		strings.Contains(errLower, "forbidden") ||
-		strings.Contains(errLower, "authentication required") ||
-		strings.Contains(errLower, "token has expired") ||
-		strings.Contains(errLower, "credentials") ||
-		strings.Contains(errLower, "exec plugin") ||
-		strings.Contains(errLower, "gke-gcloud-auth-plugin") {
-
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "✗ Cluster authentication failed")
-		fmt.Fprintln(os.Stderr, "")
-
-		// Detect cloud provider and give specific hints
-		kubepath := k8s.GetKubeconfigPath()
-		if strings.Contains(errLower, "gke") || strings.Contains(errLower, "gcloud") ||
-			strings.Contains(kubepath, "gke") {
-			fmt.Fprintln(os.Stderr, "  This looks like a GKE cluster. Try:")
-			fmt.Fprintln(os.Stderr, "    gcloud container clusters get-credentials <cluster-name> --region <region>")
-		} else if strings.Contains(errLower, "eks") || strings.Contains(kubepath, "eks") {
-			fmt.Fprintln(os.Stderr, "  This looks like an EKS cluster. Try:")
-			fmt.Fprintln(os.Stderr, "    aws eks update-kubeconfig --name <cluster-name> --region <region>")
-		} else if strings.Contains(errLower, "aks") || strings.Contains(kubepath, "aks") {
-			fmt.Fprintln(os.Stderr, "  This looks like an AKS cluster. Try:")
-			fmt.Fprintln(os.Stderr, "    az aks get-credentials --name <cluster-name> --resource-group <rg>")
-		} else {
-			fmt.Fprintln(os.Stderr, "  Your cluster credentials may have expired or are invalid.")
-			fmt.Fprintln(os.Stderr, "  Refresh your kubeconfig or re-authenticate to your cluster.")
-		}
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintf(os.Stderr, "  Context: %s\n", getCurrentContext())
-		fmt.Fprintln(os.Stderr, "")
-		return fmt.Errorf("authentication failed")
-	}
-
-	// Detect connection errors
-	if strings.Contains(errLower, "connection refused") ||
-		strings.Contains(errLower, "no such host") ||
-		strings.Contains(errLower, "i/o timeout") ||
-		strings.Contains(errLower, "context deadline exceeded") ||
-		strings.Contains(errLower, "dial tcp") ||
-		strings.Contains(errLower, "tls handshake timeout") {
-
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "✗ Cannot connect to Kubernetes cluster")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  Possible causes:")
-		fmt.Fprintln(os.Stderr, "    • Cluster is not running or unreachable")
-		fmt.Fprintln(os.Stderr, "    • VPN required but not connected")
-		fmt.Fprintln(os.Stderr, "    • Firewall blocking the connection")
-		fmt.Fprintln(os.Stderr, "    • kubeconfig points to wrong cluster")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintf(os.Stderr, "  Context: %s\n", getCurrentContext())
-		if cluster := k8s.GetClusterName(); cluster != "" {
-			fmt.Fprintf(os.Stderr, "  Cluster: %s\n", cluster)
-		}
-		fmt.Fprintln(os.Stderr, "")
-		return fmt.Errorf("connection failed")
-	}
-
-	// Generic error
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "✗ Failed to access Kubernetes cluster")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintf(os.Stderr, "  Error: %s\n", truncateError(errStr, 200))
-	fmt.Fprintln(os.Stderr, "")
-	return fmt.Errorf("cluster access failed")
-}
-
-// getCurrentContext returns the current kubeconfig context name
-func getCurrentContext() string {
-	if ctx := k8s.GetContextName(); ctx != "" {
-		return ctx
-	}
-	// Fallback to kubectl if k8s client doesn't have it
-	cmd := exec.Command("kubectl", "config", "current-context")
-	out, err := cmd.Output()
-	if err != nil {
-		return "(unknown)"
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// truncateError shortens an error message if it's too long
-func truncateError(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
+	return err
 }

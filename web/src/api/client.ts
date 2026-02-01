@@ -168,6 +168,9 @@ export interface DashboardResponse {
   trafficSummary: DashboardTrafficSummary | null
   helmReleases: DashboardHelmSummary
   metrics: DashboardMetrics | null
+}
+
+export interface DashboardCRDsResponse {
   topCRDs: DashboardCRDCount[]
 }
 
@@ -178,6 +181,17 @@ export function useDashboard(namespace?: string) {
     queryFn: () => fetchJSON(`/dashboard${params}`),
     staleTime: 15000, // 15 seconds
     refetchInterval: 30000, // Refresh every 30 seconds
+  })
+}
+
+// CRD counts - loaded lazily after main dashboard
+export function useDashboardCRDs(namespace?: string) {
+  const params = namespace ? `?namespace=${namespace}` : ''
+  return useQuery<DashboardCRDsResponse>({
+    queryKey: ['dashboard-crds', namespace],
+    queryFn: () => fetchJSON(`/dashboard/crds${params}`),
+    staleTime: 30000, // 30 seconds - less frequent updates
+    refetchInterval: 60000, // Refresh every minute
   })
 }
 

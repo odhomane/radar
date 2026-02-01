@@ -106,6 +106,7 @@ func (s *Server) setupRoutes() {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", s.handleHealth)
 		r.Get("/dashboard", s.handleDashboard)
+		r.Get("/dashboard/crds", s.handleDashboardCRDs)
 		r.Get("/cluster-info", s.handleClusterInfo)
 		r.Get("/capabilities", s.handleCapabilities)
 		r.Get("/topology", s.handleTopology)
@@ -193,6 +194,10 @@ func (s *Server) setupRoutes() {
 		// Context routes
 		r.Get("/contexts", s.handleListContexts)
 		r.Post("/contexts/{name}", s.handleSwitchContext)
+
+		// Connection status routes (for graceful startup)
+		r.Get("/connection", s.handleConnectionStatus)
+		r.Post("/connection/retry", s.handleConnectionRetry)
 	})
 
 	// Static files (frontend) - SPA fallback to index.html
@@ -312,6 +317,9 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
+	if !s.requireConnected(w) {
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	viewMode := r.URL.Query().Get("view")
 
@@ -332,6 +340,9 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
+	if !s.requireConnected(w) {
+		return
+	}
 	cache := k8s.GetResourceCache()
 	if cache == nil {
 		s.writeError(w, http.StatusServiceUnavailable, "Resource cache not available")
@@ -372,6 +383,9 @@ func (s *Server) handleAPIResources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListResources(w http.ResponseWriter, r *http.Request) {
+	if !s.requireConnected(w) {
+		return
+	}
 	kind := chi.URLParam(r, "kind")
 	namespace := r.URL.Query().Get("namespace")
 
@@ -560,6 +574,9 @@ func setTypeMeta(resource any) {
 }
 
 func (s *Server) handleGetResource(w http.ResponseWriter, r *http.Request) {
+	if !s.requireConnected(w) {
+		return
+	}
 	kind := normalizeKind(chi.URLParam(r, "kind"))
 	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
@@ -739,6 +756,9 @@ func (s *Server) handleNodeMetricsHistory(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if !s.requireConnected(w) {
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 
 	cache := k8s.GetResourceCache()
@@ -767,6 +787,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 // handleChanges returns timeline events using the unified timeline.TimelineEvent format.
 // This is the main timeline API endpoint - it queries the timeline store directly.
 func (s *Server) handleChanges(w http.ResponseWriter, r *http.Request) {
+	if !s.requireConnected(w) {
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	kind := r.URL.Query().Get("kind")
 	sinceStr := r.URL.Query().Get("since")
@@ -1064,9 +1087,22 @@ func (s *Server) handleSwitchContext(w http.ResponseWriter, r *http.Request) {
 
 	// Perform the context switch
 	if err := k8s.PerformContextSwitch(name); err != nil {
+		k8s.SetConnectionStatus(k8s.ConnectionStatus{
+			State:     k8s.StateDisconnected,
+			Context:   name,
+			Error:     err.Error(),
+			ErrorType: k8s.ClassifyError(err),
+		})
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Set connected state after successful switch
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnected,
+		Context:     k8s.GetContextName(),
+		ClusterName: k8s.GetClusterName(),
+	})
 
 	// Return the new cluster info
 	info, err := k8s.GetClusterInfo(r.Context())
@@ -1077,6 +1113,56 @@ func (s *Server) handleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, info)
+}
+
+// Connection status handlers (for graceful startup)
+
+func (s *Server) handleConnectionStatus(w http.ResponseWriter, r *http.Request) {
+	status := k8s.GetConnectionStatus()
+	contexts, _ := k8s.GetAvailableContexts() // Always works (reads kubeconfig)
+
+	s.writeJSON(w, map[string]any{
+		"state":           status.State,
+		"context":         status.Context,
+		"clusterName":     status.ClusterName,
+		"error":           status.Error,
+		"errorType":       status.ErrorType,
+		"progressMessage": status.ProgressMsg,
+		"contexts":        contexts,
+	})
+}
+
+func (s *Server) handleConnectionRetry(w http.ResponseWriter, r *http.Request) {
+	ctx := k8s.GetContextName()
+	if ctx == "" {
+		s.writeError(w, http.StatusBadRequest, "no context configured")
+		return
+	}
+
+	// Stop all active sessions before retrying
+	StopAllSessions()
+
+	// Reconnect to the same context (reuses PerformContextSwitch which handles full reinit)
+	if err := k8s.PerformContextSwitch(ctx); err != nil {
+		// Set disconnected state with error
+		k8s.SetConnectionStatus(k8s.ConnectionStatus{
+			State:     k8s.StateDisconnected,
+			Context:   ctx,
+			Error:     err.Error(),
+			ErrorType: k8s.ClassifyError(err),
+		})
+		s.writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	// Set connected state after successful reconnection
+	k8s.SetConnectionStatus(k8s.ConnectionStatus{
+		State:       k8s.StateConnected,
+		Context:     k8s.GetContextName(),
+		ClusterName: k8s.GetClusterName(),
+	})
+
+	s.writeJSON(w, k8s.GetConnectionStatus())
 }
 
 // Helper methods
@@ -1095,6 +1181,16 @@ func (s *Server) writeError(w http.ResponseWriter, status int, message string) {
 	if err := json.NewEncoder(w).Encode(map[string]string{"error": message}); err != nil {
 		log.Printf("Failed to encode error response: %v", err)
 	}
+}
+
+// requireConnected returns false and writes a 503 error if not connected to cluster.
+// Use at the start of handlers that require an active cluster connection.
+func (s *Server) requireConnected(w http.ResponseWriter) bool {
+	if !k8s.IsConnected() {
+		s.writeError(w, http.StatusServiceUnavailable, "Not connected to cluster")
+		return false
+	}
+	return true
 }
 
 // Debug handlers for event pipeline diagnostics
