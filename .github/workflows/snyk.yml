@@ -35,16 +35,17 @@ jobs:
         continue-on-error: true
 
       - name: Snyk code test
+        id: snyk-code
         run: snyk code test --sarif-file-output=snyk-code.sarif
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
       - name: Upload Snyk Code results to GitHub
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: snyk-code.sarif
-        if: always()
+        if: always() && steps.snyk-code.outcome == 'success'
 
   snyk-node:
     name: Snyk Node
