@@ -57,10 +57,27 @@ func doInit(opts InitOptions) error {
 	var config *rest.Config
 	var err error
 
-	// Try in-cluster config first (for when running inside a pod)
-	config, err = rest.InClusterConfig()
-	if err != nil {
-		// Fall back to kubeconfig (for local development / CLI usage)
+	// Configuration precedence (matches kubectl behavior):
+	//   1. --kubeconfig flag (opts.KubeconfigPath)
+	//   2. KUBECONFIG environment variable
+	//   3. --kubeconfig-dir flag (opts.KubeconfigDirs)
+	//   4. In-cluster config (when KUBERNETES_SERVICE_HOST is set)
+	//   5. Default ~/.kube/config
+	//
+	// We only try in-cluster config if no explicit kubeconfig is specified.
+	// This handles the case where KUBERNETES_SERVICE_HOST is set (e.g., inside
+	// a pod) but the user wants to connect to a different cluster via kubeconfig.
+	// See: https://github.com/kubernetes/kubernetes/issues/43662
+	if opts.KubeconfigPath == "" && os.Getenv("KUBECONFIG") == "" && len(opts.KubeconfigDirs) == 0 {
+		config, err = rest.InClusterConfig()
+		if err == nil {
+			contextName = "in-cluster"
+			clusterName = "in-cluster"
+		}
+	}
+
+	if config == nil {
+		// Use kubeconfig (for local development / CLI usage)
 		var loadingRules *clientcmd.ClientConfigLoadingRules
 
 		if len(opts.KubeconfigDirs) > 0 {
@@ -109,10 +126,6 @@ func doInit(opts InitOptions) error {
 			}
 			return fmt.Errorf("failed to build kubeconfig from %s: %w", kubeconfigPath, err)
 		}
-	} else {
-		// In-cluster mode
-		contextName = "in-cluster"
-		clusterName = "in-cluster"
 	}
 
 	k8sConfig = config

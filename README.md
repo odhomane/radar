@@ -103,6 +103,8 @@ radar
 | `--history-limit` | `10000` | Maximum events to retain in timeline |
 | `--version` | | Show version and exit |
 
+See [Configuration Guide](docs/configuration.md) for details on cluster connection precedence, multiple kubeconfig files, and context switching.
+
 ---
 
 ## Views

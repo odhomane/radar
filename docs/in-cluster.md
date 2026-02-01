@@ -2,6 +2,8 @@
 
 Deploy Radar to your Kubernetes cluster for shared team access.
 
+> **Note:** This guide covers deploying Radar as a pod in your cluster. If you're running Radar locally but need to understand cluster connection behavior (e.g., using `KUBECONFIG` to override in-cluster detection), see the [Configuration Guide](configuration.md).
+
 ## Quick Start
 
 ```bash
