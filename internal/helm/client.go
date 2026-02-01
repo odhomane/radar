@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1756,25 +1757,25 @@ const artifactHubBaseURL = "https://artifacthub.io/api/v1"
 // SearchArtifactHub searches for charts on ArtifactHub
 // sort can be: "relevance" (default), "stars", or "last_updated"
 func SearchArtifactHub(query string, offset, limit int, official, verified bool, sort string) (*ArtifactHubSearchResult, error) {
-	// Build query URL
-	url := fmt.Sprintf("%s/packages/search?kind=0&ts_query_web=%s&offset=%d&limit=%d",
-		artifactHubBaseURL, query, offset, limit)
+	// Build query URL (escape user input to prevent query string injection)
+	searchURL := fmt.Sprintf("%s/packages/search?kind=0&ts_query_web=%s&offset=%d&limit=%d",
+		artifactHubBaseURL, url.QueryEscape(query), offset, limit)
 
 	// Add sort parameter (ArtifactHub uses "sort" query param)
 	if sort != "" && sort != "relevance" {
-		url += "&sort=" + sort
+		searchURL += "&sort=" + url.QueryEscape(sort)
 	}
 
 	// Add filters
 	if official {
-		url += "&official=true"
+		searchURL += "&official=true"
 	}
 	if verified {
-		url += "&verified_publisher=true"
+		searchURL += "&verified_publisher=true"
 	}
 
 	// Make HTTP request
-	resp, err := httpClient.Get(url)
+	resp, err := httpClient.Get(searchURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search ArtifactHub: %w", err)
 	}
