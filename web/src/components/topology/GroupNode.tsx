@@ -144,38 +144,44 @@ export const GroupNode = memo(function GroupNode({
           ...getBorderStyle()
         }}
       >
-        {/* Header bar - uses CSS transform for zoom scaling (avoids React re-renders) */}
+        {/* Header bar - background extends full width, content scales, count fixed right */}
         {/* Hidden when hideHeader is true (single namespace view) */}
         {!hideHeader && (
           <div
-            className="flex items-center cursor-pointer group-header-scaled"
+            className="w-full cursor-pointer relative flex items-center"
             onClick={() => onToggleCollapse(id)}
-            style={{
-              padding: '20px 24px',
-              gap: '16px',
-              ...getHeaderBgStyle()
-            }}
+            style={getHeaderBgStyle()}
           >
-            <ChevronDown
-              className="shrink-0 w-8 h-8"
-              style={getIconStyle()}
-            />
-            <Icon
-              className="shrink-0 w-9 h-9"
-              style={getIconStyle()}
-            />
-            <span
-              className="font-bold truncate text-4xl"
-              style={getLabelStyle()}
+            {/* Scaled content */}
+            <div
+              className="flex items-center group-header-scaled"
+              style={{
+                padding: '20px 24px',
+                gap: '16px',
+              }}
             >
-              {name}
-            </span>
-            {label && (
-              <span className="text-sm text-theme-text-secondary truncate">
-                ({label})
+              <ChevronDown
+                className="shrink-0 w-8 h-8"
+                style={getIconStyle()}
+              />
+              <Icon
+                className="shrink-0 w-9 h-9"
+                style={getIconStyle()}
+              />
+              <span
+                className="font-bold truncate text-4xl"
+                style={getLabelStyle()}
+              >
+                {name}
               </span>
-            )}
-            <span className="ml-auto shrink-0 font-semibold text-xl text-theme-text-secondary bg-theme-surface/60 rounded-xl px-4 py-2">
+              {label && (
+                <span className="text-sm text-theme-text-secondary truncate">
+                  ({label})
+                </span>
+              )}
+            </div>
+            {/* Count badge - fixed size, anchored top-right */}
+            <span className="absolute right-4 top-4 shrink-0 font-medium text-sm text-theme-text-secondary bg-theme-surface/70 rounded-lg px-3 py-1">
               {nodeCount}
             </span>
           </div>

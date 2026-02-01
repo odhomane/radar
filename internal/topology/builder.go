@@ -1619,7 +1619,19 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		}
 	}
 
+	// 15. Add generic CRD nodes connected via owner references
+	// Only includes CRDs already being watched and with owner refs to existing nodes
+	if opts.IncludeGenericCRDs {
+		nodes, edges = b.addGenericCRDNodes(nodes, edges, opts)
+	}
+
 	topo := &Topology{Nodes: nodes, Edges: edges, Warnings: warnings}
+
+	// Add CRD discovery status
+	if dynamicCache := k8s.GetDynamicResourceCache(); dynamicCache != nil {
+		topo.CRDDiscoveryStatus = string(dynamicCache.GetDiscoveryStatus())
+	}
+
 	return truncateTopologyIfNeeded(topo, opts), nil
 }
 
@@ -1855,6 +1867,12 @@ func (b *Builder) buildTrafficTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	topo := &Topology{Nodes: nodes, Edges: edges, Warnings: warnings}
+
+	// Add CRD discovery status
+	if dynamicCache := k8s.GetDynamicResourceCache(); dynamicCache != nil {
+		topo.CRDDiscoveryStatus = string(dynamicCache.GetDiscoveryStatus())
+	}
+
 	return truncateTopologyIfNeeded(topo, opts), nil
 }
 
@@ -2258,6 +2276,158 @@ func truncateTopologyIfNeeded(topo *Topology, opts BuildOptions) *Topology {
 	))
 
 	return topo
+}
+
+// extractGenericStatus determines health from common CRD status patterns
+func extractGenericStatus(resource *unstructured.Unstructured) HealthStatus {
+	status, found, _ := unstructured.NestedMap(resource.Object, "status")
+	if !found {
+		return StatusUnknown
+	}
+
+	// Check conditions (most common pattern)
+	if conditions, ok, _ := unstructured.NestedSlice(status, "conditions"); ok {
+		for _, c := range conditions {
+			if cond, ok := c.(map[string]any); ok {
+				condType, _ := cond["type"].(string)
+				if condType == "Ready" || condType == "Available" || condType == "Succeeded" {
+					switch cond["status"] {
+					case "True":
+						return StatusHealthy
+					case "False":
+						return StatusUnhealthy
+					}
+				}
+			}
+		}
+	}
+
+	// Check phase field
+	if phase, ok, _ := unstructured.NestedString(status, "phase"); ok {
+		switch strings.ToLower(phase) {
+		case "running", "active", "ready", "succeeded", "bound":
+			return StatusHealthy
+		case "pending", "progressing":
+			return StatusDegraded
+		case "failed", "error":
+			return StatusUnhealthy
+		}
+	}
+
+	return StatusUnknown
+}
+
+// addGenericCRDNodes adds CRD nodes that have owner references to existing topology nodes.
+// This enables the topology to display ANY CRD type without hardcoding, as long as
+// the CRD has an owner reference chain leading to a known topology node.
+func (b *Builder) addGenericCRDNodes(nodes []Node, edges []Edge, opts BuildOptions) ([]Node, []Edge) {
+	dynamicCache := k8s.GetDynamicResourceCache()
+	resourceDiscovery := k8s.GetResourceDiscovery()
+	if dynamicCache == nil || resourceDiscovery == nil {
+		return nodes, edges
+	}
+
+	// Build set of existing node IDs for fast lookup
+	existingIDs := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		existingIDs[node.ID] = true
+	}
+
+	// Skip kinds already handled explicitly by buildResourcesTopology
+	processedKinds := map[string]bool{
+		"rollout": true, "application": true, "kustomization": true,
+		"helmrelease": true, "gitrepository": true,
+		// Core types handled by typed informers
+		"deployment": true, "daemonset": true, "statefulset": true,
+		"replicaset": true, "pod": true, "service": true, "ingress": true,
+		"job": true, "cronjob": true, "configmap": true, "secret": true,
+		"persistentvolumeclaim": true, "horizontalpodautoscaler": true,
+		// Also skip namespace (not typically owned)
+		"namespace": true,
+	}
+
+	// Track per-kind counts to prevent any single CRD type from overwhelming the topology
+	crdCounts := make(map[string]int)
+	maxPerKind := 50
+
+	for _, gvr := range dynamicCache.GetWatchedResources() {
+		kind := resourceDiscovery.GetKindForGVR(gvr)
+		if kind == "" {
+			continue
+		}
+		kindLower := strings.ToLower(kind)
+
+		// Skip if already processed or not a CRD
+		if processedKinds[kindLower] {
+			continue
+		}
+		if !resourceDiscovery.IsCRD(kind) {
+			continue
+		}
+		processedKinds[kindLower] = true
+
+		resources, err := dynamicCache.List(gvr, opts.Namespace)
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list %s resources for generic CRD support: %v", kind, err)
+			continue
+		}
+
+		for _, resource := range resources {
+			if crdCounts[kindLower] >= maxPerKind {
+				break
+			}
+
+			ownerRefs := resource.GetOwnerReferences()
+			if len(ownerRefs) == 0 {
+				continue
+			}
+
+			ns := resource.GetNamespace()
+			name := resource.GetName()
+			nodeID := fmt.Sprintf("%s/%s/%s", kindLower, ns, name)
+
+			// Skip if already in topology
+			if existingIDs[nodeID] {
+				continue
+			}
+
+			// Check if any owner exists in the topology
+			var ownerEdges []Edge
+			for _, ref := range ownerRefs {
+				ownerKindLower := strings.ToLower(ref.Kind)
+				ownerID := fmt.Sprintf("%s/%s/%s", ownerKindLower, ns, ref.Name)
+				if existingIDs[ownerID] {
+					ownerEdges = append(ownerEdges, Edge{
+						ID:     fmt.Sprintf("%s-to-%s", ownerID, nodeID),
+						Source: ownerID,
+						Target: nodeID,
+						Type:   EdgeManages,
+					})
+				}
+			}
+
+			// Only add node if at least one owner exists in topology
+			if len(ownerEdges) == 0 {
+				continue
+			}
+
+			nodes = append(nodes, Node{
+				ID:     nodeID,
+				Kind:   NodeKind(kind),
+				Name:   name,
+				Status: extractGenericStatus(resource),
+				Data: map[string]any{
+					"namespace": ns,
+					"labels":    resource.GetLabels(),
+				},
+			})
+			edges = append(edges, ownerEdges...)
+			existingIDs[nodeID] = true
+			crdCounts[kindLower]++
+		}
+	}
+
+	return nodes, edges
 }
 
 // Unused but needed for imports

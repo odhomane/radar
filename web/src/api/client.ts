@@ -183,11 +183,17 @@ export function useDashboard(namespace?: string) {
 
 // Cluster info
 export function useClusterInfo() {
-  return useQuery<ClusterInfo>({
+  const query = useQuery<ClusterInfo>({
     queryKey: ['cluster-info'],
     queryFn: () => fetchJSON('/cluster-info'),
     staleTime: 60000, // 1 minute
+    // Poll faster when CRD discovery is in progress
+    refetchInterval: (query) => {
+      const status = query.state.data?.crdDiscoveryStatus
+      return status === 'discovering' ? 2000 : false
+    },
   })
+  return query
 }
 
 // Runtime stats for debug overlay

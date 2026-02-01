@@ -8,7 +8,8 @@ export interface Capabilities {
   secrets: boolean     // List secrets
 }
 
-export type NodeKind =
+// Core node kinds that have specific UI handling
+export type CoreNodeKind =
   | 'Internet'
   | 'Ingress'
   | 'Service'
@@ -30,6 +31,9 @@ export type NodeKind =
   | 'CronJob'
   | 'PVC'
   | 'Namespace'
+
+// NodeKind can be a core kind or any arbitrary CRD kind string
+export type NodeKind = CoreNodeKind | (string & {})
 
 export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy' | 'unknown'
 
@@ -60,6 +64,7 @@ export interface Topology {
   totalNodes?: number // Total nodes before truncation (only set if truncated)
   largeCluster?: boolean // True if cluster exceeds large cluster threshold
   hiddenKinds?: string[] // Resource kinds auto-hidden for performance
+  crdDiscoveryStatus?: 'idle' | 'discovering' | 'ready' // CRD discovery status
 }
 
 // K8s Event (from SSE stream)
@@ -189,6 +194,7 @@ export interface ClusterInfo {
   nodeCount: number
   podCount: number
   namespaceCount: number
+  crdDiscoveryStatus?: 'idle' | 'discovering' | 'ready'
 }
 
 // Context info for context switching

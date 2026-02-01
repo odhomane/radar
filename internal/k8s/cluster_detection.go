@@ -11,13 +11,14 @@ import (
 
 // ClusterInfo contains detected cluster information
 type ClusterInfo struct {
-	Context           string `json:"context"`  // kubeconfig context name
-	Cluster           string `json:"cluster"`  // cluster name from kubeconfig
-	Platform          string `json:"platform"` // gke, gke-autopilot, eks, aks, minikube, kind, docker-desktop, generic
-	KubernetesVersion string `json:"kubernetesVersion"`
-	NodeCount         int    `json:"nodeCount"`
-	PodCount          int    `json:"podCount"`
-	NamespaceCount    int    `json:"namespaceCount"`
+	Context            string `json:"context"`                      // kubeconfig context name
+	Cluster            string `json:"cluster"`                      // cluster name from kubeconfig
+	Platform           string `json:"platform"`                     // gke, gke-autopilot, eks, aks, minikube, kind, docker-desktop, generic
+	KubernetesVersion  string `json:"kubernetesVersion"`
+	NodeCount          int    `json:"nodeCount"`
+	PodCount           int    `json:"podCount"`
+	NamespaceCount     int    `json:"namespaceCount"`
+	CRDDiscoveryStatus string `json:"crdDiscoveryStatus,omitempty"` // idle, discovering, ready
 }
 
 // GetClusterInfo returns detected cluster information
@@ -49,6 +50,12 @@ func GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
 		if namespaces, err := cache.Namespaces().List(labels.Everything()); err == nil {
 			info.NamespaceCount = len(namespaces)
 		}
+	}
+
+	// Get CRD discovery status
+	dynamicCache := GetDynamicResourceCache()
+	if dynamicCache != nil {
+		info.CRDDiscoveryStatus = string(dynamicCache.GetDiscoveryStatus())
 	}
 
 	return info, nil
