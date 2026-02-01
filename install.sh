@@ -37,7 +37,7 @@ fi
 echo "Installing Radar v${VERSION}..."
 
 # Download
-FILENAME="radar_${VERSION}_${OS}_${ARCH}"
+FILENAME="radar_v${VERSION}_${OS}_${ARCH}"
 if [ "$OS" = "windows" ]; then
   FILENAME="${FILENAME}.zip"
 else
