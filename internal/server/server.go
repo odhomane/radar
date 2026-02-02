@@ -128,6 +128,9 @@ func (s *Server) setupRoutes() {
 		// Pod exec (terminal)
 		r.Get("/pods/{namespace}/{name}/exec", s.handlePodExec)
 
+		// Pod debug (ephemeral container)
+		r.Post("/pods/{namespace}/{name}/debug", s.handleCreateDebugContainer)
+
 		// Metrics (from metrics.k8s.io API)
 		r.Get("/metrics/pods/{namespace}/{name}", s.handlePodMetrics)
 		r.Get("/metrics/nodes/{name}", s.handleNodeMetrics)
