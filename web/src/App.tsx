@@ -121,15 +121,30 @@ function AppInner() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // Parse namespaces from URL (supports both 'namespaces' and legacy 'namespace')
+  const parseNamespacesFromURL = (params: URLSearchParams): string[] => {
+    // Prefer 'namespaces' (plural, comma-separated)
+    const nsParam = params.get('namespaces')
+    if (nsParam) {
+      return nsParam.split(',').map(s => s.trim()).filter(Boolean)
+    }
+    // Fall back to 'namespace' (singular) for backward compatibility
+    const ns = params.get('namespace')
+    if (ns) {
+      return [ns]
+    }
+    return []
+  }
+
   // Initialize state from URL
   const getInitialState = () => {
-    const ns = searchParams.get('namespace') || ''
+    const namespaces = parseNamespacesFromURL(searchParams)
     const resource = parseResourceParam(searchParams.get('resource'))
     return {
-      namespace: ns,
+      namespaces,
       topologyMode: (searchParams.get('mode') as 'resources' | 'traffic') || 'resources',
       // Default to namespace grouping when viewing all namespaces
-      grouping: (searchParams.get('group') as GroupingMode) || (ns === '' ? 'namespace' : 'none'),
+      grouping: (searchParams.get('group') as GroupingMode) || (namespaces.length === 0 ? 'namespace' : 'none'),
       detailResource: resource,
     }
   }
@@ -167,7 +182,7 @@ function AppInner() {
     navigate({ pathname: path, search: newParams.toString() })
   }, [navigate, searchParams])
 
-  const [namespace, setNamespace] = useState<string>(getInitialState().namespace)
+  const [namespaces, setNamespaces] = useState<string[]>(getInitialState().namespaces)
   const [selectedResource, setSelectedResource] = useState<SelectedResource | null>(null)
   const [selectedHelmRelease, setSelectedHelmRelease] = useState<SelectedHelmRelease | null>(null)
   const [topologyMode, setTopologyMode] = useState<'resources' | 'traffic'>(getInitialState().topologyMode)
@@ -196,25 +211,25 @@ function AppInner() {
 
   // Compute effective grouping mode:
   // - All namespaces: must use 'namespace' or 'app' (no 'none')
-  // - Single namespace with 'none': use 'namespace' internally but hide header
-  const isSingleNamespace = namespace !== ''
+  // - Single/specific namespaces with 'none': use 'namespace' internally but hide header
+  const hasNamespaceFilter = namespaces.length > 0
   const effectiveGroupingMode: GroupingMode = useMemo(() => {
-    if (!isSingleNamespace && groupingMode === 'none') {
+    if (!hasNamespaceFilter && groupingMode === 'none') {
       // All namespaces view - force namespace grouping
       return 'namespace'
     }
-    if (isSingleNamespace && groupingMode === 'none') {
-      // Single namespace with "no grouping" - use namespace grouping for layout
+    if (hasNamespaceFilter && groupingMode === 'none') {
+      // Filtered namespaces with "no grouping" - use namespace grouping for layout
       return 'namespace'
     }
     return groupingMode
-  }, [isSingleNamespace, groupingMode])
+  }, [hasNamespaceFilter, groupingMode])
 
-  // Hide group header when viewing single namespace with "no grouping" selected
-  const hideGroupHeader = isSingleNamespace && groupingMode === 'none'
+  // Hide group header when viewing specific namespaces with "no grouping" selected
+  const hideGroupHeader = hasNamespaceFilter && groupingMode === 'none'
 
-  // Fetch namespaces
-  const { data: namespaces } = useNamespaces()
+  // Fetch available namespaces
+  const { data: availableNamespaces } = useNamespaces()
 
   // Context switch state
   const { isSwitching, targetContext, progressMessage, updateProgress, endSwitch } = useContextSwitch()
@@ -226,7 +241,7 @@ function AppInner() {
   const queryClient = useQueryClient()
 
   // SSE connection for real-time updates
-  const { topology, connected, reconnect: reconnectSSE } = useEventSource(namespace, topologyMode, {
+  const { topology, connected, reconnect: reconnectSSE } = useEventSource(namespaces, topologyMode, {
     onContextSwitchComplete: endSwitch,
     onContextSwitchProgress: updateProgress,
     onContextChanged: () => {
@@ -267,16 +282,21 @@ function AppInner() {
     })
   }, [])
 
+  // Serialize namespaces for stable dependency tracking
+  const namespacesKey = namespaces.join(',')
+
   // Update URL query params when state changes (path is handled by setMainView)
   useEffect(() => {
     const params = new URLSearchParams(searchParams)
 
-    // Update namespace param
-    if (namespace) {
-      params.set('namespace', namespace)
+    // Update namespaces param
+    if (namespaces.length > 0) {
+      params.set('namespaces', namespaces.join(','))
     } else {
-      params.delete('namespace')
+      params.delete('namespaces')
     }
+    // Remove legacy 'namespace' param if present
+    params.delete('namespace')
 
     // Update mode param
     if (topologyMode !== 'resources') {
@@ -286,7 +306,7 @@ function AppInner() {
     }
 
     // Update group param
-    if (groupingMode !== 'none' && (namespace !== '' || groupingMode !== 'namespace')) {
+    if (groupingMode !== 'none' && (namespaces.length === 0 || groupingMode !== 'namespace')) {
       params.set('group', groupingMode)
     } else {
       params.delete('group')
@@ -299,30 +319,30 @@ function AppInner() {
     if (params.toString() !== searchParams.toString()) {
       setSearchParams(params, { replace: true })
     }
-  }, [namespace, topologyMode, groupingMode, mainView, searchParams, setSearchParams])
+  }, [namespacesKey, topologyMode, groupingMode, mainView, searchParams, setSearchParams])
 
   // Sync state from URL when navigating (back/forward)
   useEffect(() => {
-    const ns = searchParams.get('namespace') || ''
+    const urlNamespaces = parseNamespacesFromURL(searchParams)
     const resource = parseResourceParam(searchParams.get('resource'))
 
-    if (ns !== namespace) setNamespace(ns)
+    if (urlNamespaces.join(',') !== namespacesKey) setNamespaces(urlNamespaces)
     // Use raw setter to avoid triggering navigate() again
     if (JSON.stringify(resource) !== JSON.stringify(detailResource)) setDetailResourceState(resource)
   }, [searchParams])
 
-  // Auto-adjust grouping when namespace changes
+  // Auto-adjust grouping when namespaces change
   useEffect(() => {
-    if (namespace === '' && groupingMode === 'none') {
+    if (namespaces.length === 0 && groupingMode === 'none') {
       // Switching to all namespaces - enable namespace grouping by default
       setGroupingMode('namespace')
-    } else if (namespace !== '' && groupingMode === 'namespace') {
-      // Switching to specific namespace - disable namespace grouping
+    } else if (namespaces.length > 0 && groupingMode === 'namespace') {
+      // Switching to specific namespaces - disable namespace grouping
       setGroupingMode('none')
     }
-  }, [namespace])
+  }, [namespacesKey])
 
-  // Clear resource selection when changing views or namespace
+  // Clear resource selection when changing views or namespaces
   // But preserve selectedResource when navigating TO resources view (e.g., from Helm deep link)
   // And don't clear detailResource if we're navigating to timeline view (could be from URL)
   const prevMainView = useRef(mainView)
@@ -335,18 +355,18 @@ function AppInner() {
       setSelectedResource(null)
     }
     setSelectedHelmRelease(null)
-    // Only clear detailResource when leaving timeline view or changing namespace
+    // Only clear detailResource when leaving timeline view or changing namespaces
     if (mainView !== 'timeline') {
       setDetailResourceState(null)
     }
   }, [mainView])
 
-  // Clear detail resource when namespace changes (separate effect)
+  // Clear detail resource when namespaces change (separate effect)
   useEffect(() => {
     setDetailResourceState(null)
     setSelectedResource(null)
     setSelectedHelmRelease(null)
-  }, [namespace])
+  }, [namespacesKey])
 
   // Filter topology based on visible kinds
   const filteredTopology = useMemo((): Topology | null => {
@@ -521,9 +541,9 @@ function AppInner() {
         <div className="flex items-center gap-3">
           {/* Namespace selector with search */}
           <NamespaceSelector
-            value={namespace}
-            onChange={setNamespace}
-            namespaces={namespaces}
+            value={namespaces}
+            onChange={setNamespaces}
+            namespaces={availableNamespaces}
           />
 
           {/* Theme toggle */}
@@ -606,7 +626,7 @@ function AppInner() {
         {/* Home dashboard */}
         {mainView === 'home' && (
           <HomeView
-            namespace={namespace}
+            namespaces={namespaces}
             topology={topology}
             onNavigateToView={setMainView}
             onNavigateToResourceKind={(kind, apiGroup) => {
@@ -678,7 +698,7 @@ function AppInner() {
                     onChange={(e) => setGroupingMode(e.target.value as GroupingMode)}
                     className="appearance-none bg-transparent text-theme-text-primary text-xs focus:outline-none cursor-pointer"
                   >
-                    {isSingleNamespace && (
+                    {hasNamespaceFilter && (
                       <option value="none" className="bg-theme-surface">No Grouping</option>
                     )}
                     <option value="namespace" className="bg-theme-surface">By Namespace</option>
@@ -717,7 +737,7 @@ function AppInner() {
         {/* Resources view */}
         {mainView === 'resources' && (
           <ResourcesView
-            namespace={namespace}
+            namespaces={namespaces}
             selectedResource={selectedResource}
             onResourceClick={(kind, ns, name, group) => {
               setSelectedResource({ kind, namespace: ns, name, group })
@@ -729,7 +749,7 @@ function AppInner() {
         {/* Timeline view */}
         {mainView === 'timeline' && !detailResource && (
           <TimelineView
-            namespace={namespace}
+            namespaces={namespaces}
             onResourceClick={(kind, ns, name) => setDetailResource({ kind, namespace: ns, name })}
             initialViewMode={(searchParams.get('view') as 'list' | 'swimlane') || undefined}
             initialFilter={(searchParams.get('filter') as 'all' | 'changes' | 'k8s_events' | 'warnings' | 'unhealthy') || undefined}
@@ -762,7 +782,7 @@ function AppInner() {
 
         {/* Traffic view */}
         {mainView === 'traffic' && (
-          <TrafficView namespace={namespace} />
+          <TrafficView namespaces={namespaces} />
         )}
 
         </ErrorBoundary>

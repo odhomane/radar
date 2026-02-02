@@ -38,7 +38,7 @@ function formatResourceAge(createdAt: string): string {
 export type ActivityTypeFilter = 'all' | 'changes' | 'k8s_events' | 'warnings' | 'unhealthy'
 
 interface TimelineListProps {
-  namespace: string
+  namespaces: string[]
   onViewChange?: (view: 'list' | 'swimlane') => void
   currentView?: 'list' | 'swimlane'
   onResourceClick?: (kind: string, namespace: string, name: string) => void
@@ -66,7 +66,7 @@ const RESOURCE_KINDS = [
   'StatefulSet',
 ]
 
-export function TimelineList({ namespace, onViewChange, currentView = 'list', onResourceClick, initialFilter, initialTimeRange }: TimelineListProps) {
+export function TimelineList({ namespaces, onViewChange, currentView = 'list', onResourceClick, initialFilter, initialTimeRange }: TimelineListProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [activityTypeFilter, setActivityTypeFilter] = useState<ActivityTypeFilter>(initialFilter ?? 'all')
   const [timeRange, setTimeRange] = useState<TimeRange>(initialTimeRange ?? '1h')
@@ -98,7 +98,7 @@ export function TimelineList({ namespace, onViewChange, currentView = 'list', on
 
   // Fetch unified timeline - always include all events, filter client-side
   const { data: activity, isLoading, refetch: refetchChanges } = useChanges({
-    namespace: namespace || undefined,
+    namespaces,
     kind: kindFilter || undefined,
     timeRange,
     includeK8sEvents: true, // Always fetch all, filter client-side for stable counts
@@ -408,7 +408,7 @@ export function TimelineList({ namespace, onViewChange, currentView = 'list', on
                 ? 'Try adjusting your filters'
                 : 'Activity will appear here when cluster changes occur'}
             </p>
-            {namespace && <p className="text-sm mt-1 text-theme-text-disabled">Searching in namespace: {namespace}</p>}
+            {namespaces && namespaces.length > 0 && <p className="text-sm mt-1 text-theme-text-disabled">Searching in: {namespaces.length === 1 ? namespaces[0] : `${namespaces.length} namespaces`}</p>}
           </div>
         ) : (
           <div className="p-4 space-y-6">

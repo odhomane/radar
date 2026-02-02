@@ -316,15 +316,36 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, caps)
 }
 
+// parseNamespaces parses the namespace filter from query parameters.
+// Supports both "namespaces" (comma-separated, preferred) and "namespace" (single, backward compat).
+func parseNamespaces(query url.Values) []string {
+	// Prefer "namespaces" (plural, comma-separated)
+	if ns := query.Get("namespaces"); ns != "" {
+		parts := strings.Split(ns, ",")
+		result := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		return result
+	}
+	// Fall back to "namespace" (singular) for backward compatibility
+	if ns := query.Get("namespace"); ns != "" {
+		return []string{ns}
+	}
+	return nil
+}
+
 func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	if !s.requireConnected(w) {
 		return
 	}
-	namespace := r.URL.Query().Get("namespace")
+	namespaces := parseNamespaces(r.URL.Query())
 	viewMode := r.URL.Query().Get("view")
 
 	opts := topology.DefaultBuildOptions()
-	opts.Namespace = namespace
+	opts.Namespaces = namespaces
 	if viewMode == "traffic" {
 		opts.ViewMode = topology.ViewModeTraffic
 	}

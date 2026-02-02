@@ -331,10 +331,10 @@ function isExternal(kind: string): boolean {
 }
 
 interface TrafficViewProps {
-  namespace: string
+  namespaces: string[]
 }
 
-export function TrafficView({ namespace }: TrafficViewProps) {
+export function TrafficView({ namespaces }: TrafficViewProps) {
   const [wizardState, setWizardState] = useState<TrafficWizardState>('detecting')
   const [timeRange, setTimeRange] = useState<string>('5m')
   const [hideSystem, setHideSystem] = useState(true)
@@ -383,7 +383,7 @@ export function TrafficView({ namespace }: TrafficViewProps) {
     isLoading: flowsLoading,
     refetch: refetchFlowsRaw,
   } = useTrafficFlows({
-    namespace,
+    namespaces,
     since: timeRange,
     // Only fetch flows when connected (not connecting and no connection error)
     enabled: wizardState === 'ready' && !isConnecting && !connectionError,

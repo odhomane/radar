@@ -25,19 +25,19 @@ export type TimelineViewMode = 'list' | 'swimlane'
 export type { ActivityTypeFilter } from './TimelineList'
 
 interface TimelineViewProps {
-  namespace: string
+  namespaces: string[]
   onResourceClick?: (kind: string, namespace: string, name: string) => void
   initialViewMode?: TimelineViewMode
   initialFilter?: 'all' | 'changes' | 'k8s_events' | 'warnings' | 'unhealthy'
   initialTimeRange?: TimeRange
 }
 
-export function TimelineView({ namespace, onResourceClick, initialViewMode, initialFilter, initialTimeRange }: TimelineViewProps) {
+export function TimelineView({ namespaces, onResourceClick, initialViewMode, initialFilter, initialTimeRange }: TimelineViewProps) {
   const [viewMode, setViewMode] = useState<TimelineViewMode>(initialViewMode ?? 'swimlane')
 
   // Fetch all activity - zoom controls what's visible in the UI
   const { data: activity, isLoading } = useChanges({
-    namespace: namespace || undefined,
+    namespaces,
     timeRange: 'all', // Fetch all available data, zoom controls the view
     includeK8sEvents: true,
     includeManaged: true, // Include Pods, ReplicaSets, etc. for hierarchical view
@@ -45,7 +45,7 @@ export function TimelineView({ namespace, onResourceClick, initialViewMode, init
   })
 
   // Fetch topology for service stack grouping
-  const { data: rawTopology } = useTopology(namespace, 'resources')
+  const { data: rawTopology } = useTopology(namespaces, 'resources')
 
   // Stabilize topology reference to prevent unnecessary lane recomputation
   // Only update the stable topology when the content meaningfully changes
@@ -70,14 +70,14 @@ export function TimelineView({ namespace, onResourceClick, initialViewMode, init
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         topology={stableTopology}
-        namespace={namespace}
+        namespaces={namespaces}
       />
     )
   }
 
   return (
     <TimelineList
-      namespace={namespace}
+      namespaces={namespaces}
       currentView={viewMode}
       onViewChange={setViewMode}
       onResourceClick={onResourceClick}

@@ -66,14 +66,14 @@ export function ResourceDetailPage({
   const relationships = resourceResponse?.relationships
 
   // Fetch topology for hierarchy building
-  const { data: topology } = useTopology(namespace, 'resources')
+  const { data: topology } = useTopology([namespace], 'resources')
 
   // Convert zoom level to TimeRange for API
   const timeRange: TimeRange = zoom <= 0.5 ? '30m' : zoom <= 1 ? '1h' : zoom <= 6 ? '6h' : zoom <= 24 ? '24h' : 'all'
 
   // Fetch events - fetch from all namespaces to capture related resources in other namespaces
   const { data: allEvents, isLoading: eventsLoading } = useChanges({
-    namespace,
+    namespaces: [namespace],
     timeRange,
     includeK8sEvents: true,
     includeManaged: true,

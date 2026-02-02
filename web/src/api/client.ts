@@ -174,10 +174,10 @@ export interface DashboardCRDsResponse {
   topCRDs: DashboardCRDCount[]
 }
 
-export function useDashboard(namespace?: string) {
-  const params = namespace ? `?namespace=${namespace}` : ''
+export function useDashboard(namespaces: string[] = []) {
+  const params = namespaces.length > 0 ? `?namespaces=${namespaces.join(',')}` : ''
   return useQuery<DashboardResponse>({
-    queryKey: ['dashboard', namespace],
+    queryKey: ['dashboard', namespaces],
     queryFn: () => fetchJSON(`/dashboard${params}`),
     staleTime: 15000, // 15 seconds
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -185,10 +185,10 @@ export function useDashboard(namespace?: string) {
 }
 
 // CRD counts - loaded lazily after main dashboard
-export function useDashboardCRDs(namespace?: string) {
-  const params = namespace ? `?namespace=${namespace}` : ''
+export function useDashboardCRDs(namespaces: string[] = []) {
+  const params = namespaces.length > 0 ? `?namespaces=${namespaces.join(',')}` : ''
   return useQuery<DashboardCRDsResponse>({
-    queryKey: ['dashboard-crds', namespace],
+    queryKey: ['dashboard-crds', namespaces],
     queryFn: () => fetchJSON(`/dashboard/crds${params}`),
     staleTime: 30000, // 30 seconds - less frequent updates
     refetchInterval: 60000, // Refresh every minute
@@ -255,14 +255,14 @@ export function useNamespaces() {
 }
 
 // Topology (for manual refresh)
-export function useTopology(namespace: string, viewMode: string = 'resources') {
+export function useTopology(namespaces: string[], viewMode: string = 'resources') {
   const params = new URLSearchParams()
-  if (namespace) params.set('namespace', namespace)
+  if (namespaces.length > 0) params.set('namespaces', namespaces.join(','))
   if (viewMode) params.set('view', viewMode)
   const queryString = params.toString()
 
   return useQuery<Topology>({
-    queryKey: ['topology', namespace, viewMode],
+    queryKey: ['topology', namespaces, viewMode],
     queryFn: () => fetchJSON(`/topology${queryString ? `?${queryString}` : ''}`),
     staleTime: 5000, // 5 seconds
   })
@@ -321,7 +321,7 @@ export function useResources<T>(kind: string, namespace?: string, group?: string
 
 // Timeline changes (unified view of changes + K8s events)
 export interface UseChangesOptions {
-  namespace?: string
+  namespaces?: string[]
   kind?: string
   timeRange?: TimeRange
   filter?: string // Filter preset name ('default', 'all', 'warnings-only', 'workloads')
@@ -350,10 +350,10 @@ function getTimeRangeDate(range: TimeRange): Date | null {
 }
 
 export function useChanges(options: UseChangesOptions = {}) {
-  const { namespace, kind, timeRange = '1h', filter = 'all', includeK8sEvents = true, includeManaged = false, limit = 200 } = options
+  const { namespaces = [], kind, timeRange = '1h', filter = 'all', includeK8sEvents = true, includeManaged = false, limit = 200 } = options
 
   const params = new URLSearchParams()
-  if (namespace) params.set('namespace', namespace)
+  if (namespaces.length > 0) params.set('namespaces', namespaces.join(','))
   if (kind) params.set('kind', kind)
   if (filter) params.set('filter', filter)
   if (!includeK8sEvents) params.set('include_k8s_events', 'false')
@@ -368,7 +368,7 @@ export function useChanges(options: UseChangesOptions = {}) {
   const queryString = params.toString()
 
   return useQuery<TimelineEvent[]>({
-    queryKey: ['changes', namespace, kind, timeRange, filter, includeK8sEvents, includeManaged, limit],
+    queryKey: ['changes', namespaces, kind, timeRange, filter, includeK8sEvents, includeManaged, limit],
     queryFn: () => fetchJSON(`/changes${queryString ? `?${queryString}` : ''}`),
     staleTime: 5000, // Consider data stale after 5 seconds to ensure fresh data on navigation
     refetchInterval: 60000, // SSE handles real-time updates; this is a fallback

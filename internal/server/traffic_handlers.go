@@ -43,11 +43,14 @@ func (s *Server) handleGetTrafficFlows(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse query parameters
-	namespace := r.URL.Query().Get("namespace")
+	namespaces := parseNamespaces(r.URL.Query())
 	sinceStr := r.URL.Query().Get("since")
 
 	opts := traffic.DefaultFlowOptions()
-	opts.Namespace = namespace
+	// Traffic only supports single namespace filter
+	if len(namespaces) == 1 {
+		opts.Namespace = namespaces[0]
+	}
 
 	if sinceStr != "" {
 		duration, err := time.ParseDuration(sinceStr)

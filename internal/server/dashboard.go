@@ -195,7 +195,12 @@ type DashboardHelmRelease struct {
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	namespace := r.URL.Query().Get("namespace")
+	namespaces := parseNamespaces(r.URL.Query())
+	// For backward compat with single namespace string in internal functions
+	namespace := ""
+	if len(namespaces) == 1 {
+		namespace = namespaces[0]
+	}
 
 	cache := k8s.GetResourceCache()
 	if cache == nil {
@@ -224,10 +229,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	resp.RecentChanges = s.getDashboardRecentChanges(r.Context(), namespace)
 
 	// Topology summary
-	resp.TopologySummary = s.getDashboardTopologySummary(namespace)
+	resp.TopologySummary = s.getDashboardTopologySummary(namespaces)
 
 	// Traffic summary
-	resp.TrafficSummary = s.getDashboardTrafficSummary(r.Context(), namespace)
+	resp.TrafficSummary = s.getDashboardTrafficSummary(r.Context(), namespaces)
 
 	// Helm releases summary
 	resp.HelmReleases = s.getDashboardHelmSummary(namespace)
@@ -906,10 +911,10 @@ func (s *Server) getDashboardRecentChanges(ctx context.Context, namespace string
 	return result
 }
 
-func (s *Server) getDashboardTopologySummary(namespace string) DashboardTopologySummary {
+func (s *Server) getDashboardTopologySummary(namespaces []string) DashboardTopologySummary {
 	// Use cached topology only when no namespace filter is active,
 	// since the cached topology's namespace scope may not match the request.
-	if namespace == "" {
+	if len(namespaces) == 0 {
 		if cachedTopo := s.broadcaster.GetCachedTopology(); cachedTopo != nil {
 			return DashboardTopologySummary{
 				NodeCount: len(cachedTopo.Nodes),
@@ -920,7 +925,7 @@ func (s *Server) getDashboardTopologySummary(namespace string) DashboardTopology
 
 	// Build topology with the requested namespace filter
 	opts := topology.DefaultBuildOptions()
-	opts.Namespace = namespace
+	opts.Namespaces = namespaces
 	builder := topology.NewBuilder()
 	topo, err := builder.Build(opts)
 	if err != nil {
@@ -933,7 +938,7 @@ func (s *Server) getDashboardTopologySummary(namespace string) DashboardTopology
 	}
 }
 
-func (s *Server) getDashboardTrafficSummary(ctx context.Context, namespace string) *DashboardTrafficSummary {
+func (s *Server) getDashboardTrafficSummary(ctx context.Context, namespaces []string) *DashboardTrafficSummary {
 	manager := traffic.GetManager()
 	if manager == nil {
 		return nil
@@ -945,7 +950,10 @@ func (s *Server) getDashboardTrafficSummary(ctx context.Context, namespace strin
 	}
 
 	opts := traffic.DefaultFlowOptions()
-	opts.Namespace = namespace
+	// Traffic only supports single namespace filter for now
+	if len(namespaces) == 1 {
+		opts.Namespace = namespaces[0]
+	}
 
 	response, err := manager.GetFlows(ctx, opts)
 	if err != nil || len(response.Flows) == 0 {

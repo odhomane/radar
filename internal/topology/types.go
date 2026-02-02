@@ -92,7 +92,7 @@ const LargeClusterThreshold = 1000
 
 // BuildOptions configures topology building
 type BuildOptions struct {
-	Namespace          string   // Filter to specific namespace (empty = all)
+	Namespaces         []string // Filter to specific namespaces (empty = all)
 	ViewMode           ViewMode // How to display topology
 	MaxIndividualPods  int      // Above this, pods are grouped (default: 5)
 	MaxNodes           int      // Maximum nodes to return (0 = unlimited, default: 500)
@@ -103,10 +103,40 @@ type BuildOptions struct {
 	IncludeGenericCRDs bool     // Include CRDs with owner refs to topology nodes (default: true)
 }
 
+// MatchesNamespace returns true if ns is in the allowed list, or if the list is empty (all allowed).
+// This is a standalone function that can be used by any code needing namespace filtering.
+func MatchesNamespace(namespaces []string, ns string) bool {
+	if len(namespaces) == 0 {
+		return true
+	}
+	for _, allowed := range namespaces {
+		if allowed == ns {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchesNamespaceFilter returns true if the given namespace matches the filter.
+// An empty filter means all namespaces match.
+func (opts BuildOptions) MatchesNamespaceFilter(ns string) bool {
+	return MatchesNamespace(opts.Namespaces, ns)
+}
+
+// NamespaceFilter returns the namespace to use for API queries.
+// If exactly one namespace is filtered, return it (for efficient API filtering).
+// Otherwise return empty string (query all, filter client-side).
+func (opts BuildOptions) NamespaceFilter() string {
+	if len(opts.Namespaces) == 1 {
+		return opts.Namespaces[0]
+	}
+	return ""
+}
+
 // DefaultBuildOptions returns sensible defaults
 func DefaultBuildOptions() BuildOptions {
 	return BuildOptions{
-		Namespace:          "",
+		Namespaces:         nil, // Empty = all namespaces
 		ViewMode:           ViewModeResources,
 		MaxIndividualPods:  5,
 		MaxNodes:           2000, // Limit to prevent browser crashes on large clusters
