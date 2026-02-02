@@ -1,7 +1,7 @@
 # Radar
 
 **Modern Kubernetes visibility.**
-<br>Local-first. No account. No cloud dependency. Fast.
+<br>Local-first. No account. No cloud dependency. Blazing Fast.
 
 Topology, event timeline, and service traffic — plus resource browsing, Helm management, and GitOps support for FluxCD and ArgoCD.
 
@@ -29,6 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | 
 
 - **Zero install on your cluster** — runs on your laptop, talks to the K8s API directly
 - **Single binary** — no dependencies, no agents, no CRDs
+- **Blazing fast** - smart caching, progressive loading, parallelization and other optimizations
 - **Airgapped-ready** — no external network calls, works in isolated environments
 - **Real-time** — watches your cluster via informers, pushes updates to the browser via SSE
 - **Works everywhere** — GKE, EKS, AKS, minikube, kind, k3s, or any conformant cluster
