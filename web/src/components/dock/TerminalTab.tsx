@@ -3,7 +3,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { RefreshCw, ChevronDown } from 'lucide-react'
+import { RefreshCw, ChevronDown, Bug } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Tooltip } from '../ui/Tooltip'
 
@@ -18,6 +18,7 @@ interface TerminalTabProps {
 interface TerminalMessage {
   type: 'input' | 'resize' | 'output' | 'error'
   data?: string
+  errorType?: 'shell_not_found' | 'exec_error'
   rows?: number
   cols?: number
 }
@@ -36,6 +37,8 @@ export function TerminalTab({
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [errorType, setErrorType] = useState<string | null>(null)
+  const [isCreatingDebug, setIsCreatingDebug] = useState(false)
   const [selectedContainer, setSelectedContainer] = useState(containerName)
 
   const connect = useCallback(() => {
@@ -43,6 +46,7 @@ export function TerminalTab({
 
     setIsConnecting(true)
     setError(null)
+    setErrorType(null)
 
     // Clean up existing terminal
     if (xtermRef.current) {
@@ -136,6 +140,7 @@ export function TerminalTab({
           xterm.write(msg.data)
         } else if (msg.type === 'error' && msg.data) {
           setError(msg.data)
+          setErrorType(msg.errorType || 'exec_error')
           setIsConnected(false)
         }
       } catch {
@@ -218,6 +223,38 @@ export function TerminalTab({
     setSelectedContainer(container)
   }, [])
 
+  // Create debug container for distroless pods
+  const handleCreateDebugContainer = useCallback(async () => {
+    setIsCreatingDebug(true)
+    try {
+      const response = await fetch(`/api/pods/${namespace}/${podName}/debug`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetContainer: selectedContainer,
+          image: 'busybox:latest',
+        }),
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(err.error || `HTTP ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      // Clear error and reconnect with the debug container
+      setError(null)
+      setErrorType(null)
+      setSelectedContainer(result.containerName)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create debug container')
+      setErrorType('debug_error')
+    } finally {
+      setIsCreatingDebug(false)
+    }
+  }, [namespace, podName, selectedContainer])
+
   // Refit terminal when tab becomes active (might have been resized while hidden)
   useEffect(() => {
     if (isActive && fitAddonRef.current && xtermRef.current) {
@@ -279,15 +316,53 @@ export function TerminalTab({
       {/* Terminal or error */}
       {error ? (
         <div className="absolute top-8 left-0 right-0 bottom-0 flex flex-col items-center justify-center p-4 text-center">
-          <div className="text-red-400 mb-2 text-sm">Failed to connect</div>
-          <div className="text-xs text-slate-500 mb-3">{error}</div>
-          <button
-            onClick={connect}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
-          >
-            <RefreshCw className="w-3 h-3" />
-            Retry
-          </button>
+          {errorType === 'shell_not_found' ? (
+            <>
+              <div className="text-amber-400 mb-2 text-sm">Shell not available</div>
+              <div className="text-xs text-slate-400 mb-4 max-w-md">
+                This container doesn't have a shell (/bin/sh). This is common with distroless
+                or minimal container images. You can create a debug container to troubleshoot.
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCreateDebugContainer}
+                  disabled={isCreatingDebug}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isCreatingDebug ? (
+                    <>
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Creating debug container...
+                    </>
+                  ) : (
+                    <>
+                      <Bug className="w-3 h-3" />
+                      Start debug container
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={connect}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 text-white text-xs rounded hover:bg-slate-600"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Retry
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-red-400 mb-2 text-sm">Failed to connect</div>
+              <div className="text-xs text-slate-500 mb-3">{error}</div>
+              <button
+                onClick={connect}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Retry
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div ref={terminalRef} className="absolute top-8 left-0 right-0 bottom-0" />

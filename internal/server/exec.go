@@ -6,7 +6,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
@@ -205,10 +207,47 @@ func (s *Server) handlePodExec(w http.ResponseWriter, r *http.Request) {
 		execDone <- err
 	}()
 
+	// Channel to signal WebSocket read loop should stop
+	stopReading := make(chan struct{})
+
+	// Watch for exec failure (shell not found happens quickly)
+	go func() {
+		select {
+		case err := <-execDone:
+			if err != nil {
+				errMsg := err.Error()
+				errorType := "exec_error"
+				if isShellNotFoundError(errMsg) {
+					errorType = "shell_not_found"
+				}
+				log.Printf("Exec failed (%s): %v", errorType, err)
+				sendWSErrorWithType(conn, errorType, errMsg)
+			}
+			// Signal to stop reading and close connection
+			close(stopReading)
+			conn.Close()
+		case <-r.Context().Done():
+			return
+		}
+	}()
+
 	// Read messages from WebSocket
 	for {
+		select {
+		case <-stopReading:
+			// Exec finished (with or without error), stop reading
+			goto cleanup
+		default:
+		}
+
+		// Set read deadline to allow checking stopReading periodically
+		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 		_, message, err := conn.ReadMessage()
 		if err != nil {
+			// Check if it's a timeout (expected when checking stopReading)
+			if netErr, ok := err.(interface{ Timeout() bool }); ok && netErr.Timeout() {
+				continue
+			}
 			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Printf("WebSocket read error: %v", err)
 			}
@@ -236,18 +275,108 @@ func (s *Server) handlePodExec(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+cleanup:
 	// Clean up
 	close(sizeQueue.resizeChan)
 	stdinWriter.Close()
-
-	// Wait for exec to finish
-	if err := <-execDone; err != nil {
-		log.Printf("Exec finished with error: %v", err)
-	}
 }
 
 func sendWSError(conn *websocket.Conn, msg string) {
-	errMsg := TerminalMessage{Type: "error", Data: msg}
+	sendWSErrorWithType(conn, "exec_error", msg)
+}
+
+// sendWSErrorWithType sends an error with a specific error type to help frontend distinguish error causes
+func sendWSErrorWithType(conn *websocket.Conn, errorType, msg string) {
+	errMsg := struct {
+		Type      string `json:"type"`
+		ErrorType string `json:"errorType,omitempty"`
+		Data      string `json:"data"`
+	}{
+		Type:      "error",
+		ErrorType: errorType,
+		Data:      msg,
+	}
 	data, _ := json.Marshal(errMsg)
 	conn.WriteMessage(websocket.TextMessage, data)
+}
+
+// isShellNotFoundError detects errors indicating the shell binary is missing
+func isShellNotFoundError(errMsg string) bool {
+	patterns := []string{
+		"executable file not found",
+		"no such file or directory",
+		"command not found",
+		"oci runtime exec failed",
+		"executable not found",
+		"not found in $path",
+	}
+	errLower := strings.ToLower(errMsg)
+	for _, pattern := range patterns {
+		if strings.Contains(errLower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// DebugContainerRequest is the request body for creating a debug container
+type DebugContainerRequest struct {
+	TargetContainer string `json:"targetContainer,omitempty"`
+	Image           string `json:"image,omitempty"`
+}
+
+// DebugContainerResponse is the response after creating a debug container
+type DebugContainerResponse struct {
+	ContainerName string `json:"containerName"`
+	Image         string `json:"image"`
+	Status        string `json:"status"`
+}
+
+// handleCreateDebugContainer creates an ephemeral debug container in a pod
+func (s *Server) handleCreateDebugContainer(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	podName := chi.URLParam(r, "name")
+
+	var req DebugContainerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Create ephemeral container
+	ec, err := k8s.CreateEphemeralContainer(r.Context(), k8s.EphemeralContainerOptions{
+		Namespace:       namespace,
+		PodName:         podName,
+		TargetContainer: req.TargetContainer,
+		Image:           req.Image,
+	})
+	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "not found") {
+			s.writeError(w, http.StatusNotFound, errMsg)
+			return
+		}
+		if strings.Contains(errMsg, "ephemeral containers are disabled") ||
+			strings.Contains(errMsg, "ephemeralcontainers") {
+			s.writeError(w, http.StatusBadRequest, "ephemeral containers are not enabled on this cluster")
+			return
+		}
+		log.Printf("[exec] Failed to create debug container for %s/%s: %v", namespace, podName, err)
+		s.writeError(w, http.StatusInternalServerError, errMsg)
+		return
+	}
+
+	// Wait for container to be running (with timeout)
+	err = k8s.WaitForEphemeralContainer(r.Context(), namespace, podName, ec.Name, 30*time.Second)
+	status := "running"
+	if err != nil {
+		status = "pending"
+		log.Printf("[exec] Debug container %s created but not yet running: %v", ec.Name, err)
+	}
+
+	s.writeJSON(w, DebugContainerResponse{
+		ContainerName: ec.Name,
+		Image:         ec.Image,
+		Status:        status,
+	})
 }
