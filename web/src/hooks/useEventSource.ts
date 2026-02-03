@@ -29,7 +29,7 @@ const INITIAL_RECONNECT_DELAY_MS = 3000
 const MAX_RECONNECT_DELAY_MS = 30000 // Cap at 30 seconds
 
 export function useEventSource(
-  namespace: string,
+  namespaces: string[],
   viewMode: ViewMode = 'resources',
   options?: UseEventSourceOptions
 ): UseEventSourceReturn {
@@ -47,6 +47,9 @@ export function useEventSource(
   const throttleTimeoutRef = useRef<number | null>(null)
   const currentNodeCountRef = useRef<number>(0) // Track node count for dynamic throttle
 
+  // Serialize namespaces for stable dependency
+  const namespacesKey = namespaces.join(',')
+
   // Use ref to avoid stale closures while not triggering reconnection on callback changes
   const optionsRef = useRef(options)
   optionsRef.current = options
@@ -62,8 +65,8 @@ export function useEventSource(
 
     // Build URL
     const params = new URLSearchParams()
-    if (namespace) {
-      params.set('namespace', namespace)
+    if (namespaces.length > 0) {
+      params.set('namespaces', namespaces.join(','))
     }
     if (viewMode && viewMode !== 'resources') {
       params.set('view', viewMode)
@@ -196,14 +199,14 @@ export function useEventSource(
         console.error('Failed to parse connection_state event:', e)
       }
     })
-  }, [namespace, viewMode])
+  }, [namespacesKey, viewMode])
 
   // Reconnect function for manual reconnection
   const reconnect = useCallback(() => {
     connect()
   }, [connect])
 
-  // Connect on mount and when namespace/viewMode changes
+  // Connect on mount and when namespaces/viewMode changes
   useEffect(() => {
     connect()
 
@@ -220,10 +223,10 @@ export function useEventSource(
     }
   }, [connect])
 
-  // Clear events when namespace changes
+  // Clear events when namespaces change
   useEffect(() => {
     setEvents([])
-  }, [namespace])
+  }, [namespacesKey])
 
   return {
     topology,

@@ -29,10 +29,15 @@ type PodGroupingResult struct {
 
 // PodGroupingOptions configures pod grouping behavior
 type PodGroupingOptions struct {
-	Namespace       string                                // Filter to specific namespace
+	Namespaces      []string                              // Filter to specific namespaces (empty = all)
 	ServiceMatching bool                                  // Whether to match pods to services (for traffic view)
 	ServicesByNS    map[string]map[string]*corev1.Service // Namespace -> svcKey -> service
 	ServiceIDs      map[string]string                     // svcKey -> serviceID
+}
+
+// matchesNamespaceFilter returns true if the given namespace matches the filter.
+func (opts PodGroupingOptions) matchesNamespaceFilter(ns string) bool {
+	return MatchesNamespace(opts.Namespaces, ns)
 }
 
 // GroupPods groups pods by app label or owner reference
@@ -42,7 +47,7 @@ func GroupPods(pods []*corev1.Pod, opts PodGroupingOptions) *PodGroupingResult {
 	}
 
 	for _, pod := range pods {
-		if opts.Namespace != "" && pod.Namespace != opts.Namespace {
+		if !opts.matchesNamespaceFilter(pod.Namespace) {
 			continue
 		}
 

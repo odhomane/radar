@@ -597,7 +597,7 @@ function getColumnsForKind(kind: string): Column[] {
 }
 
 interface ResourcesViewProps {
-  namespace: string
+  namespaces: string[]
   selectedResource?: SelectedResource | null
   onResourceClick?: (kind: string, namespace: string, name: string, group?: string) => void
   onKindChange?: () => void // Called when user changes resource type in sidebar
@@ -639,7 +639,7 @@ function getInitialFiltersFromURL() {
 // Sort state type
 type SortDirection = 'asc' | 'desc' | null
 
-export function ResourcesView({ namespace, selectedResource, onResourceClick, onKindChange }: ResourcesViewProps) {
+export function ResourcesView({ namespaces, selectedResource, onResourceClick, onKindChange }: ResourcesViewProps) {
   const location = useLocation()
   const initialFilters = getInitialFiltersFromURL()
   const [selectedKind, setSelectedKind] = useState<SelectedKindInfo>(getInitialKindFromURL)
@@ -873,10 +873,10 @@ export function ResourcesView({ namespace, selectedResource, onResourceClick, on
   // Fetch ALL resources using useQueries - single source of truth for both counts and display
   const resourceQueries = useQueries({
     queries: resourcesToCount.map((resource) => ({
-      queryKey: ['resources', resource.name, resource.group, namespace],
+      queryKey: ['resources', resource.name, resource.group, namespaces],
       queryFn: async () => {
         const params = new URLSearchParams()
-        if (namespace) params.set('namespace', namespace)
+        if (namespaces.length > 0) params.set('namespaces', namespaces.join(','))
         if (resource.group) params.set('group', resource.group)
         const res = await fetch(`/api/resources/${resource.name}?${params}`)
         if (!res.ok) return []
@@ -1806,7 +1806,7 @@ export function ResourcesView({ namespace, selectedResource, onResourceClick, on
             <div className="absolute inset-0 flex flex-col items-center justify-center text-theme-text-tertiary">
               <p>No {selectedKind.kind} found</p>
               {searchTerm && <p className="text-sm mt-1">No results for "{searchTerm}"</p>}
-              {namespace && <p className="text-sm mt-1 text-theme-text-disabled">Searching in namespace: {namespace}</p>}
+              {namespaces.length > 0 && <p className="text-sm mt-1 text-theme-text-disabled">Searching in {namespaces.length === 1 ? `namespace: ${namespaces[0]}` : `${namespaces.length} namespaces`}</p>}
             </div>
           ) : (
             <table className={clsx(

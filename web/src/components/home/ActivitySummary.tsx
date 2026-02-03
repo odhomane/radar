@@ -9,7 +9,7 @@ import { buildResourceHierarchy, isProblematicEvent, type ResourceLane } from '.
 import { buildHealthSpans, timeToX } from '../timeline/shared'
 
 interface ActivitySummaryProps {
-  namespace?: string
+  namespaces: string[]
   topology?: Topology | null
   onNavigate: () => void
 }
@@ -65,9 +65,9 @@ const KIND_SHORT: Record<string, string> = {
   Ingress: 'Ing',
 }
 
-export function ActivitySummary({ namespace, topology, onNavigate }: ActivitySummaryProps) {
+export function ActivitySummary({ namespaces, topology, onNavigate }: ActivitySummaryProps) {
   const { data: events, isLoading, error } = useChanges({
-    namespace,
+    namespaces,
     timeRange: '1h',
     includeK8sEvents: true,
     includeManaged: true,

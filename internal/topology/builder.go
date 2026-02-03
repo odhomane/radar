@@ -71,7 +71,7 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	// Count deployments
 	deployments, _ := b.cache.Deployments().List(labels.Everything())
 	for _, d := range deployments {
-		if opts.Namespace == "" || d.Namespace == opts.Namespace {
+		if opts.MatchesNamespaceFilter(d.Namespace) {
 			estimatedNodes++
 		}
 	}
@@ -79,7 +79,7 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	// Count statefulsets
 	statefulsets, _ := b.cache.StatefulSets().List(labels.Everything())
 	for _, s := range statefulsets {
-		if opts.Namespace == "" || s.Namespace == opts.Namespace {
+		if opts.MatchesNamespaceFilter(s.Namespace) {
 			estimatedNodes++
 		}
 	}
@@ -87,7 +87,7 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	// Count daemonsets
 	daemonsets, _ := b.cache.DaemonSets().List(labels.Everything())
 	for _, d := range daemonsets {
-		if opts.Namespace == "" || d.Namespace == opts.Namespace {
+		if opts.MatchesNamespaceFilter(d.Namespace) {
 			estimatedNodes++
 		}
 	}
@@ -95,7 +95,7 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	// Count services
 	services, _ := b.cache.Services().List(labels.Everything())
 	for _, s := range services {
-		if opts.Namespace == "" || s.Namespace == opts.Namespace {
+		if opts.MatchesNamespaceFilter(s.Namespace) {
 			estimatedNodes++
 		}
 	}
@@ -104,7 +104,7 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	pods, _ := b.cache.Pods().List(labels.Everything())
 	podCount := 0
 	for _, p := range pods {
-		if opts.Namespace == "" || p.Namespace == opts.Namespace {
+		if opts.MatchesNamespaceFilter(p.Namespace) {
 			podCount++
 		}
 	}
@@ -114,13 +114,13 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	// Count jobs and cronjobs
 	jobs, _ := b.cache.Jobs().List(labels.Everything())
 	for _, j := range jobs {
-		if opts.Namespace == "" || j.Namespace == opts.Namespace {
+		if opts.MatchesNamespaceFilter(j.Namespace) {
 			estimatedNodes++
 		}
 	}
 	cronjobs, _ := b.cache.CronJobs().List(labels.Everything())
 	for _, c := range cronjobs {
-		if opts.Namespace == "" || c.Namespace == opts.Namespace {
+		if opts.MatchesNamespaceFilter(c.Namespace) {
 			estimatedNodes++
 		}
 	}
@@ -128,7 +128,7 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	// Count ingresses
 	ingresses, _ := b.cache.Ingresses().List(labels.Everything())
 	for _, i := range ingresses {
-		if opts.Namespace == "" || i.Namespace == opts.Namespace {
+		if opts.MatchesNamespaceFilter(i.Namespace) {
 			estimatedNodes++
 		}
 	}
@@ -137,7 +137,7 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	if opts.IncludeConfigMaps {
 		configmaps, _ := b.cache.ConfigMaps().List(labels.Everything())
 		for _, c := range configmaps {
-			if opts.Namespace == "" || c.Namespace == opts.Namespace {
+			if opts.MatchesNamespaceFilter(c.Namespace) {
 				estimatedNodes++
 			}
 		}
@@ -147,7 +147,7 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	if opts.IncludePVCs {
 		pvcs, _ := b.cache.PersistentVolumeClaims().List(labels.Everything())
 		for _, p := range pvcs {
-			if opts.Namespace == "" || p.Namespace == opts.Namespace {
+			if opts.MatchesNamespaceFilter(p.Namespace) {
 				estimatedNodes++
 			}
 		}
@@ -210,7 +210,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		warnings = append(warnings, fmt.Sprintf("Failed to list Deployments: %v", err))
 	}
 	for _, deploy := range deployments {
-		if opts.Namespace != "" && deploy.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(deploy.Namespace) {
 			continue
 		}
 
@@ -273,7 +273,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		rolloutGVR, hasRollouts = resourceDiscovery.GetGVR("Rollout")
 	}
 	if hasRollouts && dynamicCache != nil {
-		rollouts, err := dynamicCache.List(rolloutGVR, opts.Namespace)
+		rollouts, err := dynamicCache.List(rolloutGVR, opts.NamespaceFilter())
 		if err != nil {
 			log.Printf("WARNING [topology] Failed to list Rollouts: %v", err)
 			warnings = append(warnings, fmt.Sprintf("Failed to list Rollouts: %v", err))
@@ -353,7 +353,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	var applicationResources []*unstructured.Unstructured              // Store for second pass
 	applicationDestNamespaces := make(map[string]string)               // appID -> destNamespace
 	if hasApplications && dynamicCache != nil {
-		applications, err := dynamicCache.List(applicationGVR, opts.Namespace)
+		applications, err := dynamicCache.List(applicationGVR, opts.NamespaceFilter())
 		if err != nil {
 			log.Printf("WARNING [topology] Failed to list ArgoCD Applications: %v", err)
 			warnings = append(warnings, fmt.Sprintf("Failed to list ArgoCD Applications: %v", err))
@@ -445,7 +445,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	kustomizationIDs := make(map[string]string)               // ns/name -> kustomizationID
 	var kustomizationResources []*unstructured.Unstructured   // Store for second pass
 	if hasKustomizations && dynamicCache != nil {
-		kustomizations, err := dynamicCache.List(kustomizationGVR, opts.Namespace)
+		kustomizations, err := dynamicCache.List(kustomizationGVR, opts.NamespaceFilter())
 		if err != nil {
 			log.Printf("WARNING [topology] Failed to list FluxCD Kustomizations: %v", err)
 			warnings = append(warnings, fmt.Sprintf("Failed to list FluxCD Kustomizations: %v", err))
@@ -511,7 +511,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 	gitRepoIDs := make(map[string]string) // ns/name -> gitRepoID
 	if hasGitRepos && dynamicCache != nil {
-		gitRepos, err := dynamicCache.List(gitRepoGVR, opts.Namespace)
+		gitRepos, err := dynamicCache.List(gitRepoGVR, opts.NamespaceFilter())
 		if err != nil {
 			log.Printf("WARNING [topology] Failed to list FluxCD GitRepositories: %v", err)
 			warnings = append(warnings, fmt.Sprintf("Failed to list FluxCD GitRepositories: %v", err))
@@ -572,7 +572,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 	helmReleaseIDs := make(map[string]string) // ns/name -> helmReleaseID
 	if hasHelmReleases && dynamicCache != nil {
-		helmReleases, err := dynamicCache.List(helmReleaseGVR, opts.Namespace)
+		helmReleases, err := dynamicCache.List(helmReleaseGVR, opts.NamespaceFilter())
 		if err != nil {
 			log.Printf("WARNING [topology] Failed to list FluxCD HelmReleases: %v", err)
 			warnings = append(warnings, fmt.Sprintf("Failed to list FluxCD HelmReleases: %v", err))
@@ -639,7 +639,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		warnings = append(warnings, fmt.Sprintf("Failed to list DaemonSets: %v", err))
 	}
 	for _, ds := range daemonsets {
-		if opts.Namespace != "" && ds.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(ds.Namespace) {
 			continue
 		}
 
@@ -693,7 +693,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		warnings = append(warnings, fmt.Sprintf("Failed to list StatefulSets: %v", err))
 	}
 	for _, sts := range statefulsets {
-		if opts.Namespace != "" && sts.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(sts.Namespace) {
 			continue
 		}
 
@@ -751,7 +751,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		warnings = append(warnings, fmt.Sprintf("Failed to list CronJobs: %v", err))
 	}
 	for _, cj := range cronjobs {
-		if opts.Namespace != "" && cj.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(cj.Namespace) {
 			continue
 		}
 
@@ -787,7 +787,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		warnings = append(warnings, fmt.Sprintf("Failed to list Jobs: %v", err))
 	}
 	for _, job := range jobs {
-		if opts.Namespace != "" && job.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(job.Namespace) {
 			continue
 		}
 
@@ -855,7 +855,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		warnings = append(warnings, fmt.Sprintf("Failed to list ReplicaSets: %v", err))
 	}
 	for _, rs := range replicasets {
-		if opts.Namespace != "" && rs.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(rs.Namespace) {
 			continue
 		}
 
@@ -934,7 +934,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	if len(pods) > 0 {
 		// Group pods using shared grouping logic
 		groupingResult := GroupPods(pods, PodGroupingOptions{
-			Namespace: opts.Namespace,
+			Namespaces: opts.Namespaces,
 		})
 
 		// Create nodes and edges for each group
@@ -989,7 +989,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	for _, svc := range services {
-		if opts.Namespace != "" && svc.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(svc.Namespace) {
 			continue
 		}
 
@@ -1095,7 +1095,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		warnings = append(warnings, fmt.Sprintf("Failed to list Ingresses: %v", err))
 	}
 	for _, ing := range ingresses {
-		if opts.Namespace != "" && ing.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(ing.Namespace) {
 			continue
 		}
 
@@ -1150,7 +1150,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 			warnings = append(warnings, fmt.Sprintf("Failed to list ConfigMaps: %v", err))
 		}
 		for _, cm := range configmaps {
-			if opts.Namespace != "" && cm.Namespace != opts.Namespace {
+			if !opts.MatchesNamespaceFilter(cm.Namespace) {
 				continue
 			}
 
@@ -1203,7 +1203,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 				warnings = append(warnings, fmt.Sprintf("Failed to list Secrets: %v", err))
 			}
 			for _, secret := range secrets {
-				if opts.Namespace != "" && secret.Namespace != opts.Namespace {
+				if !opts.MatchesNamespaceFilter(secret.Namespace) {
 					continue
 				}
 
@@ -1253,7 +1253,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 			warnings = append(warnings, fmt.Sprintf("Failed to list PersistentVolumeClaims: %v", err))
 		}
 		for _, pvc := range pvcs {
-			if opts.Namespace != "" && pvc.Namespace != opts.Namespace {
+			if !opts.MatchesNamespaceFilter(pvc.Namespace) {
 				continue
 			}
 
@@ -1316,7 +1316,7 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		warnings = append(warnings, fmt.Sprintf("Failed to list HorizontalPodAutoscalers: %v", err))
 	}
 	for _, hpa := range hpas {
-		if opts.Namespace != "" && hpa.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(hpa.Namespace) {
 			continue
 		}
 
@@ -1672,7 +1672,7 @@ func (b *Builder) buildTrafficTopology(opts BuildOptions) (*Topology, error) {
 
 	// Step 1: Find services referenced by ingresses
 	for _, ing := range ingresses {
-		if opts.Namespace != "" && ing.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(ing.Namespace) {
 			continue
 		}
 		for _, rule := range ing.Spec.Rules {
@@ -1690,7 +1690,7 @@ func (b *Builder) buildTrafficTopology(opts BuildOptions) (*Topology, error) {
 
 	// Step 2: Find all services and check which have pods
 	for _, svc := range services {
-		if opts.Namespace != "" && svc.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(svc.Namespace) {
 			continue
 		}
 		svcKey := svc.Namespace + "/" + svc.Name
@@ -1722,7 +1722,7 @@ func (b *Builder) buildTrafficTopology(opts BuildOptions) (*Topology, error) {
 	// Step 3: Build Ingress nodes and edges
 	ingressIDs := make([]string, 0)
 	for _, ing := range ingresses {
-		if opts.Namespace != "" && ing.Namespace != opts.Namespace {
+		if !opts.MatchesNamespaceFilter(ing.Namespace) {
 			continue
 		}
 
@@ -1819,7 +1819,7 @@ func (b *Builder) buildTrafficTopology(opts BuildOptions) (*Topology, error) {
 	// This prevents cluttering the graph with hundreds of individual pod nodes
 	// Uses shared grouping logic with service matching for traffic view
 	groupingResult := GroupPods(pods, PodGroupingOptions{
-		Namespace:       opts.Namespace,
+		Namespaces:      opts.Namespaces,
 		ServiceMatching: true,
 		ServicesByNS:    servicesByNS,
 		ServiceIDs:      serviceIDs,
@@ -2366,7 +2366,7 @@ func (b *Builder) addGenericCRDNodes(nodes []Node, edges []Edge, opts BuildOptio
 		}
 		processedKinds[kindLower] = true
 
-		resources, err := dynamicCache.List(gvr, opts.Namespace)
+		resources, err := dynamicCache.List(gvr, opts.NamespaceFilter())
 		if err != nil {
 			log.Printf("WARNING [topology] Failed to list %s resources for generic CRD support: %v", kind, err)
 			continue

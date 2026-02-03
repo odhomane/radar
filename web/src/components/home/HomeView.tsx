@@ -10,17 +10,17 @@ import { AlertTriangle, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 
 interface HomeViewProps {
-  namespace: string
+  namespaces: string[]
   topology: Topology | null
   onNavigateToView: (view: ExtendedMainView, params?: Record<string, string>) => void
   onNavigateToResourceKind: (kind: string, group?: string) => void
   onNavigateToResource: (resource: SelectedResource) => void
 }
 
-export function HomeView({ namespace, topology, onNavigateToView, onNavigateToResourceKind, onNavigateToResource }: HomeViewProps) {
-  const { data, isLoading, error } = useDashboard(namespace || undefined)
+export function HomeView({ namespaces, topology, onNavigateToView, onNavigateToResourceKind, onNavigateToResource }: HomeViewProps) {
+  const { data, isLoading, error } = useDashboard(namespaces)
   // CRDs load lazily after main dashboard to keep initial load fast
-  const { data: crdsData } = useDashboardCRDs(namespace || undefined)
+  const { data: crdsData } = useDashboardCRDs(namespaces)
 
   if (isLoading) {
     return (
@@ -77,7 +77,7 @@ export function HomeView({ namespace, topology, onNavigateToView, onNavigateToRe
               onNavigate={() => onNavigateToView('helm')}
             />
             <ActivitySummary
-              namespace={namespace || undefined}
+              namespaces={namespaces}
               topology={topology}
               onNavigate={() => onNavigateToView('timeline')}
             />

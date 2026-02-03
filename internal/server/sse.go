@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,14 +32,14 @@ type SSEBroadcaster struct {
 
 // ClientInfo stores information about a connected client
 type ClientInfo struct {
-	Namespace string
-	ViewMode  string // "full" or "traffic"
+	Namespaces []string // Filter to specific namespaces (empty = all)
+	ViewMode   string   // "full" or "traffic"
 }
 
 type clientRegistration struct {
-	ch        chan SSEEvent
-	namespace string
-	viewMode  string
+	ch         chan SSEEvent
+	namespaces []string
+	viewMode   string
 }
 
 // SSEEvent represents an event to send to clients
@@ -197,9 +199,9 @@ func (b *SSEBroadcaster) run() {
 				close(reg.ch) // Signal rejection by closing the channel
 				continue
 			}
-			b.clients[reg.ch] = ClientInfo{Namespace: reg.namespace, ViewMode: reg.viewMode}
+			b.clients[reg.ch] = ClientInfo{Namespaces: reg.namespaces, ViewMode: reg.viewMode}
 			b.mu.Unlock()
-			log.Printf("SSE client connected (namespace=%s, view=%s), total clients: %d", reg.namespace, reg.viewMode, len(b.clients))
+			log.Printf("SSE client connected (namespaces=%v, view=%s), total clients: %d", reg.namespaces, reg.viewMode, len(b.clients))
 
 		case ch := <-b.unregister:
 			b.mu.Lock()
@@ -308,21 +310,31 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 		return
 	}
 
-	// Group clients by namespace + viewMode filter
+	// Group clients by namespace filter + viewMode
+	// Use comma-separated namespaces string as map key since slices aren't comparable
+	// Note: namespaces are pre-sorted at subscription time for consistent grouping
 	type clientKey struct {
-		namespace string
-		viewMode  string
+		namespacesKey string // comma-separated sorted namespaces
+		viewMode      string
 	}
-	clientGroups := make(map[clientKey][]chan SSEEvent)
+	type clientGroup struct {
+		namespaces []string
+		channels   []chan SSEEvent
+	}
+	clientGroups := make(map[clientKey]*clientGroup)
 	for ch, info := range clients {
-		key := clientKey{namespace: info.Namespace, viewMode: info.ViewMode}
-		clientGroups[key] = append(clientGroups[key], ch)
+		nsKey := strings.Join(info.Namespaces, ",") // namespaces already sorted at subscribe time
+		key := clientKey{namespacesKey: nsKey, viewMode: info.ViewMode}
+		if clientGroups[key] == nil {
+			clientGroups[key] = &clientGroup{namespaces: info.Namespaces}
+		}
+		clientGroups[key].channels = append(clientGroups[key].channels, ch)
 	}
 
 	// Build topology for each group and send
-	for key, channels := range clientGroups {
+	for key, group := range clientGroups {
 		opts := topology.DefaultBuildOptions()
-		opts.Namespace = key.namespace
+		opts.Namespaces = group.namespaces
 		if key.viewMode == "traffic" {
 			opts.ViewMode = topology.ViewModeTraffic
 		}
@@ -338,11 +350,11 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() {
 			Data:  topo,
 		}
 
-		for _, ch := range channels {
+		for _, ch := range group.channels {
 			safeSend(ch, event)
 		}
-		log.Printf("Sent topology (%d nodes, %d edges) to %d clients (ns=%q, view=%s)",
-			len(topo.Nodes), len(topo.Edges), len(channels), key.namespace, key.viewMode)
+		log.Printf("Sent topology (%d nodes, %d edges) to %d clients (ns=%v, view=%s)",
+			len(topo.Nodes), len(topo.Edges), len(group.channels), group.namespaces, key.viewMode)
 	}
 }
 
@@ -377,7 +389,7 @@ func (b *SSEBroadcaster) Broadcast(event SSEEvent) {
 }
 
 // Subscribe adds a new SSE client. Returns nil if max clients reached.
-func (b *SSEBroadcaster) Subscribe(namespace, viewMode string) chan SSEEvent {
+func (b *SSEBroadcaster) Subscribe(namespaces []string, viewMode string) chan SSEEvent {
 	// Check client count before creating the channel to fail fast
 	b.mu.RLock()
 	clientCount := len(b.clients)
@@ -388,8 +400,13 @@ func (b *SSEBroadcaster) Subscribe(namespace, viewMode string) chan SSEEvent {
 		return nil
 	}
 
+	// Sort namespaces once at subscription time for consistent grouping during broadcasts
+	sortedNs := make([]string, len(namespaces))
+	copy(sortedNs, namespaces)
+	sort.Strings(sortedNs)
+
 	ch := make(chan SSEEvent, 10)
-	b.register <- clientRegistration{ch: ch, namespace: namespace, viewMode: viewMode}
+	b.register <- clientRegistration{ch: ch, namespaces: sortedNs, viewMode: viewMode}
 	return ch
 }
 
@@ -422,7 +439,7 @@ func (b *SSEBroadcaster) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
 
 	// Get filters from query
-	namespace := r.URL.Query().Get("namespace")
+	namespaces := parseNamespaces(r.URL.Query())
 	viewMode := r.URL.Query().Get("view")
 	if viewMode == "" {
 		viewMode = "full"
@@ -436,7 +453,7 @@ func (b *SSEBroadcaster) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Subscribe to events
-	eventCh := b.Subscribe(namespace, viewMode)
+	eventCh := b.Subscribe(namespaces, viewMode)
 	if eventCh == nil {
 		http.Error(w, "Too many SSE connections", http.StatusServiceUnavailable)
 		return
@@ -462,7 +479,7 @@ func (b *SSEBroadcaster) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	if status.State == k8s.StateConnected {
 		builder := topology.NewBuilder()
 		opts := topology.DefaultBuildOptions()
-		opts.Namespace = namespace
+		opts.Namespaces = namespaces
 		if viewMode == "traffic" {
 			opts.ViewMode = topology.ViewModeTraffic
 		}

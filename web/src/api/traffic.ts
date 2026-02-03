@@ -35,21 +35,22 @@ export function useTrafficSources() {
 
 // Get traffic flows
 export interface UseTrafficFlowsOptions {
-  namespace?: string
+  namespaces?: string[]
   since?: string // Duration like "5m", "1h"
   enabled?: boolean
 }
 
 export function useTrafficFlows(options: UseTrafficFlowsOptions = {}) {
-  const { namespace, since, enabled = true } = options
+  const { namespaces = [], since, enabled = true } = options
 
   const params = new URLSearchParams()
-  if (namespace) params.set('namespace', namespace)
+  // Traffic backend only supports single namespace, use first if provided
+  if (namespaces.length === 1) params.set('namespace', namespaces[0])
   if (since) params.set('since', since)
   const queryString = params.toString()
 
   return useQuery<TrafficFlowsResponse>({
-    queryKey: ['traffic-flows', namespace, since],
+    queryKey: ['traffic-flows', namespaces, since],
     queryFn: () => fetchJSON(`/traffic/flows${queryString ? `?${queryString}` : ''}`),
     staleTime: 5000, // 5 seconds
     enabled,

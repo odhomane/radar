@@ -43,7 +43,7 @@ interface TimelineSwimlanesProps {
   viewMode?: 'list' | 'swimlane'
   onViewModeChange?: (mode: 'list' | 'swimlane') => void
   topology?: Topology
-  namespace?: string
+  namespaces?: string[]
 }
 
 interface ResourceLane extends BaseResourceLane {
@@ -166,7 +166,7 @@ function calculateInterestingnessWithBreakdown(lane: ResourceLane): ScoreBreakdo
   return breakdown
 }
 
-export function TimelineSwimlanes({ events, isLoading, onResourceClick, viewMode, onViewModeChange, topology, namespace }: TimelineSwimlanesProps) {
+export function TimelineSwimlanes({ events, isLoading, onResourceClick, viewMode, onViewModeChange, topology, namespaces }: TimelineSwimlanesProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -627,7 +627,7 @@ export function TimelineSwimlanes({ events, isLoading, onResourceClick, viewMode
                   <p className="text-sm mt-1">
                     {searchTerm ? `No results for "${searchTerm}"` : 'Try adjusting your filters'}
                   </p>
-                  {namespace && <p className="text-sm mt-1 text-theme-text-disabled">Searching in namespace: {namespace}</p>}
+                  {namespaces && namespaces.length > 0 && <p className="text-sm mt-1 text-theme-text-disabled">Searching in: {namespaces.length === 1 ? namespaces[0] : `${namespaces.length} namespaces`}</p>}
                 </>
               ) : (
                 <>
