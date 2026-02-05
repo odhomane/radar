@@ -207,10 +207,35 @@ func (s *Server) handlePodExec(w http.ResponseWriter, r *http.Request) {
 		execDone <- err
 	}()
 
-	// Channel to signal WebSocket read loop should stop
-	stopReading := make(chan struct{})
+	// Channel to receive WebSocket messages from reader goroutine
+	msgChan := make(chan []byte, 1)
+	readErrChan := make(chan error, 1)
 
-	// Watch for exec failure (shell not found happens quickly)
+	// Read WebSocket messages in a separate goroutine
+	// Block on reads - use conn.Close() from watcher to unblock
+	go func() {
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				// Any error (including from Close()) means we're done
+				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) &&
+					!websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					select {
+					case readErrChan <- err:
+					default:
+					}
+				}
+				return
+			}
+			select {
+			case msgChan <- message:
+			default:
+				// Drop message if main loop isn't reading
+			}
+		}
+	}()
+
+	// Watch for exec completion - close connection to unblock reader
 	go func() {
 		select {
 		case err := <-execDone:
@@ -223,60 +248,51 @@ func (s *Server) handlePodExec(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Exec failed (%s): %v", errorType, err)
 				sendWSErrorWithType(conn, errorType, errMsg)
 			}
-			// Signal to stop reading and close connection
-			close(stopReading)
+			// Close connection to unblock reader goroutine
 			conn.Close()
 		case <-r.Context().Done():
-			return
+			conn.Close()
 		}
 	}()
 
-	// Read messages from WebSocket
+	// Main loop - process messages until exec finishes or read error
 	for {
 		select {
-		case <-stopReading:
-			// Exec finished (with or without error), stop reading
+		case <-execDone:
+			// Exec finished, exit loop
 			goto cleanup
-		default:
-		}
-
-		// Set read deadline to allow checking stopReading periodically
-		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			// Check if it's a timeout (expected when checking stopReading)
-			if netErr, ok := err.(interface{ Timeout() bool }); ok && netErr.Timeout() {
-				continue
-			}
+		case err := <-readErrChan:
+			// WebSocket read error
 			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Printf("WebSocket read error: %v", err)
 			}
-			break
-		}
-
-		var msg TerminalMessage
-		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("WebSocket: invalid terminal message: %v", err)
-			continue
-		}
-
-		switch msg.Type {
-		case "input":
-			stdinWriter.Write([]byte(msg.Data))
-		case "resize":
-			select {
-			case sizeQueue.resizeChan <- remotecommand.TerminalSize{
-				Width:  msg.Cols,
-				Height: msg.Rows,
-			}:
-			default:
-				// Drop resize if channel full
+			goto cleanup
+		case message := <-msgChan:
+			var msg TerminalMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				log.Printf("WebSocket: invalid terminal message: %v", err)
+				continue
 			}
+
+			switch msg.Type {
+			case "input":
+				stdinWriter.Write([]byte(msg.Data))
+			case "resize":
+				select {
+				case sizeQueue.resizeChan <- remotecommand.TerminalSize{
+					Width:  msg.Cols,
+					Height: msg.Rows,
+				}:
+				default:
+					// Drop resize if channel full
+				}
+			}
+		case <-r.Context().Done():
+			goto cleanup
 		}
 	}
 
 cleanup:
-	// Clean up
 	close(sizeQueue.resizeChan)
 	stdinWriter.Close()
 }
