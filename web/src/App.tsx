@@ -457,13 +457,6 @@ function AppInner() {
                 </button>
               )}
             </div>
-            {/* CRD Discovery indicator */}
-            {crdDiscoveryStatus === 'discovering' && (
-              <div className="flex items-center gap-1.5 ml-2 text-xs text-amber-400">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                <span className="hidden sm:inline">Discovering CRDs...</span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -539,6 +532,13 @@ function AppInner() {
 
         {/* Right: Controls */}
         <div className="flex items-center gap-3">
+          {/* CRD Discovery indicator */}
+          {crdDiscoveryStatus === 'discovering' && (
+            <div className="flex items-center gap-1.5 text-xs text-amber-400">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span className="hidden md:inline">Discovering CRDs...</span>
+            </div>
+          )}
           {/* Namespace selector with search */}
           <NamespaceSelector
             value={namespaces}

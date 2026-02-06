@@ -83,9 +83,21 @@ func (b *SSEBroadcaster) Start() {
 	// Register for connection state changes (for graceful startup)
 	b.registerConnectionStateCallback()
 
+	// Register for CRD discovery completion
+	b.registerCRDDiscoveryCallback()
+
 	go b.run()
 	go b.watchResourceChanges()
 	go b.heartbeat()
+}
+
+// registerCRDDiscoveryCallback registers for CRD discovery completion
+// When discovery completes, broadcast topology to update the discovery status in UI
+func (b *SSEBroadcaster) registerCRDDiscoveryCallback() {
+	k8s.OnCRDDiscoveryComplete(func() {
+		log.Printf("SSE broadcaster: CRD discovery complete, broadcasting topology update")
+		b.broadcastTopologyUpdate()
+	})
 }
 
 // registerConnectionStateCallback registers for connection state changes
