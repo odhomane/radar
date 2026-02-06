@@ -74,10 +74,10 @@ func New(cfg Config) *Server {
 func (s *Server) setupRoutes() {
 	r := s.router
 
-	// Middleware
+	// Middleware (applied to all routes)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
+	// Note: Timeout middleware is applied per-group below to exempt streaming endpoints
 
 	// CORS for development
 	r.Use(cors.Handler(cors.Options{
@@ -104,103 +104,110 @@ func (s *Server) setupRoutes() {
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
-		r.Get("/health", s.handleHealth)
-		r.Get("/dashboard", s.handleDashboard)
-		r.Get("/dashboard/crds", s.handleDashboardCRDs)
-		r.Get("/cluster-info", s.handleClusterInfo)
-		r.Get("/capabilities", s.handleCapabilities)
-		r.Get("/topology", s.handleTopology)
-		r.Get("/namespaces", s.handleNamespaces)
-		r.Get("/api-resources", s.handleAPIResources)
-		r.Get("/resources/{kind}", s.handleListResources)
-		r.Get("/resources/{kind}/{namespace}/{name}", s.handleGetResource)
-		r.Put("/resources/{kind}/{namespace}/{name}", s.handleUpdateResource)
-		r.Delete("/resources/{kind}/{namespace}/{name}", s.handleDeleteResource)
-		r.Get("/events", s.handleEvents)
+		// Streaming endpoints (SSE/WebSocket) - no timeout
 		r.Get("/events/stream", s.broadcaster.HandleSSE)
-		r.Get("/changes", s.handleChanges)
-		r.Get("/changes/{kind}/{namespace}/{name}/children", s.handleChangeChildren)
-
-		// Pod logs
-		r.Get("/pods/{namespace}/{name}/logs", s.handlePodLogs)
 		r.Get("/pods/{namespace}/{name}/logs/stream", s.handlePodLogsStream)
-
-		// Pod exec (terminal)
 		r.Get("/pods/{namespace}/{name}/exec", s.handlePodExec)
-
-		// Pod debug (ephemeral container)
-		r.Post("/pods/{namespace}/{name}/debug", s.handleCreateDebugContainer)
-
-		// Metrics (from metrics.k8s.io API)
-		r.Get("/metrics/pods/{namespace}/{name}", s.handlePodMetrics)
-		r.Get("/metrics/nodes/{name}", s.handleNodeMetrics)
-		r.Get("/metrics/pods/{namespace}/{name}/history", s.handlePodMetricsHistory)
-		r.Get("/metrics/nodes/{name}/history", s.handleNodeMetricsHistory)
-
-		// Port forwarding
-		r.Get("/portforwards", s.handleListPortForwards)
-		r.Post("/portforwards", s.handleStartPortForward)
-		r.Delete("/portforwards/{id}", s.handleStopPortForward)
-		r.Get("/portforwards/available/{type}/{namespace}/{name}", s.handleGetAvailablePorts)
-
-		// Active sessions (for context switch confirmation)
-		r.Get("/sessions", s.handleGetSessions)
-
-		// CronJob operations
-		r.Post("/cronjobs/{namespace}/{name}/trigger", s.handleTriggerCronJob)
-		r.Post("/cronjobs/{namespace}/{name}/suspend", s.handleSuspendCronJob)
-		r.Post("/cronjobs/{namespace}/{name}/resume", s.handleResumeCronJob)
-
-		// Workload restart
-		r.Post("/workloads/{kind}/{namespace}/{name}/restart", s.handleRestartWorkload)
-
-		// Workload logs (aggregated from all pods)
-		r.Get("/workloads/{kind}/{namespace}/{name}/logs", s.handleWorkloadLogs)
 		r.Get("/workloads/{kind}/{namespace}/{name}/logs/stream", s.handleWorkloadLogsStream)
-		r.Get("/workloads/{kind}/{namespace}/{name}/pods", s.handleWorkloadPods)
 
-		// Helm routes
-		helmHandlers := helm.NewHandlers()
-		helmHandlers.RegisterRoutes(r)
+		// All other API routes get a 60-second timeout
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Timeout(60 * time.Second))
 
-		// Image inspection routes
-		imageHandlers := images.NewHandlers()
-		imageHandlers.RegisterRoutes(r)
+			r.Get("/health", s.handleHealth)
+			r.Get("/dashboard", s.handleDashboard)
+			r.Get("/dashboard/crds", s.handleDashboardCRDs)
+			r.Get("/cluster-info", s.handleClusterInfo)
+			r.Get("/capabilities", s.handleCapabilities)
+			r.Get("/topology", s.handleTopology)
+			r.Get("/namespaces", s.handleNamespaces)
+			r.Get("/api-resources", s.handleAPIResources)
+			r.Get("/resources/{kind}", s.handleListResources)
+			r.Get("/resources/{kind}/{namespace}/{name}", s.handleGetResource)
+			r.Put("/resources/{kind}/{namespace}/{name}", s.handleUpdateResource)
+			r.Delete("/resources/{kind}/{namespace}/{name}", s.handleDeleteResource)
+			r.Get("/events", s.handleEvents)
+			r.Get("/changes", s.handleChanges)
+			r.Get("/changes/{kind}/{namespace}/{name}/children", s.handleChangeChildren)
 
-		// FluxCD routes
-		r.Post("/flux/{kind}/{namespace}/{name}/reconcile", s.handleFluxReconcile)
-		r.Post("/flux/{kind}/{namespace}/{name}/sync-with-source", s.handleFluxSyncWithSource)
-		r.Post("/flux/{kind}/{namespace}/{name}/suspend", s.handleFluxSuspend)
-		r.Post("/flux/{kind}/{namespace}/{name}/resume", s.handleFluxResume)
+			// Pod logs (non-streaming)
+			r.Get("/pods/{namespace}/{name}/logs", s.handlePodLogs)
 
-		// ArgoCD routes
-		r.Post("/argo/applications/{namespace}/{name}/sync", s.handleArgoSync)
-		r.Post("/argo/applications/{namespace}/{name}/refresh", s.handleArgoRefresh)
-		r.Post("/argo/applications/{namespace}/{name}/terminate", s.handleArgoTerminate)
-		r.Post("/argo/applications/{namespace}/{name}/suspend", s.handleArgoSuspend)
-		r.Post("/argo/applications/{namespace}/{name}/resume", s.handleArgoResume)
+			// Pod debug (ephemeral container)
+			r.Post("/pods/{namespace}/{name}/debug", s.handleCreateDebugContainer)
 
-		// Debug routes (for event pipeline diagnostics)
-		r.Get("/debug/events", s.handleDebugEvents)
-		r.Get("/debug/events/diagnose", s.handleDebugEventsDiagnose)
-		r.Get("/debug/informers", s.handleDebugInformers)
+			// Metrics (from metrics.k8s.io API)
+			r.Get("/metrics/pods/{namespace}/{name}", s.handlePodMetrics)
+			r.Get("/metrics/nodes/{name}", s.handleNodeMetrics)
+			r.Get("/metrics/pods/{namespace}/{name}/history", s.handlePodMetricsHistory)
+			r.Get("/metrics/nodes/{name}/history", s.handleNodeMetricsHistory)
 
-		// Traffic routes
-		r.Get("/traffic/sources", s.handleGetTrafficSources)
-		r.Get("/traffic/flows", s.handleGetTrafficFlows)
+			// Port forwarding
+			r.Get("/portforwards", s.handleListPortForwards)
+			r.Post("/portforwards", s.handleStartPortForward)
+			r.Delete("/portforwards/{id}", s.handleStopPortForward)
+			r.Get("/portforwards/available/{type}/{namespace}/{name}", s.handleGetAvailablePorts)
+
+			// Active sessions (for context switch confirmation)
+			r.Get("/sessions", s.handleGetSessions)
+
+			// CronJob operations
+			r.Post("/cronjobs/{namespace}/{name}/trigger", s.handleTriggerCronJob)
+			r.Post("/cronjobs/{namespace}/{name}/suspend", s.handleSuspendCronJob)
+			r.Post("/cronjobs/{namespace}/{name}/resume", s.handleResumeCronJob)
+
+			// Workload restart
+			r.Post("/workloads/{kind}/{namespace}/{name}/restart", s.handleRestartWorkload)
+
+			// Workload logs (non-streaming)
+			r.Get("/workloads/{kind}/{namespace}/{name}/logs", s.handleWorkloadLogs)
+			r.Get("/workloads/{kind}/{namespace}/{name}/pods", s.handleWorkloadPods)
+
+			// Helm routes
+			helmHandlers := helm.NewHandlers()
+			helmHandlers.RegisterRoutes(r)
+
+			// Image inspection routes
+			imageHandlers := images.NewHandlers()
+			imageHandlers.RegisterRoutes(r)
+
+			// FluxCD routes
+			r.Post("/flux/{kind}/{namespace}/{name}/reconcile", s.handleFluxReconcile)
+			r.Post("/flux/{kind}/{namespace}/{name}/sync-with-source", s.handleFluxSyncWithSource)
+			r.Post("/flux/{kind}/{namespace}/{name}/suspend", s.handleFluxSuspend)
+			r.Post("/flux/{kind}/{namespace}/{name}/resume", s.handleFluxResume)
+
+			// ArgoCD routes
+			r.Post("/argo/applications/{namespace}/{name}/sync", s.handleArgoSync)
+			r.Post("/argo/applications/{namespace}/{name}/refresh", s.handleArgoRefresh)
+			r.Post("/argo/applications/{namespace}/{name}/terminate", s.handleArgoTerminate)
+			r.Post("/argo/applications/{namespace}/{name}/suspend", s.handleArgoSuspend)
+			r.Post("/argo/applications/{namespace}/{name}/resume", s.handleArgoResume)
+
+			// Debug routes (for event pipeline diagnostics)
+			r.Get("/debug/events", s.handleDebugEvents)
+			r.Get("/debug/events/diagnose", s.handleDebugEventsDiagnose)
+			r.Get("/debug/informers", s.handleDebugInformers)
+
+			// Traffic routes (non-streaming)
+			r.Get("/traffic/sources", s.handleGetTrafficSources)
+			r.Get("/traffic/flows", s.handleGetTrafficFlows)
+			r.Get("/traffic/source", s.handleGetActiveTrafficSource)
+			r.Post("/traffic/source", s.handleSetTrafficSource)
+			r.Post("/traffic/connect", s.handleTrafficConnect)
+			r.Get("/traffic/connection", s.handleTrafficConnectionStatus)
+
+			// Context routes
+			r.Get("/contexts", s.handleListContexts)
+			r.Post("/contexts/{name}", s.handleSwitchContext)
+
+			// Connection status routes (for graceful startup)
+			r.Get("/connection", s.handleConnectionStatus)
+			r.Post("/connection/retry", s.handleConnectionRetry)
+		})
+
+		// Traffic streaming (no timeout)
 		r.Get("/traffic/flows/stream", s.handleTrafficFlowsStream)
-		r.Get("/traffic/source", s.handleGetActiveTrafficSource)
-		r.Post("/traffic/source", s.handleSetTrafficSource)
-		r.Post("/traffic/connect", s.handleTrafficConnect)
-		r.Get("/traffic/connection", s.handleTrafficConnectionStatus)
-
-		// Context routes
-		r.Get("/contexts", s.handleListContexts)
-		r.Post("/contexts/{name}", s.handleSwitchContext)
-
-		// Connection status routes (for graceful startup)
-		r.Get("/connection", s.handleConnectionStatus)
-		r.Post("/connection/retry", s.handleConnectionRetry)
 	})
 
 	// Static files (frontend) - SPA fallback to index.html
