@@ -777,6 +777,35 @@ export function useRestartWorkload() {
   })
 }
 
+// Scale a workload (Deployment, StatefulSet)
+export function useScaleWorkload() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ kind, namespace, name, replicas }: { kind: string; namespace: string; name: string; replicas: number }) => {
+      const response = await fetch(`${API_BASE}/workloads/${kind}/${namespace}/${name}/scale`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replicas }),
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to scale workload',
+      successMessage: 'Workload scaled',
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['resources', variables.kind] })
+      queryClient.invalidateQueries({ queryKey: ['resource', variables.kind, variables.namespace, variables.name] })
+      queryClient.invalidateQueries({ queryKey: ['topology'] })
+    },
+  })
+}
+
 // ============================================================================
 // Helm API hooks
 // ============================================================================

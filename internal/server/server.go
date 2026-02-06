@@ -22,6 +22,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/skyhook-io/radar/internal/helm"
@@ -158,6 +159,7 @@ func (s *Server) setupRoutes() {
 
 			// Workload restart
 			r.Post("/workloads/{kind}/{namespace}/{name}/restart", s.handleRestartWorkload)
+			r.Post("/workloads/{kind}/{namespace}/{name}/scale", s.handleScaleWorkload)
 
 			// Workload logs (non-streaming)
 			r.Get("/workloads/{kind}/{namespace}/{name}/logs", s.handleWorkloadLogs)
@@ -1052,6 +1054,52 @@ func (s *Server) handleRestartWorkload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, map[string]string{"message": "Workload restart initiated"})
+}
+
+// handleScaleWorkload scales a Deployment or StatefulSet to a new replica count
+func (s *Server) handleScaleWorkload(w http.ResponseWriter, r *http.Request) {
+	kind := chi.URLParam(r, "kind")
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+
+	// Parse request body
+	var req struct {
+		Replicas int32 `json:"replicas"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate replica count
+	if req.Replicas < 0 {
+		s.writeError(w, http.StatusBadRequest, "replicas cannot be negative")
+		return
+	}
+	if req.Replicas > 10000 {
+		s.writeError(w, http.StatusBadRequest, "replicas cannot exceed 10000")
+		return
+	}
+
+	err := k8s.ScaleWorkload(r.Context(), kind, namespace, name, req.Replicas)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			s.writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "not supported") {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		log.Printf("[scale] Failed to scale %s/%s: %v", namespace, name, err)
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.writeJSON(w, map[string]any{
+		"message":  "Workload scaled",
+		"replicas": req.Replicas,
+	})
 }
 
 // Session management handlers
