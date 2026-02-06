@@ -20,6 +20,7 @@ interface PortForwardSession {
   podName: string
   podPort: number
   localPort: number
+  listenAddress: string
   serviceName?: string
   startedAt: string
   status: 'running' | 'stopped' | 'error'
@@ -68,6 +69,7 @@ export function PortForwardManager({
   })
 
   const handleCopyUrl = useCallback((session: PortForwardSession) => {
+    // Always use localhost for copy (works on the machine running Radar)
     navigator.clipboard.writeText(`http://localhost:${session.localPort}`)
     setCopiedId(session.id)
     setTimeout(() => setCopiedId(null), 2000)
@@ -183,8 +185,13 @@ export function PortForwardManager({
                     {session.status === 'running' && (
                       <div className="mt-1.5 flex items-center gap-2">
                         <code className="text-xs bg-slate-900 px-2 py-1 rounded text-blue-400">
-                          localhost:{session.localPort}
+                          {session.listenAddress === '0.0.0.0' ? '0.0.0.0' : 'localhost'}:{session.localPort}
                         </code>
+                        {session.listenAddress === '0.0.0.0' && (
+                          <span className="text-xs text-amber-400" title="Accessible from other machines on the network">
+                            (all interfaces)
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -242,6 +249,7 @@ export function useStartPortForward() {
       serviceName?: string
       podPort: number
       localPort?: number
+      listenAddress?: string // "127.0.0.1" (default) or "0.0.0.0"
     }) => {
       const res = await fetch('/api/portforwards', {
         method: 'POST',
