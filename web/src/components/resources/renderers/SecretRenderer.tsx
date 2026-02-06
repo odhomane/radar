@@ -11,16 +11,15 @@ export function SecretRenderer({ data }: SecretRendererProps) {
   const [copied, setCopied] = useState<string | null>(null)
   const dataKeys = Object.keys(data.data || {})
 
-  const toggleReveal = (key: string) => {
+  function toggleReveal(key: string) {
     setRevealed(prev => {
       const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
+      next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
   }
 
-  const decodeBase64 = (value: string) => {
+  function decodeBase64(value: string): string {
     try {
       return atob(value)
     } catch {
@@ -28,12 +27,9 @@ export function SecretRenderer({ data }: SecretRendererProps) {
     }
   }
 
-  const copyValue = async (key: string, value: string) => {
-    const decoded = decodeBase64(value)
-    if (decoded === '[binary data]') return
-
+  async function copyValue(key: string, decodedValue: string): Promise<void> {
     try {
-      await navigator.clipboard.writeText(decoded)
+      await navigator.clipboard.writeText(decodedValue)
       setCopied(key)
       setTimeout(() => setCopied(null), 2000)
     } catch (err) {
@@ -64,7 +60,7 @@ export function SecretRenderer({ data }: SecretRendererProps) {
                   <div className="flex items-center gap-1 shrink-0">
                     {revealed.has(key) && !isBinary && (
                       <button
-                        onClick={() => copyValue(key, data.data[key])}
+                        onClick={() => copyValue(key, decoded)}
                         className="p-1 text-theme-text-tertiary hover:text-theme-text-primary transition-colors"
                         title="Copy value"
                       >
