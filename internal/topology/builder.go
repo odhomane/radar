@@ -280,6 +280,9 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		}
 		for _, rollout := range rollouts {
 			ns := rollout.GetNamespace()
+			if !opts.MatchesNamespaceFilter(ns) {
+				continue
+			}
 			name := rollout.GetName()
 
 			rolloutID := fmt.Sprintf("rollout/%s/%s", ns, name)
@@ -360,6 +363,9 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		}
 		for _, app := range applications {
 			ns := app.GetNamespace()
+			if !opts.MatchesNamespaceFilter(ns) {
+				continue
+			}
 			name := app.GetName()
 
 			appID := fmt.Sprintf("application/%s/%s", ns, name)
@@ -452,6 +458,9 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		}
 		for _, ks := range kustomizations {
 			ns := ks.GetNamespace()
+			if !opts.MatchesNamespaceFilter(ns) {
+				continue
+			}
 			name := ks.GetName()
 
 			ksID := fmt.Sprintf("kustomization/%s/%s", ns, name)
@@ -518,6 +527,9 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		}
 		for _, repo := range gitRepos {
 			ns := repo.GetNamespace()
+			if !opts.MatchesNamespaceFilter(ns) {
+				continue
+			}
 			name := repo.GetName()
 
 			repoID := fmt.Sprintf("gitrepository/%s/%s", ns, name)
@@ -579,6 +591,9 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 		}
 		for _, hr := range helmReleases {
 			ns := hr.GetNamespace()
+			if !opts.MatchesNamespaceFilter(ns) {
+				continue
+			}
 			name := hr.GetName()
 
 			hrID := fmt.Sprintf("helmrelease/%s/%s", ns, name)
@@ -2377,12 +2392,16 @@ func (b *Builder) addGenericCRDNodes(nodes []Node, edges []Edge, opts BuildOptio
 				break
 			}
 
+			ns := resource.GetNamespace()
+			if !opts.MatchesNamespaceFilter(ns) {
+				continue
+			}
+
 			ownerRefs := resource.GetOwnerReferences()
 			if len(ownerRefs) == 0 {
 				continue
 			}
 
-			ns := resource.GetNamespace()
 			name := resource.GetName()
 			nodeID := fmt.Sprintf("%s/%s/%s", kindLower, ns, name)
 

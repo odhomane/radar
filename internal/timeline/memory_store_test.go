@@ -75,7 +75,7 @@ func TestMemoryStore_Query_Namespace(t *testing.T) {
 	_ = store.AppendBatch(ctx, events)
 
 	// Query for prod namespace only
-	result, err := store.Query(ctx, QueryOptions{Namespace: "prod", Limit: 10, IncludeManaged: true})
+	result, err := store.Query(ctx, QueryOptions{Namespaces: []string{"prod"}, Limit: 10, IncludeManaged: true})
 	if err != nil {
 		t.Fatalf("Query failed: %v", err)
 	}

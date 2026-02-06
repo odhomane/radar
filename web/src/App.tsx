@@ -225,8 +225,9 @@ function AppInner() {
     return groupingMode
   }, [hasNamespaceFilter, groupingMode])
 
-  // Hide group header when viewing specific namespaces with "no grouping" selected
-  const hideGroupHeader = hasNamespaceFilter && groupingMode === 'none'
+  // Hide group header when viewing a single namespace with "no grouping" selected
+  // (grouping header is meaningless with only one namespace, but needed for multi-namespace)
+  const hideGroupHeader = namespaces.length === 1 && groupingMode === 'none'
 
   // Fetch available namespaces
   const { data: availableNamespaces } = useNamespaces()
@@ -544,6 +545,8 @@ function AppInner() {
             value={namespaces}
             onChange={setNamespaces}
             namespaces={availableNamespaces}
+            disabled={mainView === 'helm'}
+            disabledTooltip="Helm view always shows all namespaces"
           />
 
           {/* Theme toggle */}

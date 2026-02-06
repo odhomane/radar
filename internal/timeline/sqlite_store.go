@@ -237,9 +237,16 @@ func (s *SQLiteStore) Query(ctx context.Context, opts QueryOptions) ([]TimelineE
 	var args []any
 
 	// Apply filters
-	if opts.Namespace != "" {
-		query.WriteString(" AND namespace = ?")
-		args = append(args, opts.Namespace)
+	if len(opts.Namespaces) > 0 {
+		query.WriteString(" AND namespace IN (")
+		for i, ns := range opts.Namespaces {
+			if i > 0 {
+				query.WriteString(",")
+			}
+			query.WriteString("?")
+			args = append(args, ns)
+		}
+		query.WriteString(")")
 	}
 
 	if len(opts.Kinds) > 0 {

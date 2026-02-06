@@ -277,7 +277,7 @@ func GetDiagnosis(kind, namespace, name string) DiagnoseResponse {
 	if store != nil {
 		// Query for events matching this resource
 		events, err := store.Query(nil, QueryOptions{
-			Namespace:        namespace,
+			Namespaces:       []string{namespace},
 			Kinds:            []string{kind},
 			Limit:            50,
 			IncludeManaged:   true,

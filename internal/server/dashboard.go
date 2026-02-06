@@ -226,7 +226,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	resp.Health.WarningEvents = s.countWarningEvents(cache, namespace)
 
 	// Recent changes from timeline
-	resp.RecentChanges = s.getDashboardRecentChanges(r.Context(), namespace)
+	resp.RecentChanges = s.getDashboardRecentChanges(r.Context(), namespaces)
 
 	// Topology summary
 	resp.TopologySummary = s.getDashboardTopologySummary(namespaces)
@@ -871,14 +871,14 @@ func (s *Server) getDashboardRecentEvents(cache *k8s.ResourceCache, namespace st
 	return result
 }
 
-func (s *Server) getDashboardRecentChanges(ctx context.Context, namespace string) []DashboardChange {
+func (s *Server) getDashboardRecentChanges(ctx context.Context, namespaces []string) []DashboardChange {
 	store := timeline.GetStore()
 	if store == nil {
 		return []DashboardChange{}
 	}
 
 	opts := timeline.QueryOptions{
-		Namespace:    namespace,
+		Namespaces:   namespaces,
 		Since:        time.Now().Add(-1 * time.Hour),
 		Limit:        5,
 		FilterPreset: "workloads",
