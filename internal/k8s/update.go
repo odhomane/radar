@@ -257,3 +257,56 @@ func RestartWorkload(ctx context.Context, kind, namespace, name string) error {
 
 	return nil
 }
+
+// ScaleWorkload scales a Deployment or StatefulSet to the specified replica count
+func ScaleWorkload(ctx context.Context, kind, namespace, name string, replicas int32) error {
+	dynamicClient := GetDynamicClient()
+	if dynamicClient == nil {
+		return fmt.Errorf("dynamic client not initialized")
+	}
+
+	discovery := GetResourceDiscovery()
+	if discovery == nil {
+		return fmt.Errorf("resource discovery not initialized")
+	}
+
+	// Validate kind - only Deployments and StatefulSets support scaling
+	normalizedKind := normalizeKind(kind)
+	if normalizedKind != "deployments" && normalizedKind != "statefulsets" {
+		return fmt.Errorf("scaling not supported for %s (only deployments and statefulsets)", kind)
+	}
+
+	// Get the GVR for the workload kind
+	gvr, ok := discovery.GetGVR(normalizedKind)
+	if !ok {
+		return fmt.Errorf("unknown resource kind: %s", kind)
+	}
+
+	// Patch the replica count
+	patch := fmt.Sprintf(`{"spec":{"replicas":%d}}`, replicas)
+
+	_, err := dynamicClient.Resource(gvr).Namespace(namespace).Patch(
+		ctx,
+		name,
+		types.MergePatchType,
+		[]byte(patch),
+		metav1.PatchOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to scale workload: %w", err)
+	}
+
+	return nil
+}
+
+// normalizeKind converts various kind formats to the plural lowercase form
+func normalizeKind(kind string) string {
+	switch kind {
+	case "Deployment", "deployment", "deployments":
+		return "deployments"
+	case "StatefulSet", "statefulset", "statefulsets":
+		return "statefulsets"
+	default:
+		return kind
+	}
+}
