@@ -25,15 +25,16 @@ import (
 
 // PortForwardSession represents an active port forward
 type PortForwardSession struct {
-	ID          string    `json:"id"`
-	Namespace   string    `json:"namespace"`
-	PodName     string    `json:"podName"`
-	PodPort     int       `json:"podPort"`
-	LocalPort   int       `json:"localPort"`
-	ServiceName string    `json:"serviceName,omitempty"` // If forwarding to a service
-	StartedAt   time.Time `json:"startedAt"`
-	Status      string    `json:"status"` // "running", "stopped", "error"
-	Error       string    `json:"error,omitempty"`
+	ID            string    `json:"id"`
+	Namespace     string    `json:"namespace"`
+	PodName       string    `json:"podName"`
+	PodPort       int       `json:"podPort"`
+	LocalPort     int       `json:"localPort"`
+	ListenAddress string    `json:"listenAddress"` // "127.0.0.1" or "0.0.0.0"
+	ServiceName   string    `json:"serviceName,omitempty"` // If forwarding to a service
+	StartedAt     time.Time `json:"startedAt"`
+	Status        string    `json:"status"` // "running", "stopped", "error"
+	Error         string    `json:"error,omitempty"`
 
 	cancel context.CancelFunc
 	stopCh chan struct{}
@@ -87,11 +88,12 @@ func (s *Server) handleListPortForwards(w http.ResponseWriter, r *http.Request) 
 
 // PortForwardRequest is the request body for creating a port forward
 type PortForwardRequest struct {
-	Namespace   string `json:"namespace"`
-	PodName     string `json:"podName,omitempty"`
-	ServiceName string `json:"serviceName,omitempty"`
-	PodPort     int    `json:"podPort"`
-	LocalPort   int    `json:"localPort,omitempty"` // 0 = auto-assign
+	Namespace     string `json:"namespace"`
+	PodName       string `json:"podName,omitempty"`
+	ServiceName   string `json:"serviceName,omitempty"`
+	PodPort       int    `json:"podPort"`
+	LocalPort     int    `json:"localPort,omitempty"`     // 0 = auto-assign
+	ListenAddress string `json:"listenAddress,omitempty"` // "127.0.0.1" (default) or "0.0.0.0"
 }
 
 // handleStartPortForward creates a new port forward session
@@ -147,6 +149,20 @@ func (s *Server) handleStartPortForward(w http.ResponseWriter, r *http.Request) 
 		localPort = port
 	}
 
+	// Set default listen address
+	listenAddr := req.ListenAddress
+	if listenAddr == "" {
+		listenAddr = "127.0.0.1"
+	}
+	// Validate listen address
+	if listenAddr != "127.0.0.1" && listenAddr != "0.0.0.0" && listenAddr != "localhost" {
+		s.writeError(w, http.StatusBadRequest, "listenAddress must be '127.0.0.1', '0.0.0.0', or 'localhost'")
+		return
+	}
+	if listenAddr == "localhost" {
+		listenAddr = "127.0.0.1"
+	}
+
 	// Create session
 	pfManager.mu.Lock()
 	pfManager.nextID++
@@ -156,16 +172,17 @@ func (s *Server) handleStartPortForward(w http.ResponseWriter, r *http.Request) 
 	stopCh := make(chan struct{})
 
 	session := &PortForwardSession{
-		ID:          sessionID,
-		Namespace:   req.Namespace,
-		PodName:     podName,
-		PodPort:     req.PodPort,
-		LocalPort:   localPort,
-		ServiceName: req.ServiceName,
-		StartedAt:   time.Now(),
-		Status:      "starting",
-		cancel:      cancel,
-		stopCh:      stopCh,
+		ID:            sessionID,
+		Namespace:     req.Namespace,
+		PodName:       podName,
+		PodPort:       req.PodPort,
+		LocalPort:     localPort,
+		ListenAddress: listenAddr,
+		ServiceName:   req.ServiceName,
+		StartedAt:     time.Now(),
+		Status:        "starting",
+		cancel:        cancel,
+		stopCh:        stopCh,
 	}
 	pfManager.sessions[sessionID] = session
 	pfManager.mu.Unlock()
@@ -251,13 +268,14 @@ func runPortForward(ctx context.Context, session *PortForwardSession) error {
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, "POST", req.URL())
 
 	ports := []string{fmt.Sprintf("%d:%d", session.LocalPort, session.PodPort)}
+	addresses := []string{session.ListenAddress}
 	readyCh := make(chan struct{})
 
 	// Discard output - in production you might want to capture this
 	out := io.Discard
 	errOut := io.Discard
 
-	pf, err := portforward.New(dialer, ports, session.stopCh, readyCh, out, errOut)
+	pf, err := portforward.NewOnAddresses(dialer, addresses, ports, session.stopCh, readyCh, out, errOut)
 	if err != nil {
 		return fmt.Errorf("failed to create port forwarder: %w", err)
 	}
@@ -274,8 +292,8 @@ func runPortForward(ctx context.Context, session *PortForwardSession) error {
 		pfManager.mu.Lock()
 		session.Status = "running"
 		pfManager.mu.Unlock()
-		log.Printf("Port forward %s: localhost:%d -> %s/%s:%d",
-			session.ID, session.LocalPort, session.Namespace, session.PodName, session.PodPort)
+		log.Printf("Port forward %s: %s:%d -> %s/%s:%d",
+			session.ID, session.ListenAddress, session.LocalPort, session.Namespace, session.PodName, session.PodPort)
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():

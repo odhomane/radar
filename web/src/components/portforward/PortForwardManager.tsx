@@ -11,6 +11,8 @@ import {
   ChevronDown,
   ChevronUp,
   Plug,
+  Globe,
+  Monitor,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -20,6 +22,7 @@ interface PortForwardSession {
   podName: string
   podPort: number
   localPort: number
+  listenAddress: string
   serviceName?: string
   startedAt: string
   status: 'running' | 'stopped' | 'error'
@@ -67,7 +70,41 @@ export function PortForwardManager({
     },
   })
 
+  // Toggle listen address (restart with different address)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const toggleListenAddress = async (session: PortForwardSession) => {
+    const newAddress = session.listenAddress === '0.0.0.0' ? '127.0.0.1' : '0.0.0.0'
+    setTogglingId(session.id)
+    try {
+      // Stop the current forward
+      await fetch(`/api/portforwards/${session.id}`, { method: 'DELETE' })
+      // Start a new one with the toggled address
+      const res = await fetch('/api/portforwards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          namespace: session.namespace,
+          podName: session.podName || undefined,
+          serviceName: session.serviceName || undefined,
+          podPort: session.podPort,
+          localPort: session.localPort,
+          listenAddress: newAddress,
+        }),
+      })
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || 'Failed to restart port forward')
+      }
+      queryClient.invalidateQueries({ queryKey: ['portforwards'] })
+    } catch (error) {
+      console.error('Failed to toggle listen address:', error)
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
   const handleCopyUrl = useCallback((session: PortForwardSession) => {
+    // Always use localhost for copy (works on the machine running Radar)
     navigator.clipboard.writeText(`http://localhost:${session.localPort}`)
     setCopiedId(session.id)
     setTimeout(() => setCopiedId(null), 2000)
@@ -183,8 +220,31 @@ export function PortForwardManager({
                     {session.status === 'running' && (
                       <div className="mt-1.5 flex items-center gap-2">
                         <code className="text-xs bg-slate-900 px-2 py-1 rounded text-blue-400">
-                          localhost:{session.localPort}
+                          {session.listenAddress === '0.0.0.0' ? '0.0.0.0' : 'localhost'}:{session.localPort}
                         </code>
+                        <button
+                          onClick={() => toggleListenAddress(session)}
+                          disabled={togglingId === session.id}
+                          className={clsx(
+                            'flex items-center gap-1 px-1.5 py-0.5 text-xs rounded transition-colors',
+                            session.listenAddress === '0.0.0.0'
+                              ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+                              : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-slate-200'
+                          )}
+                          title={session.listenAddress === '0.0.0.0'
+                            ? 'Click to switch to localhost only'
+                            : 'Click to allow access from other machines'
+                          }
+                        >
+                          {togglingId === session.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : session.listenAddress === '0.0.0.0' ? (
+                            <Globe className="w-3 h-3" />
+                          ) : (
+                            <Monitor className="w-3 h-3" />
+                          )}
+                          {session.listenAddress === '0.0.0.0' ? 'network' : 'local'}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -242,6 +302,7 @@ export function useStartPortForward() {
       serviceName?: string
       podPort: number
       localPort?: number
+      listenAddress?: string // "127.0.0.1" (default) or "0.0.0.0"
     }) => {
       const res = await fetch('/api/portforwards', {
         method: 'POST',
