@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
 import { ChevronDown, Search, X, Check } from 'lucide-react'
+import { Tooltip } from './Tooltip'
 
 interface Namespace {
   name: string
@@ -12,6 +13,8 @@ interface NamespaceSelectorProps {
   onChange: (value: string[]) => void
   namespaces: Namespace[] | undefined
   className?: string
+  disabled?: boolean
+  disabledTooltip?: string
 }
 
 export function NamespaceSelector({
@@ -19,6 +22,8 @@ export function NamespaceSelector({
   onChange,
   namespaces,
   className,
+  disabled,
+  disabledTooltip,
 }: NamespaceSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -185,28 +190,38 @@ export function NamespaceSelector({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => (isOpen ? closeDropdown() : openDropdown())}
-        className={clsx(
-          'appearance-none bg-theme-elevated text-theme-text-primary text-xs rounded px-2 py-1 pr-6 border border-theme-border-light',
-          'focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[100px] text-left relative',
-          'hover:bg-theme-hover transition-colors',
-          className
-        )}
-      >
-        <span className="block truncate">{displayValue}</span>
-        <ChevronDown
+      <Tooltip content={disabledTooltip} disabled={!disabled} position="bottom">
+        <button
+          ref={triggerRef}
+          type="button"
+          disabled={disabled}
+          onClick={() => (isOpen ? closeDropdown() : openDropdown())}
           className={clsx(
-            'absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-theme-text-secondary transition-transform',
-            isOpen && 'rotate-180'
+            'appearance-none bg-theme-elevated text-theme-text-primary text-xs rounded px-2 py-1 pr-6 border border-theme-border-light',
+            'focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[100px] text-left relative',
+            'transition-colors',
+            disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-theme-hover',
+            className
           )}
-        />
-      </button>
+        >
+          <span className="block truncate">{displayValue}</span>
+          <ChevronDown
+            className={clsx(
+              'absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-theme-text-secondary transition-transform',
+              isOpen && 'rotate-180'
+            )}
+          />
+        </button>
+      </Tooltip>
 
       {isOpen &&
         createPortal(
+          <>
+          {/* Backdrop to capture clicks outside the dropdown */}
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={closeDropdown}
+          />
           <div
             ref={dropdownRef}
             className="fixed z-[9999] bg-theme-elevated border border-theme-border rounded-md shadow-lg overflow-hidden"
@@ -323,7 +338,8 @@ export function NamespaceSelector({
                 )}
               </div>
             )}
-          </div>,
+          </div>
+          </>,
           document.body
         )}
     </>

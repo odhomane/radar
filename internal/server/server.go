@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"net/url"
+	"reflect"
 	"runtime"
 	"strings"
 	"time"
@@ -347,6 +348,16 @@ func parseNamespaces(query url.Values) []string {
 	return nil
 }
 
+// appendSlice appends elements from a typed slice (returned as any) into a []any.
+// This is needed because K8s listers return different concrete slice types (e.g. []*corev1.Pod).
+func appendSlice(dst []any, src any) []any {
+	v := reflect.ValueOf(src)
+	for i := 0; i < v.Len(); i++ {
+		dst = append(dst, v.Index(i).Interface())
+	}
+	return dst
+}
+
 func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	if !s.requireConnected(w) {
 		return
@@ -418,7 +429,7 @@ func (s *Server) handleListResources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := chi.URLParam(r, "kind")
-	namespace := r.URL.Query().Get("namespace")
+	namespaces := parseNamespaces(r.URL.Query())
 
 	cache := k8s.GetResourceCache()
 	if cache == nil {
@@ -429,111 +440,141 @@ func (s *Server) handleListResources(w http.ResponseWriter, r *http.Request) {
 	var result any
 	var err error
 
+	// listPerNs is a helper that merges results across multiple namespaces.
+	// listAll returns all items; listNs returns items for a single namespace.
+	listPerNs := func(listAll func() (any, error), listNs func(string) (any, error)) (any, error) {
+		if len(namespaces) == 0 {
+			return listAll()
+		}
+		if len(namespaces) == 1 {
+			return listNs(namespaces[0])
+		}
+		var merged []any
+		for _, ns := range namespaces {
+			items, err := listNs(ns)
+			if err != nil {
+				return nil, err
+			}
+			merged = appendSlice(merged, items)
+		}
+		return merged, nil
+	}
+
 	// Try typed cache for known resource types first
 	switch kind {
 	case "pods":
-		if namespace != "" {
-			result, err = cache.Pods().Pods(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.Pods().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.Pods().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.Pods().Pods(ns).List(labels.Everything()) },
+		)
 	case "services":
-		if namespace != "" {
-			result, err = cache.Services().Services(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.Services().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.Services().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.Services().Services(ns).List(labels.Everything()) },
+		)
 	case "deployments":
-		if namespace != "" {
-			result, err = cache.Deployments().Deployments(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.Deployments().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.Deployments().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.Deployments().Deployments(ns).List(labels.Everything()) },
+		)
 	case "daemonsets":
-		if namespace != "" {
-			result, err = cache.DaemonSets().DaemonSets(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.DaemonSets().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.DaemonSets().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.DaemonSets().DaemonSets(ns).List(labels.Everything()) },
+		)
 	case "statefulsets":
-		if namespace != "" {
-			result, err = cache.StatefulSets().StatefulSets(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.StatefulSets().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.StatefulSets().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.StatefulSets().StatefulSets(ns).List(labels.Everything()) },
+		)
 	case "replicasets":
-		if namespace != "" {
-			result, err = cache.ReplicaSets().ReplicaSets(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.ReplicaSets().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.ReplicaSets().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.ReplicaSets().ReplicaSets(ns).List(labels.Everything()) },
+		)
 	case "ingresses":
-		if namespace != "" {
-			result, err = cache.Ingresses().Ingresses(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.Ingresses().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.Ingresses().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.Ingresses().Ingresses(ns).List(labels.Everything()) },
+		)
 	case "configmaps":
-		if namespace != "" {
-			result, err = cache.ConfigMaps().ConfigMaps(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.ConfigMaps().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.ConfigMaps().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.ConfigMaps().ConfigMaps(ns).List(labels.Everything()) },
+		)
 	case "secrets":
 		lister := cache.Secrets()
 		if lister == nil {
 			// Secrets not available (RBAC not granted)
 			result = []interface{}{}
-		} else if namespace != "" {
-			result, err = lister.Secrets(namespace).List(labels.Everything())
 		} else {
-			result, err = lister.List(labels.Everything())
+			result, err = listPerNs(
+				func() (any, error) { return lister.List(labels.Everything()) },
+				func(ns string) (any, error) { return lister.Secrets(ns).List(labels.Everything()) },
+			)
 		}
 	case "events":
-		if namespace != "" {
-			result, err = cache.Events().Events(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.Events().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.Events().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.Events().Events(ns).List(labels.Everything()) },
+		)
 	case "persistentvolumeclaims", "pvcs":
-		if namespace != "" {
-			result, err = cache.PersistentVolumeClaims().PersistentVolumeClaims(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.PersistentVolumeClaims().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.PersistentVolumeClaims().List(labels.Everything()) },
+			func(ns string) (any, error) {
+				return cache.PersistentVolumeClaims().PersistentVolumeClaims(ns).List(labels.Everything())
+			},
+		)
 	case "jobs":
-		if namespace != "" {
-			result, err = cache.Jobs().Jobs(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.Jobs().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.Jobs().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.Jobs().Jobs(ns).List(labels.Everything()) },
+		)
 	case "cronjobs":
-		if namespace != "" {
-			result, err = cache.CronJobs().CronJobs(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.CronJobs().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.CronJobs().List(labels.Everything()) },
+			func(ns string) (any, error) { return cache.CronJobs().CronJobs(ns).List(labels.Everything()) },
+		)
 	case "hpas", "horizontalpodautoscalers":
-		if namespace != "" {
-			result, err = cache.HorizontalPodAutoscalers().HorizontalPodAutoscalers(namespace).List(labels.Everything())
-		} else {
-			result, err = cache.HorizontalPodAutoscalers().List(labels.Everything())
-		}
+		result, err = listPerNs(
+			func() (any, error) { return cache.HorizontalPodAutoscalers().List(labels.Everything()) },
+			func(ns string) (any, error) {
+				return cache.HorizontalPodAutoscalers().HorizontalPodAutoscalers(ns).List(labels.Everything())
+			},
+		)
 	case "nodes":
 		result, err = cache.Nodes().List(labels.Everything())
 	case "namespaces":
 		result, err = cache.Namespaces().List(labels.Everything())
 	default:
 		// Fall back to dynamic cache for CRDs and other unknown resources
-		result, err = cache.ListDynamic(r.Context(), kind, namespace)
-		if err != nil {
-			// Check if it's an unknown resource error
-			if strings.Contains(err.Error(), "unknown resource kind") {
-				s.writeError(w, http.StatusBadRequest, err.Error())
+		if len(namespaces) > 0 {
+			var merged []any
+			for _, ns := range namespaces {
+				items, listErr := cache.ListDynamic(r.Context(), kind, ns)
+				if listErr != nil {
+					if strings.Contains(listErr.Error(), "unknown resource kind") {
+						s.writeError(w, http.StatusBadRequest, listErr.Error())
+						return
+					}
+					s.writeError(w, http.StatusInternalServerError, listErr.Error())
+					return
+				}
+				for _, item := range items {
+					merged = append(merged, item)
+				}
+			}
+			result = merged
+		} else {
+			result, err = cache.ListDynamic(r.Context(), kind, "")
+			if err != nil {
+				if strings.Contains(err.Error(), "unknown resource kind") {
+					s.writeError(w, http.StatusBadRequest, err.Error())
+					return
+				}
+				s.writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			s.writeError(w, http.StatusInternalServerError, err.Error())
-			return
 		}
 	}
 
@@ -790,7 +831,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if !s.requireConnected(w) {
 		return
 	}
-	namespace := r.URL.Query().Get("namespace")
+	namespaces := parseNamespaces(r.URL.Query())
 
 	cache := k8s.GetResourceCache()
 	if cache == nil {
@@ -801,8 +842,19 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	var events any
 	var err error
 
-	if namespace != "" {
-		events, err = cache.Events().Events(namespace).List(labels.Everything())
+	if len(namespaces) == 1 {
+		events, err = cache.Events().Events(namespaces[0]).List(labels.Everything())
+	} else if len(namespaces) > 1 {
+		var merged []any
+		for _, ns := range namespaces {
+			items, listErr := cache.Events().Events(ns).List(labels.Everything())
+			if listErr != nil {
+				s.writeError(w, http.StatusInternalServerError, listErr.Error())
+				return
+			}
+			merged = appendSlice(merged, items)
+		}
+		events = merged
 	} else {
 		events, err = cache.Events().List(labels.Everything())
 	}
@@ -821,7 +873,7 @@ func (s *Server) handleChanges(w http.ResponseWriter, r *http.Request) {
 	if !s.requireConnected(w) {
 		return
 	}
-	namespace := r.URL.Query().Get("namespace")
+	namespaces := parseNamespaces(r.URL.Query())
 	kind := r.URL.Query().Get("kind")
 	sinceStr := r.URL.Query().Get("since")
 	limitStr := r.URL.Query().Get("limit")
@@ -858,7 +910,7 @@ func (s *Server) handleChanges(w http.ResponseWriter, r *http.Request) {
 		filterPreset = "default"
 	}
 	opts := timeline.QueryOptions{
-		Namespace:        namespace,
+		Namespaces:       namespaces,
 		Since:            since,
 		Limit:            limit,
 		IncludeManaged:   includeManaged,

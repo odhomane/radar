@@ -46,7 +46,7 @@ type EventStore interface {
 // QueryOptions configures event queries
 type QueryOptions struct {
 	// Filters
-	Namespace string        // Filter by namespace (empty = all)
+	Namespaces []string     // Filter by namespaces (empty = all)
 	Kinds     []string      // Filter by resource kinds (empty = all)
 	Since     time.Time     // Filter events after this time
 	Until     time.Time     // Filter events before this time

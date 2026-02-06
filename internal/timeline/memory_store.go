@@ -120,7 +120,7 @@ func (m *MemoryStore) QueryGrouped(ctx context.Context, opts QueryOptions) (*Tim
 
 	// First get all matching events
 	events, err := m.Query(ctx, QueryOptions{
-		Namespace:        opts.Namespace,
+		Namespaces:       opts.Namespaces,
 		Kinds:            opts.Kinds,
 		Since:            opts.Since,
 		Until:            opts.Until,
@@ -296,8 +296,17 @@ func (m *MemoryStore) matchesFilters(event *TimelineEvent, opts QueryOptions, cf
 		return false
 	}
 
-	if opts.Namespace != "" && event.Namespace != opts.Namespace {
-		return false
+	if len(opts.Namespaces) > 0 {
+		found := false
+		for _, ns := range opts.Namespaces {
+			if event.Namespace == ns {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
 	}
 
 	if len(opts.Kinds) > 0 {
