@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plug, ChevronDown, Loader2 } from 'lucide-react'
+import { Plug, ChevronDown, Loader2, Globe, Monitor } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAvailablePorts, AvailablePort } from '../../api/client'
 import { useStartPortForward } from './PortForwardManager'
@@ -21,6 +21,7 @@ export function PortForwardButton({
   className,
 }: PortForwardButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [listenAddress, setListenAddress] = useState<'127.0.0.1' | '0.0.0.0'>('127.0.0.1')
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const { data, isLoading } = useAvailablePorts(type, namespace, name)
@@ -46,6 +47,7 @@ export function PortForwardButton({
       podName: type === 'pod' ? name : undefined,
       serviceName: type === 'service' ? (serviceName || name) : undefined,
       podPort: port.port,
+      listenAddress,
     })
   }
 
@@ -66,7 +68,7 @@ export function PortForwardButton({
     )
   }
 
-  // If only one port, forward directly on click
+  // If only one port, forward directly on click (most common case)
   if (ports.length === 1) {
     return (
       <button
@@ -109,7 +111,39 @@ export function PortForwardButton({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-56 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 py-1">
+        <div className="absolute top-full left-0 mt-1 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 py-1">
+          {/* Listen address toggle */}
+          <div className="px-3 py-2 border-b border-slate-700">
+            <div className="text-xs text-slate-500 mb-2">Listen on</div>
+            <div className="flex gap-1">
+              <button
+                onClick={(e) => { e.stopPropagation(); setListenAddress('127.0.0.1') }}
+                className={clsx(
+                  'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded transition-colors',
+                  listenAddress === '127.0.0.1'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-700 text-slate-400 hover:text-slate-200'
+                )}
+                title="Only accessible from this machine"
+              >
+                <Monitor className="w-3 h-3" />
+                localhost
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setListenAddress('0.0.0.0') }}
+                className={clsx(
+                  'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded transition-colors',
+                  listenAddress === '0.0.0.0'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-slate-700 text-slate-400 hover:text-slate-200'
+                )}
+                title="Accessible from other machines on the network"
+              >
+                <Globe className="w-3 h-3" />
+                all interfaces
+              </button>
+            </div>
+          </div>
           <div className="px-2 py-1.5 text-xs text-slate-500 border-b border-slate-700">
             Select port to forward
           </div>
