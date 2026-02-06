@@ -128,6 +128,12 @@ func doInit(opts InitOptions) error {
 		}
 	}
 
+	// Increase QPS/Burst to speed up CRD discovery and reduce throttling
+	// Default client-go is 5 QPS / 10 Burst, kubectl uses 50/100
+	// This is safe for a read-only visibility tool
+	config.QPS = 50
+	config.Burst = 100
+
 	k8sConfig = config
 
 	k8sClient, err = kubernetes.NewForConfig(config)

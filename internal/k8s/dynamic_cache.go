@@ -44,7 +44,27 @@ var (
 	dynamicResourceCache *DynamicResourceCache
 	dynamicCacheOnce     sync.Once
 	dynamicCacheMu       sync.Mutex
+
+	// Callbacks for CRD discovery completion
+	crdDiscoveryCallbacks   []func()
+	crdDiscoveryCallbacksMu sync.RWMutex
 )
+
+// OnCRDDiscoveryComplete registers a callback to be called when CRD discovery completes
+func OnCRDDiscoveryComplete(callback func()) {
+	crdDiscoveryCallbacksMu.Lock()
+	defer crdDiscoveryCallbacksMu.Unlock()
+	crdDiscoveryCallbacks = append(crdDiscoveryCallbacks, callback)
+}
+
+// notifyCRDDiscoveryComplete calls all registered callbacks
+func notifyCRDDiscoveryComplete() {
+	crdDiscoveryCallbacksMu.RLock()
+	defer crdDiscoveryCallbacksMu.RUnlock()
+	for _, cb := range crdDiscoveryCallbacks {
+		go cb()
+	}
+}
 
 // InitDynamicResourceCache initializes the dynamic resource cache
 // If changeCh is provided, change notifications will be sent to it (for SSE)
@@ -542,7 +562,10 @@ func (d *DynamicResourceCache) DiscoverAllCRDs() {
 			d.discoveryMu.Lock()
 			d.discoveryStatus = CRDDiscoveryComplete
 			d.discoveryMu.Unlock()
-			log.Println("CRD discovery complete")
+			log.Println("[CRD Discovery] CRD discovery complete")
+
+			// Notify callbacks to trigger topology update
+			notifyCRDDiscoveryComplete()
 		}()
 
 		discovery := GetResourceDiscovery()
