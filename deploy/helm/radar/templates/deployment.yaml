@@ -39,6 +39,9 @@ spec:
             - --timeline-db={{ .Values.timeline.dbPath }}
             {{- end }}
             - --history-limit={{ .Values.timeline.historyLimit }}
+            {{- if .Values.traffic.prometheusUrl }}
+            - --prometheus-url={{ .Values.traffic.prometheusUrl }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

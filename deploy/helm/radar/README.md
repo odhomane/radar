@@ -64,6 +64,7 @@ helm upgrade --install radar skyhook/radar \
 | `ingress.className` | Ingress class name | `""` |
 | `timeline.storage` | Timeline storage (memory/sqlite) | `memory` |
 | `persistence.enabled` | Enable PVC for SQLite | `false` |
+| `traffic.prometheusUrl` | Manual Prometheus/VictoriaMetrics URL (skips auto-discovery) | `""` |
 | `resources.limits.memory` | Memory limit | `512Mi` |
 | `resources.requests.memory` | Memory request | `128Mi` |
 

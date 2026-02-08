@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -45,6 +46,8 @@ func main() {
 	// Timeline storage options
 	timelineStorage := flag.String("timeline-storage", "memory", "Timeline storage backend: memory or sqlite")
 	timelineDBPath := flag.String("timeline-db", "", "Path to timeline database file (default: ~/.radar/timeline.db)")
+	// Traffic/metrics options
+	prometheusURL := flag.String("prometheus-url", "", "Manual Prometheus/VictoriaMetrics URL (skips auto-discovery)")
 	flag.Parse()
 
 	// Set debug mode for event tracking
@@ -130,6 +133,15 @@ func main() {
 	k8s.RegisterTimelineFuncs(timeline.ResetStore, func() error {
 		return timeline.ReinitStore(timelineStoreCfg)
 	})
+
+	// Set manual Prometheus URL if provided (persists across context switches)
+	if *prometheusURL != "" {
+		u, err := url.Parse(*prometheusURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			log.Fatalf("Invalid --prometheus-url %q: must be a valid HTTP(S) URL (e.g., http://prometheus-server.monitoring:9090)", *prometheusURL)
+		}
+		traffic.SetMetricsURL(*prometheusURL)
+	}
 
 	// Register traffic reset/reinit functions for context switching
 	k8s.RegisterTrafficFuncs(traffic.Reset, func() error {

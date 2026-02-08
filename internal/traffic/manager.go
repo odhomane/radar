@@ -28,7 +28,16 @@ var (
 	manager  *Manager
 	initOnce sync.Once
 	initErr  error
+
+	// configuredMetricsURL is the user-provided --prometheus-url flag value.
+	// Stored at package level so it persists across context-switch resets.
+	configuredMetricsURL string
 )
+
+// SetMetricsURL sets a manual Prometheus/VictoriaMetrics URL, bypassing auto-discovery.
+func SetMetricsURL(url string) {
+	configuredMetricsURL = url
+}
 
 // Initialize sets up the traffic manager with the given K8s client
 func Initialize(client kubernetes.Interface) error {
@@ -46,7 +55,11 @@ func InitializeWithConfig(client kubernetes.Interface, config *rest.Config, cont
 		}
 		// Register available sources
 		manager.sources["hubble"] = NewHubbleSource(client)
-		manager.sources["caretta"] = NewCarettaSource(client)
+		caretta := NewCarettaSource(client)
+		if configuredMetricsURL != "" {
+			caretta.metricsURL = configuredMetricsURL
+		}
+		manager.sources["caretta"] = caretta
 
 		// Set K8s clients for port-forward functionality
 		if config != nil {
