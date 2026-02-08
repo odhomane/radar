@@ -16,6 +16,7 @@ type Capabilities struct {
 	Logs        bool `json:"logs"`        // Can get pods/log (log viewer)
 	PortForward bool `json:"portForward"` // Can create pods/portforward
 	Secrets     bool `json:"secrets"`     // Can list secrets
+	HelmWrite   bool `json:"helmWrite"`   // Helm write ops (detected via secrets/create as sentinel RBAC check)
 }
 
 var (
@@ -23,6 +24,9 @@ var (
 	capabilitiesMu     sync.RWMutex
 	capabilitiesExpiry time.Time
 	capabilitiesTTL    = 60 * time.Second
+
+	// ForceDisableHelmWrite overrides the helmWrite capability to false (for dev testing)
+	ForceDisableHelmWrite bool
 )
 
 // CheckCapabilities checks RBAC permissions using SelfSubjectAccessReview
@@ -49,33 +53,43 @@ func CheckCapabilities(ctx context.Context) (*Capabilities, error) {
 	if GetClient() == nil {
 		// Return all false if client not initialized (fail closed)
 		log.Printf("Warning: K8s client not initialized, returning restricted capabilities")
-		return &Capabilities{Exec: false, Logs: false, PortForward: false, Secrets: false}, nil
+		return &Capabilities{Exec: false, Logs: false, PortForward: false, Secrets: false, HelmWrite: false}, nil
 	}
+
+	// Use a background context so that HTTP request cancellation doesn't cause
+	// transient failures to be cached as "denied" for the full TTL.
+	checkCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	// Check each capability in parallel using local variables to avoid data race
 	var wg sync.WaitGroup
-	var execAllowed, logsAllowed, portForwardAllowed, secretsAllowed bool
+	var execAllowed, logsAllowed, portForwardAllowed, secretsAllowed, helmWriteAllowed bool
 
-	wg.Add(4)
+	wg.Add(5)
 
 	go func() {
 		defer wg.Done()
-		execAllowed = canI(ctx, "", "pods/exec", "create")
+		execAllowed = canI(checkCtx, "", "pods/exec", "create")
 	}()
 
 	go func() {
 		defer wg.Done()
-		logsAllowed = canI(ctx, "", "pods/log", "get")
+		logsAllowed = canI(checkCtx, "", "pods/log", "get")
 	}()
 
 	go func() {
 		defer wg.Done()
-		portForwardAllowed = canI(ctx, "", "pods/portforward", "create")
+		portForwardAllowed = canI(checkCtx, "", "pods/portforward", "create")
 	}()
 
 	go func() {
 		defer wg.Done()
-		secretsAllowed = canI(ctx, "", "secrets", "list")
+		secretsAllowed = canI(checkCtx, "", "secrets", "list")
+	}()
+
+	go func() {
+		defer wg.Done()
+		helmWriteAllowed = canI(checkCtx, "", "secrets", "create")
 	}()
 
 	wg.Wait()
@@ -86,6 +100,11 @@ func CheckCapabilities(ctx context.Context) (*Capabilities, error) {
 		Logs:        logsAllowed,
 		PortForward: portForwardAllowed,
 		Secrets:     secretsAllowed,
+		HelmWrite:   helmWriteAllowed,
+	}
+
+	if ForceDisableHelmWrite {
+		caps.HelmWrite = false
 	}
 
 	// Cache the result
