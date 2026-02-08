@@ -14,9 +14,9 @@ Deploy Radar to your Kubernetes cluster for web-based cluster visualization and 
 ### Quick Start
 
 ```bash
-helm install radar ./deploy/helm/radar \
-  --namespace radar \
-  --create-namespace
+helm repo add skyhook https://skyhook-io.github.io/helm-charts
+helm repo update skyhook
+helm upgrade --install radar skyhook/radar -n radar --create-namespace
 ```
 
 Access via port-forward:
@@ -28,9 +28,8 @@ open http://localhost:9280
 ### With Ingress
 
 ```bash
-helm install radar ./deploy/helm/radar \
-  --namespace radar \
-  --create-namespace \
+helm upgrade --install radar skyhook/radar \
+  -n radar --create-namespace \
   --set ingress.enabled=true \
   --set ingress.className=nginx \
   --set ingress.hosts[0].host=radar.example.com \
@@ -41,9 +40,8 @@ helm install radar ./deploy/helm/radar \
 ### With TLS
 
 ```bash
-helm install radar ./deploy/helm/radar \
-  --namespace radar \
-  --create-namespace \
+helm upgrade --install radar skyhook/radar \
+  -n radar --create-namespace \
   --set ingress.enabled=true \
   --set ingress.className=nginx \
   --set ingress.hosts[0].host=radar.example.com \
@@ -174,12 +172,6 @@ rbac:
 ### Capability Detection
 
 Radar uses its ServiceAccount permissions to access the Kubernetes API. The UI automatically detects which features are available based on RBAC and hides unavailable features (e.g., the terminal button won't appear if `podExec` is disabled).
-
-## Upgrading
-
-```bash
-helm upgrade radar ./deploy/helm/radar -n radar
-```
 
 ## Uninstalling
 
