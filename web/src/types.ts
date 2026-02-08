@@ -194,6 +194,7 @@ export interface ClusterInfo {
   nodeCount: number
   podCount: number
   namespaceCount: number
+  inCluster: boolean
   crdDiscoveryStatus?: 'idle' | 'discovering' | 'ready'
 }
 

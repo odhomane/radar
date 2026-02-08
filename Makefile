@@ -4,6 +4,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X main.version=$(VERSION)
 DOCKER_REPO ?= ghcr.io/skyhook-io/radar
+RADAR_FLAGS ?=
 
 ## Build targets
 
@@ -67,9 +68,10 @@ watch-frontend:
 	cd web && npm run dev
 
 # Backend with air hot reload
+# Pass extra flags: make watch-backend RADAR_FLAGS="--fake-in-cluster"
 watch-backend:
 	@command -v air >/dev/null 2>&1 || { echo "Installing air..."; go install github.com/air-verse/air@latest; }
-	air
+	air -- $(RADAR_FLAGS)
 
 # Run built binary
 run:
