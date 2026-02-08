@@ -18,6 +18,7 @@ type ClusterInfo struct {
 	NodeCount          int    `json:"nodeCount"`
 	PodCount           int    `json:"podCount"`
 	NamespaceCount     int    `json:"namespaceCount"`
+	InCluster          bool   `json:"inCluster"`                    // true when running inside a K8s cluster
 	CRDDiscoveryStatus string `json:"crdDiscoveryStatus,omitempty"` // idle, discovering, ready
 }
 
@@ -26,9 +27,10 @@ func GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
 	platform, _ := GetClusterPlatform(ctx)
 
 	info := &ClusterInfo{
-		Context:  GetContextName(),
-		Cluster:  GetClusterName(),
-		Platform: platform,
+		Context:   GetContextName(),
+		Cluster:   GetClusterName(),
+		Platform:  platform,
+		InCluster: IsInCluster(),
 	}
 
 	// Get version info

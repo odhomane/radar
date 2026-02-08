@@ -246,9 +246,12 @@ func GetClusterName() string {
 	return clusterName
 }
 
+// ForceInCluster overrides in-cluster detection for testing
+var ForceInCluster bool
+
 // IsInCluster returns true if running inside a Kubernetes cluster
 func IsInCluster() bool {
-	return kubeconfigPath == "" && len(kubeconfigPaths) == 0
+	return ForceInCluster || (kubeconfigPath == "" && len(kubeconfigPaths) == 0)
 }
 
 // ContextInfo represents information about a kubeconfig context
