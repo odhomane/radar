@@ -96,7 +96,7 @@ radar
 |------|---------|-------------|
 | `--kubeconfig` | `~/.kube/config` | Path to kubeconfig file |
 | `--kubeconfig-dir` | | Comma-separated directories containing kubeconfig files |
-| `--namespace` | (all) | Initial namespace filter |
+| `--namespace` | (all) | Initial namespace filter (also used as RBAC fallback for namespace-scoped users) |
 | `--port` | `9280` | Server port |
 | `--no-browser` | `false` | Don't auto-open browser |
 | `--timeline-storage` | `memory` | Timeline storage backend: `memory` or `sqlite` |

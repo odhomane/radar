@@ -12,8 +12,10 @@ import {
   Trash2,
   List,
   GanttChart,
+  Shield,
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { useHasLimitedAccess } from '../../contexts/CapabilitiesContext'
 import { useChanges } from '../../api/client'
 import { DiffViewer, DiffBadge } from './DiffViewer'
 import type { TimelineEvent, TimeRange } from '../../types'
@@ -67,6 +69,7 @@ const RESOURCE_KINDS = [
 ]
 
 export function TimelineList({ namespaces, onViewChange, currentView = 'list', onResourceClick, initialFilter, initialTimeRange }: TimelineListProps) {
+  const hasLimitedAccess = useHasLimitedAccess()
   const [searchTerm, setSearchTerm] = useState('')
   const [activityTypeFilter, setActivityTypeFilter] = useState<ActivityTypeFilter>(initialFilter ?? 'all')
   const [timeRange, setTimeRange] = useState<TimeRange>(initialTimeRange ?? '1h')
@@ -408,6 +411,12 @@ export function TimelineList({ namespaces, onViewChange, currentView = 'list', o
                 ? 'Try adjusting your filters'
                 : 'Activity will appear here when cluster changes occur'}
             </p>
+            {hasLimitedAccess && !searchTerm && activityTypeFilter === 'all' && !kindFilter && (
+              <p className="flex items-center gap-1 text-sm mt-2 text-amber-400/80">
+                <Shield className="w-3.5 h-3.5" />
+                Some resource types are not monitored due to RBAC restrictions
+              </p>
+            )}
             {namespaces && namespaces.length > 0 && <p className="text-sm mt-1 text-theme-text-disabled">Searching in: {namespaces.length === 1 ? namespaces[0] : `${namespaces.length} namespaces`}</p>}
           </div>
         ) : (

@@ -69,86 +69,106 @@ func (b *Builder) detectLargeClusterAndOptimize(opts *BuildOptions) (bool, []str
 	var hiddenKinds []string
 
 	// Count deployments
-	deployments, _ := b.cache.Deployments().List(labels.Everything())
-	for _, d := range deployments {
-		if opts.MatchesNamespaceFilter(d.Namespace) {
-			estimatedNodes++
+	if lister := b.cache.Deployments(); lister != nil {
+		deployments, _ := lister.List(labels.Everything())
+		for _, d := range deployments {
+			if opts.MatchesNamespaceFilter(d.Namespace) {
+				estimatedNodes++
+			}
 		}
 	}
 
 	// Count statefulsets
-	statefulsets, _ := b.cache.StatefulSets().List(labels.Everything())
-	for _, s := range statefulsets {
-		if opts.MatchesNamespaceFilter(s.Namespace) {
-			estimatedNodes++
+	if lister := b.cache.StatefulSets(); lister != nil {
+		statefulsets, _ := lister.List(labels.Everything())
+		for _, s := range statefulsets {
+			if opts.MatchesNamespaceFilter(s.Namespace) {
+				estimatedNodes++
+			}
 		}
 	}
 
 	// Count daemonsets
-	daemonsets, _ := b.cache.DaemonSets().List(labels.Everything())
-	for _, d := range daemonsets {
-		if opts.MatchesNamespaceFilter(d.Namespace) {
-			estimatedNodes++
+	if lister := b.cache.DaemonSets(); lister != nil {
+		daemonsets, _ := lister.List(labels.Everything())
+		for _, d := range daemonsets {
+			if opts.MatchesNamespaceFilter(d.Namespace) {
+				estimatedNodes++
+			}
 		}
 	}
 
 	// Count services
-	services, _ := b.cache.Services().List(labels.Everything())
-	for _, s := range services {
-		if opts.MatchesNamespaceFilter(s.Namespace) {
-			estimatedNodes++
+	if lister := b.cache.Services(); lister != nil {
+		services, _ := lister.List(labels.Everything())
+		for _, s := range services {
+			if opts.MatchesNamespaceFilter(s.Namespace) {
+				estimatedNodes++
+			}
 		}
 	}
 
 	// Count pods (this is usually the largest contributor)
-	pods, _ := b.cache.Pods().List(labels.Everything())
-	podCount := 0
-	for _, p := range pods {
-		if opts.MatchesNamespaceFilter(p.Namespace) {
-			podCount++
+	if lister := b.cache.Pods(); lister != nil {
+		pods, _ := lister.List(labels.Everything())
+		podCount := 0
+		for _, p := range pods {
+			if opts.MatchesNamespaceFilter(p.Namespace) {
+				podCount++
+			}
 		}
+		// Estimate pod nodes after grouping (assume ~5 pods per group on average)
+		estimatedNodes += (podCount + 4) / 5
 	}
-	// Estimate pod nodes after grouping (assume ~5 pods per group on average)
-	estimatedNodes += (podCount + 4) / 5
 
 	// Count jobs and cronjobs
-	jobs, _ := b.cache.Jobs().List(labels.Everything())
-	for _, j := range jobs {
-		if opts.MatchesNamespaceFilter(j.Namespace) {
-			estimatedNodes++
+	if lister := b.cache.Jobs(); lister != nil {
+		jobs, _ := lister.List(labels.Everything())
+		for _, j := range jobs {
+			if opts.MatchesNamespaceFilter(j.Namespace) {
+				estimatedNodes++
+			}
 		}
 	}
-	cronjobs, _ := b.cache.CronJobs().List(labels.Everything())
-	for _, c := range cronjobs {
-		if opts.MatchesNamespaceFilter(c.Namespace) {
-			estimatedNodes++
-		}
-	}
-
-	// Count ingresses
-	ingresses, _ := b.cache.Ingresses().List(labels.Everything())
-	for _, i := range ingresses {
-		if opts.MatchesNamespaceFilter(i.Namespace) {
-			estimatedNodes++
-		}
-	}
-
-	// Count configmaps (only if currently included)
-	if opts.IncludeConfigMaps {
-		configmaps, _ := b.cache.ConfigMaps().List(labels.Everything())
-		for _, c := range configmaps {
+	if lister := b.cache.CronJobs(); lister != nil {
+		cronjobs, _ := lister.List(labels.Everything())
+		for _, c := range cronjobs {
 			if opts.MatchesNamespaceFilter(c.Namespace) {
 				estimatedNodes++
 			}
 		}
 	}
 
+	// Count ingresses
+	if lister := b.cache.Ingresses(); lister != nil {
+		ingresses, _ := lister.List(labels.Everything())
+		for _, i := range ingresses {
+			if opts.MatchesNamespaceFilter(i.Namespace) {
+				estimatedNodes++
+			}
+		}
+	}
+
+	// Count configmaps (only if currently included)
+	if opts.IncludeConfigMaps {
+		if lister := b.cache.ConfigMaps(); lister != nil {
+			configmaps, _ := lister.List(labels.Everything())
+			for _, c := range configmaps {
+				if opts.MatchesNamespaceFilter(c.Namespace) {
+					estimatedNodes++
+				}
+			}
+		}
+	}
+
 	// Count PVCs (only if currently included)
 	if opts.IncludePVCs {
-		pvcs, _ := b.cache.PersistentVolumeClaims().List(labels.Everything())
-		for _, p := range pvcs {
-			if opts.MatchesNamespaceFilter(p.Namespace) {
-				estimatedNodes++
+		if lister := b.cache.PersistentVolumeClaims(); lister != nil {
+			pvcs, _ := lister.List(labels.Everything())
+			for _, p := range pvcs {
+				if opts.MatchesNamespaceFilter(p.Namespace) {
+					estimatedNodes++
+				}
 			}
 		}
 	}
@@ -203,11 +223,18 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	// Track workload namespaces for cross-namespace validation
 	workloadNamespaces := make(map[string]string) // workloadID -> namespace
 
+	var err error
+
 	// 1. Add Deployment nodes
-	deployments, err := b.cache.Deployments().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list Deployments: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list Deployments: %v", err))
+	var deployments []*appsv1.Deployment
+	if lister := b.cache.Deployments(); lister != nil {
+		deployments, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list Deployments: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list Deployments: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "Deployments not available (RBAC not granted)")
 	}
 	for _, deploy := range deployments {
 		if !opts.MatchesNamespaceFilter(deploy.Namespace) {
@@ -648,10 +675,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 2. Add DaemonSet nodes
-	daemonsets, err := b.cache.DaemonSets().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list DaemonSets: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list DaemonSets: %v", err))
+	var daemonsets []*appsv1.DaemonSet
+	if lister := b.cache.DaemonSets(); lister != nil {
+		daemonsets, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list DaemonSets: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list DaemonSets: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "DaemonSets not available (RBAC not granted)")
 	}
 	for _, ds := range daemonsets {
 		if !opts.MatchesNamespaceFilter(ds.Namespace) {
@@ -702,10 +734,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 3. Add StatefulSet nodes
-	statefulsets, err := b.cache.StatefulSets().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list StatefulSets: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list StatefulSets: %v", err))
+	var statefulsets []*appsv1.StatefulSet
+	if lister := b.cache.StatefulSets(); lister != nil {
+		statefulsets, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list StatefulSets: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list StatefulSets: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "StatefulSets not available (RBAC not granted)")
 	}
 	for _, sts := range statefulsets {
 		if !opts.MatchesNamespaceFilter(sts.Namespace) {
@@ -760,10 +797,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 4. Add CronJob nodes
-	cronjobs, err := b.cache.CronJobs().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list CronJobs: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list CronJobs: %v", err))
+	var cronjobs []*batchv1.CronJob
+	if lister := b.cache.CronJobs(); lister != nil {
+		cronjobs, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list CronJobs: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list CronJobs: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "CronJobs not available (RBAC not granted)")
 	}
 	for _, cj := range cronjobs {
 		if !opts.MatchesNamespaceFilter(cj.Namespace) {
@@ -796,10 +838,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 5. Add Job nodes
-	jobs, err := b.cache.Jobs().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list Jobs: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list Jobs: %v", err))
+	var jobs []*batchv1.Job
+	if lister := b.cache.Jobs(); lister != nil {
+		jobs, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list Jobs: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list Jobs: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "Jobs not available (RBAC not granted)")
 	}
 	for _, job := range jobs {
 		if !opts.MatchesNamespaceFilter(job.Namespace) {
@@ -864,10 +911,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 	// 6. Add ReplicaSet nodes (active ones) - if enabled
 	// Even if not shown, we still track them for shortcut edges
-	replicasets, err := b.cache.ReplicaSets().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list ReplicaSets: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list ReplicaSets: %v", err))
+	var replicasets []*appsv1.ReplicaSet
+	if lister := b.cache.ReplicaSets(); lister != nil {
+		replicasets, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list ReplicaSets: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list ReplicaSets: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "ReplicaSets not available (RBAC not granted)")
 	}
 	for _, rs := range replicasets {
 		if !opts.MatchesNamespaceFilter(rs.Namespace) {
@@ -941,10 +993,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 5. Add Pod nodes - grouped by app label when there are multiple pods
-	pods, err := b.cache.Pods().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list Pods: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list Pods: %v", err))
+	var pods []*corev1.Pod
+	if lister := b.cache.Pods(); lister != nil {
+		pods, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list Pods: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list Pods: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "Pods not available (RBAC not granted)")
 	}
 	if len(pods) > 0 {
 		// Group pods using shared grouping logic
@@ -982,10 +1039,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 8. Add Service nodes
-	services, err := b.cache.Services().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list Services: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list Services: %v", err))
+	var services []*corev1.Service
+	if lister := b.cache.Services(); lister != nil {
+		services, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list Services: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list Services: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "Services not available (RBAC not granted)")
 	}
 
 	// Pre-index workloads by namespace for faster service-to-workload matching
@@ -1104,10 +1166,15 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 	}
 
 	// 7. Add Ingress nodes
-	ingresses, err := b.cache.Ingresses().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list Ingresses: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list Ingresses: %v", err))
+	var ingresses []*networkingv1.Ingress
+	if lister := b.cache.Ingresses(); lister != nil {
+		ingresses, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology] Failed to list Ingresses: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list Ingresses: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "Ingresses not available (RBAC not granted)")
 	}
 	for _, ing := range ingresses {
 		if !opts.MatchesNamespaceFilter(ing.Namespace) {
@@ -1159,48 +1226,53 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 	// 8. Add ConfigMap nodes (if enabled)
 	if opts.IncludeConfigMaps {
-		configmaps, err := b.cache.ConfigMaps().List(labels.Everything())
-		if err != nil {
-			log.Printf("WARNING [topology] Failed to list ConfigMaps: %v", err)
-			warnings = append(warnings, fmt.Sprintf("Failed to list ConfigMaps: %v", err))
-		}
-		for _, cm := range configmaps {
-			if !opts.MatchesNamespaceFilter(cm.Namespace) {
-				continue
+		cmLister := b.cache.ConfigMaps()
+		if cmLister == nil {
+			warnings = append(warnings, "ConfigMaps not available (RBAC not granted)")
+		} else {
+			configmaps, cmErr := cmLister.List(labels.Everything())
+			if cmErr != nil {
+				log.Printf("WARNING [topology] Failed to list ConfigMaps: %v", cmErr)
+				warnings = append(warnings, fmt.Sprintf("Failed to list ConfigMaps: %v", cmErr))
 			}
-
-			// Only include ConfigMaps that are referenced by workloads in the same namespace
-			cmID := fmt.Sprintf("configmap/%s/%s", cm.Namespace, cm.Name)
-			isReferenced := false
-
-			for workloadID, refs := range workloadConfigMapRefs {
-				// Only match if workload is in the same namespace as the ConfigMap
-				if workloadNamespaces[workloadID] != cm.Namespace {
+			for _, cm := range configmaps {
+				if !opts.MatchesNamespaceFilter(cm.Namespace) {
 					continue
 				}
-				if refs[cm.Name] {
-					isReferenced = true
-					edges = append(edges, Edge{
-						ID:     fmt.Sprintf("%s-to-%s", cmID, workloadID),
-						Source: cmID,
-						Target: workloadID,
-						Type:   EdgeConfigures,
+
+				// Only include ConfigMaps that are referenced by workloads in the same namespace
+				cmID := fmt.Sprintf("configmap/%s/%s", cm.Namespace, cm.Name)
+				isReferenced := false
+
+				for workloadID, refs := range workloadConfigMapRefs {
+					// Only match if workload is in the same namespace as the ConfigMap
+					if workloadNamespaces[workloadID] != cm.Namespace {
+						continue
+					}
+					if refs[cm.Name] {
+						isReferenced = true
+						edges = append(edges, Edge{
+							ID:     fmt.Sprintf("%s-to-%s", cmID, workloadID),
+							Source: cmID,
+							Target: workloadID,
+							Type:   EdgeConfigures,
+						})
+					}
+				}
+
+				if isReferenced {
+					nodes = append(nodes, Node{
+						ID:     cmID,
+						Kind:   KindConfigMap,
+						Name:   cm.Name,
+						Status: StatusHealthy,
+						Data: map[string]any{
+							"namespace": cm.Namespace,
+							"keys":      len(cm.Data),
+							"labels":    cm.Labels,
+						},
 					})
 				}
-			}
-
-			if isReferenced {
-				nodes = append(nodes, Node{
-					ID:     cmID,
-					Kind:   KindConfigMap,
-					Name:   cm.Name,
-					Status: StatusHealthy,
-					Data: map[string]any{
-						"namespace": cm.Namespace,
-						"keys":      len(cm.Data),
-						"labels":    cm.Labels,
-					},
-				})
 			}
 		}
 	}
@@ -1262,120 +1334,129 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 
 	// 10. Add PVC nodes (if enabled)
 	if opts.IncludePVCs {
-		pvcs, err := b.cache.PersistentVolumeClaims().List(labels.Everything())
-		if err != nil {
-			log.Printf("WARNING [topology] Failed to list PersistentVolumeClaims: %v", err)
-			warnings = append(warnings, fmt.Sprintf("Failed to list PersistentVolumeClaims: %v", err))
-		}
-		for _, pvc := range pvcs {
-			if !opts.MatchesNamespaceFilter(pvc.Namespace) {
-				continue
+		pvcLister := b.cache.PersistentVolumeClaims()
+		if pvcLister == nil {
+			warnings = append(warnings, "PersistentVolumeClaims not available (RBAC not granted)")
+		} else {
+			pvcs, pvcErr := pvcLister.List(labels.Everything())
+			if pvcErr != nil {
+				log.Printf("WARNING [topology] Failed to list PersistentVolumeClaims: %v", pvcErr)
+				warnings = append(warnings, fmt.Sprintf("Failed to list PersistentVolumeClaims: %v", pvcErr))
 			}
-
-			// Only include PVCs that are referenced by workloads in the same namespace
-			pvcID := fmt.Sprintf("pvc/%s/%s", pvc.Namespace, pvc.Name)
-			isReferenced := false
-
-			for workloadID, refs := range workloadPVCRefs {
-				// Only match if workload is in the same namespace as the PVC
-				if workloadNamespaces[workloadID] != pvc.Namespace {
+			for _, pvc := range pvcs {
+				if !opts.MatchesNamespaceFilter(pvc.Namespace) {
 					continue
 				}
-				if refs[pvc.Name] {
-					isReferenced = true
-					edges = append(edges, Edge{
-						ID:     fmt.Sprintf("%s-to-%s", pvcID, workloadID),
-						Source: pvcID,
-						Target: workloadID,
-						Type:   EdgeUses,
-					})
-				}
-			}
 
-			if isReferenced {
-				// Get storage info
-				var storageSize string
-				if pvc.Spec.Resources.Requests != nil {
-					if storage, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
-						storageSize = storage.String()
+				// Only include PVCs that are referenced by workloads in the same namespace
+				pvcID := fmt.Sprintf("pvc/%s/%s", pvc.Namespace, pvc.Name)
+				isReferenced := false
+
+				for workloadID, refs := range workloadPVCRefs {
+					// Only match if workload is in the same namespace as the PVC
+					if workloadNamespaces[workloadID] != pvc.Namespace {
+						continue
+					}
+					if refs[pvc.Name] {
+						isReferenced = true
+						edges = append(edges, Edge{
+							ID:     fmt.Sprintf("%s-to-%s", pvcID, workloadID),
+							Source: pvcID,
+							Target: workloadID,
+							Type:   EdgeUses,
+						})
 					}
 				}
 
-				var storageClass string
-				if pvc.Spec.StorageClassName != nil {
-					storageClass = *pvc.Spec.StorageClassName
-				}
+				if isReferenced {
+					// Get storage info
+					var storageSize string
+					if pvc.Spec.Resources.Requests != nil {
+						if storage, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
+							storageSize = storage.String()
+						}
+					}
 
-				nodes = append(nodes, Node{
-					ID:     pvcID,
-					Kind:   KindPVC,
-					Name:   pvc.Name,
-					Status: getPVCStatus(pvc.Status.Phase),
-					Data: map[string]any{
-						"namespace":    pvc.Namespace,
-						"storageClass": storageClass,
-						"accessModes":  pvc.Spec.AccessModes,
-						"storage":      storageSize,
-						"phase":        string(pvc.Status.Phase),
-						"labels":       pvc.Labels,
-					},
-				})
+					var storageClass string
+					if pvc.Spec.StorageClassName != nil {
+						storageClass = *pvc.Spec.StorageClassName
+					}
+
+					nodes = append(nodes, Node{
+						ID:     pvcID,
+						Kind:   KindPVC,
+						Name:   pvc.Name,
+						Status: getPVCStatus(pvc.Status.Phase),
+						Data: map[string]any{
+							"namespace":    pvc.Namespace,
+							"storageClass": storageClass,
+							"accessModes":  pvc.Spec.AccessModes,
+							"storage":      storageSize,
+							"phase":        string(pvc.Status.Phase),
+							"labels":       pvc.Labels,
+						},
+					})
+				}
 			}
 		}
 	}
 
 	// 11. Add HPA nodes
-	hpas, err := b.cache.HorizontalPodAutoscalers().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology] Failed to list HorizontalPodAutoscalers: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list HorizontalPodAutoscalers: %v", err))
-	}
-	for _, hpa := range hpas {
-		if !opts.MatchesNamespaceFilter(hpa.Namespace) {
-			continue
+	if hpaLister := b.cache.HorizontalPodAutoscalers(); hpaLister != nil {
+		hpas, hpaErr := hpaLister.List(labels.Everything())
+		if hpaErr != nil {
+			log.Printf("WARNING [topology] Failed to list HorizontalPodAutoscalers: %v", hpaErr)
+			warnings = append(warnings, fmt.Sprintf("Failed to list HorizontalPodAutoscalers: %v", hpaErr))
 		}
+		for _, hpa := range hpas {
+			if !opts.MatchesNamespaceFilter(hpa.Namespace) {
+				continue
+			}
 
-		hpaID := fmt.Sprintf("hpa/%s/%s", hpa.Namespace, hpa.Name)
+			hpaID := fmt.Sprintf("hpa/%s/%s", hpa.Namespace, hpa.Name)
 
-		nodes = append(nodes, Node{
-			ID:     hpaID,
-			Kind:   KindHPA,
-			Name:   hpa.Name,
-			Status: StatusHealthy,
-			Data: map[string]any{
-				"namespace":   hpa.Namespace,
-				"minReplicas": hpa.Spec.MinReplicas,
-				"maxReplicas": hpa.Spec.MaxReplicas,
-				"current":     hpa.Status.CurrentReplicas,
-				"labels":      hpa.Labels,
-			},
-		})
-
-		// Connect to target
-		targetKind := hpa.Spec.ScaleTargetRef.Kind
-		targetName := hpa.Spec.ScaleTargetRef.Name
-		targetKey := hpa.Namespace + "/" + targetName
-
-		var targetID string
-		switch targetKind {
-		case "Deployment":
-			targetID = deploymentIDs[targetKey]
-		case "Rollout":
-			targetID = rolloutIDs[targetKey]
-		case "StatefulSet":
-			targetID = statefulSetIDs[targetKey]
-		case "ReplicaSet":
-			targetID = replicaSetIDs[targetKey]
-		}
-
-		if targetID != "" {
-			edges = append(edges, Edge{
-				ID:     fmt.Sprintf("%s-to-%s", hpaID, targetID),
-				Source: hpaID,
-				Target: targetID,
-				Type:   EdgeUses,
+			nodes = append(nodes, Node{
+				ID:     hpaID,
+				Kind:   KindHPA,
+				Name:   hpa.Name,
+				Status: StatusHealthy,
+				Data: map[string]any{
+					"namespace":   hpa.Namespace,
+					"minReplicas": hpa.Spec.MinReplicas,
+					"maxReplicas": hpa.Spec.MaxReplicas,
+					"current":     hpa.Status.CurrentReplicas,
+					"labels":      hpa.Labels,
+				},
 			})
+
+			// Connect to target
+			targetKind := hpa.Spec.ScaleTargetRef.Kind
+			targetName := hpa.Spec.ScaleTargetRef.Name
+			targetKey := hpa.Namespace + "/" + targetName
+
+			var targetID string
+			switch targetKind {
+			case "Deployment":
+				targetID = deploymentIDs[targetKey]
+			case "Rollout":
+				targetID = rolloutIDs[targetKey]
+			case "StatefulSet":
+				targetID = statefulSetIDs[targetKey]
+			case "ReplicaSet":
+				targetID = replicaSetIDs[targetKey]
+			}
+
+			if targetID != "" {
+				edges = append(edges, Edge{
+					ID:     fmt.Sprintf("%s-to-%s", hpaID, targetID),
+					Source: hpaID,
+					Target: targetID,
+					Type:   EdgeUses,
+				})
+			}
 		}
+	} else {
+		warnings = append(warnings, "HorizontalPodAutoscalers not available (RBAC not granted)")
 	}
 
 	// 12. Second pass: Create ArgoCD Application edges to managed resources
@@ -1558,8 +1639,12 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 			}
 
 			// Check if deployment has matching label
-			dep, err := b.cache.Deployments().Deployments(depNS).Get(depName)
-			if err != nil || dep == nil {
+			depLister := b.cache.Deployments()
+			if depLister == nil {
+				continue
+			}
+			dep, depGetErr := depLister.Deployments(depNS).Get(depName)
+			if depGetErr != nil || dep == nil {
 				continue
 			}
 
@@ -1588,8 +1673,12 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 			}
 
 			// Check if service has matching label
-			svc, err := b.cache.Services().Services(svcNS).Get(svcName)
-			if err != nil || svc == nil {
+			svcLister := b.cache.Services()
+			if svcLister == nil {
+				continue
+			}
+			svc, svcGetErr := svcLister.Services(svcNS).Get(svcName)
+			if svcGetErr != nil || svc == nil {
 				continue
 			}
 
@@ -1618,8 +1707,12 @@ func (b *Builder) buildResourcesTopology(opts BuildOptions) (*Topology, error) {
 			}
 
 			// Check if statefulset has matching label
-			sts, err := b.cache.StatefulSets().StatefulSets(stsNS).Get(stsName)
-			if err != nil || sts == nil {
+			stsLister := b.cache.StatefulSets()
+			if stsLister == nil {
+				continue
+			}
+			sts, stsGetErr := stsLister.StatefulSets(stsNS).Get(stsName)
+			if stsGetErr != nil || sts == nil {
 				continue
 			}
 
@@ -1658,20 +1751,38 @@ func (b *Builder) buildTrafficTopology(opts BuildOptions) (*Topology, error) {
 	warnings := make([]string, 0)
 
 	// First, collect all raw data
-	ingresses, err := b.cache.Ingresses().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology/traffic] Failed to list Ingresses: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list Ingresses: %v", err))
+	var ingresses []*networkingv1.Ingress
+	if lister := b.cache.Ingresses(); lister != nil {
+		var err error
+		ingresses, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology/traffic] Failed to list Ingresses: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list Ingresses: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "Ingresses not available (RBAC not granted)")
 	}
-	services, err := b.cache.Services().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology/traffic] Failed to list Services: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list Services: %v", err))
+	var services []*corev1.Service
+	if lister := b.cache.Services(); lister != nil {
+		var err error
+		services, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology/traffic] Failed to list Services: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list Services: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "Services not available (RBAC not granted)")
 	}
-	pods, err := b.cache.Pods().List(labels.Everything())
-	if err != nil {
-		log.Printf("WARNING [topology/traffic] Failed to list Pods: %v", err)
-		warnings = append(warnings, fmt.Sprintf("Failed to list Pods: %v", err))
+	var pods []*corev1.Pod
+	if lister := b.cache.Pods(); lister != nil {
+		var err error
+		pods, err = lister.List(labels.Everything())
+		if err != nil {
+			log.Printf("WARNING [topology/traffic] Failed to list Pods: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Failed to list Pods: %v", err))
+		}
+	} else {
+		warnings = append(warnings, "Pods not available (RBAC not granted)")
 	}
 
 	// Pre-index pods by namespace to avoid O(services × all_pods) complexity

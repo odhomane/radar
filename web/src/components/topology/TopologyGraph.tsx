@@ -18,7 +18,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { AlertTriangle, RotateCw, Scissors } from 'lucide-react'
+import { AlertTriangle, RotateCw, Scissors, Shield } from 'lucide-react'
 
 import { K8sResourceNode } from './K8sResourceNode'
 import { GroupNode } from './GroupNode'
@@ -550,29 +550,51 @@ export function TopologyGraph({
         </div>
       )}
       {/* Warning banner for partial topology data */}
-      {topology?.warnings && topology.warnings.length > 0 && !topology.truncated && (
-        <div className="absolute top-2 left-2 right-2 z-10 bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 backdrop-blur-sm">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-            <div className="text-sm">
-              <span className="font-medium text-amber-400">Warning:</span>
-              <span className="text-theme-text-secondary ml-1">
-                Some resources failed to load. Data may be incomplete.
-              </span>
-              <details className="mt-1">
-                <summary className="text-xs text-amber-400/80 cursor-pointer hover:text-amber-400">
-                  Show details ({topology.warnings.length})
-                </summary>
-                <ul className="mt-1 text-xs text-theme-text-tertiary space-y-0.5">
-                  {topology.warnings.map((w, i) => (
-                    <li key={i} className="font-mono">{w}</li>
-                  ))}
-                </ul>
-              </details>
+      {topology?.warnings && topology.warnings.length > 0 && !topology.truncated && (() => {
+        const rbacWarnings = topology.warnings.filter(w => w.includes('RBAC not granted'))
+        const otherWarnings = topology.warnings.filter(w => !w.includes('RBAC not granted'))
+        const isAllRbac = otherWarnings.length === 0
+        return (
+          <div className={`absolute top-2 left-2 right-2 z-10 ${isAllRbac ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-500/10 border-amber-500/30'} border rounded-lg p-2 backdrop-blur-sm`}>
+            <div className="flex items-start gap-2">
+              {isAllRbac ? (
+                <Shield className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              )}
+              <div className="text-sm">
+                <span className="font-medium text-amber-400">
+                  {isAllRbac ? 'Limited Access:' : 'Warning:'}
+                </span>
+                <span className="text-theme-text-secondary ml-1">
+                  {isAllRbac
+                    ? `${rbacWarnings.length} resource type${rbacWarnings.length > 1 ? 's' : ''} not accessible due to RBAC restrictions.`
+                    : 'Some resources failed to load. Data may be incomplete.'}
+                </span>
+                <details className="mt-1">
+                  <summary className="text-xs text-amber-400/80 cursor-pointer hover:text-amber-400">
+                    Show details ({topology.warnings.length})
+                  </summary>
+                  <ul className="mt-1 text-xs text-theme-text-tertiary space-y-0.5">
+                    {rbacWarnings.length > 0 && otherWarnings.length > 0 && (
+                      <li className="text-amber-400/60 font-medium mt-1">RBAC restrictions:</li>
+                    )}
+                    {rbacWarnings.map((w, i) => (
+                      <li key={`rbac-${i}`} className="font-mono">{w}</li>
+                    ))}
+                    {otherWarnings.length > 0 && rbacWarnings.length > 0 && (
+                      <li className="text-amber-400/60 font-medium mt-1">Other warnings:</li>
+                    )}
+                    {otherWarnings.map((w, i) => (
+                      <li key={`other-${i}`} className="font-mono">{w}</li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
       {/* Layout error banner - shown even when stale nodes exist */}
       {layoutError && nodes.length > 0 && (
         <div className="absolute top-2 left-2 right-2 z-10 bg-red-500/10 border border-red-500/30 rounded-lg p-2 backdrop-blur-sm">

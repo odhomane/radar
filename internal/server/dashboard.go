@@ -80,6 +80,7 @@ type DashboardResourceCounts struct {
 	Secrets      int           `json:"secrets"`
 	PVCs         PVCCount      `json:"pvcs"`
 	HelmReleases int           `json:"helmReleases"`
+	Restricted   []string      `json:"restricted,omitempty"` // Resource kinds the user cannot list
 }
 
 type WorkloadCount struct {
@@ -181,8 +182,9 @@ type DashboardTopFlow struct {
 }
 
 type DashboardHelmSummary struct {
-	Total    int                    `json:"total"`
-	Releases []DashboardHelmRelease `json:"releases"`
+	Total      int                    `json:"total"`
+	Releases   []DashboardHelmRelease `json:"releases"`
+	Restricted bool                   `json:"restricted,omitempty"` // True when user lacks permissions to list Helm releases
 }
 
 type DashboardHelmRelease struct {
@@ -276,10 +278,12 @@ func (s *Server) getDashboardHealth(cache *k8s.ResourceCache, namespace string) 
 	// Pod health
 	var pods []*corev1.Pod
 	var err error
-	if namespace != "" {
-		pods, err = cache.Pods().Pods(namespace).List(labels.Everything())
-	} else {
-		pods, err = cache.Pods().List(labels.Everything())
+	if podLister := cache.Pods(); podLister != nil {
+		if namespace != "" {
+			pods, err = podLister.Pods(namespace).List(labels.Everything())
+		} else {
+			pods, err = podLister.List(labels.Everything())
+		}
 	}
 	if err == nil {
 		for _, pod := range pods {
@@ -302,112 +306,121 @@ func (s *Server) getDashboardHealth(cache *k8s.ResourceCache, namespace string) 
 	}
 
 	// Deployment problems: unavailableReplicas > 0
-	if namespace != "" {
-		deps, _ := cache.Deployments().Deployments(namespace).List(labels.Everything())
-		for _, d := range deps {
-			if d.Status.UnavailableReplicas > 0 {
-				ageDur := now.Sub(d.CreationTimestamp.Time)
-				problems = append(problems, DashboardProblem{
-					Kind:       "Deployment",
-					Namespace:  d.Namespace,
-					Name:       d.Name,
-					Status:     "error",
-					Reason:     fmt.Sprintf("%d/%d available", d.Status.AvailableReplicas, d.Status.Replicas),
-					Age:        formatAge(ageDur),
-					AgeSeconds: int64(ageDur.Seconds()),
-				})
+	if depLister := cache.Deployments(); depLister != nil {
+		if namespace != "" {
+			deps, _ := depLister.Deployments(namespace).List(labels.Everything())
+			for _, d := range deps {
+				if d.Status.UnavailableReplicas > 0 {
+					ageDur := now.Sub(d.CreationTimestamp.Time)
+					problems = append(problems, DashboardProblem{
+						Kind:       "Deployment",
+						Namespace:  d.Namespace,
+						Name:       d.Name,
+						Status:     "error",
+						Reason:     fmt.Sprintf("%d/%d available", d.Status.AvailableReplicas, d.Status.Replicas),
+						Age:        formatAge(ageDur),
+						AgeSeconds: int64(ageDur.Seconds()),
+					})
+				}
 			}
-		}
-	} else {
-		deps, _ := cache.Deployments().List(labels.Everything())
-		for _, d := range deps {
-			if d.Status.UnavailableReplicas > 0 {
-				ageDur := now.Sub(d.CreationTimestamp.Time)
-				problems = append(problems, DashboardProblem{
-					Kind:       "Deployment",
-					Namespace:  d.Namespace,
-					Name:       d.Name,
-					Status:     "error",
-					Reason:     fmt.Sprintf("%d/%d available", d.Status.AvailableReplicas, d.Status.Replicas),
-					Age:        formatAge(ageDur),
-					AgeSeconds: int64(ageDur.Seconds()),
-				})
+		} else {
+			deps, _ := depLister.List(labels.Everything())
+			for _, d := range deps {
+				if d.Status.UnavailableReplicas > 0 {
+					ageDur := now.Sub(d.CreationTimestamp.Time)
+					problems = append(problems, DashboardProblem{
+						Kind:       "Deployment",
+						Namespace:  d.Namespace,
+						Name:       d.Name,
+						Status:     "error",
+						Reason:     fmt.Sprintf("%d/%d available", d.Status.AvailableReplicas, d.Status.Replicas),
+						Age:        formatAge(ageDur),
+						AgeSeconds: int64(ageDur.Seconds()),
+					})
+				}
 			}
 		}
 	}
 
 	// StatefulSet problems: readyReplicas < replicas
-	if namespace != "" {
-		ssets, _ := cache.StatefulSets().StatefulSets(namespace).List(labels.Everything())
-		for _, ss := range ssets {
-			if ss.Status.ReadyReplicas < ss.Status.Replicas {
-				ageDur := now.Sub(ss.CreationTimestamp.Time)
-				problems = append(problems, DashboardProblem{
-					Kind:       "StatefulSet",
-					Namespace:  ss.Namespace,
-					Name:       ss.Name,
-					Status:     "error",
-					Reason:     fmt.Sprintf("%d/%d ready", ss.Status.ReadyReplicas, ss.Status.Replicas),
-					Age:        formatAge(ageDur),
-					AgeSeconds: int64(ageDur.Seconds()),
-				})
+	if ssLister := cache.StatefulSets(); ssLister != nil {
+		if namespace != "" {
+			ssets, _ := ssLister.StatefulSets(namespace).List(labels.Everything())
+			for _, ss := range ssets {
+				if ss.Status.ReadyReplicas < ss.Status.Replicas {
+					ageDur := now.Sub(ss.CreationTimestamp.Time)
+					problems = append(problems, DashboardProblem{
+						Kind:       "StatefulSet",
+						Namespace:  ss.Namespace,
+						Name:       ss.Name,
+						Status:     "error",
+						Reason:     fmt.Sprintf("%d/%d ready", ss.Status.ReadyReplicas, ss.Status.Replicas),
+						Age:        formatAge(ageDur),
+						AgeSeconds: int64(ageDur.Seconds()),
+					})
+				}
 			}
-		}
-	} else {
-		ssets, _ := cache.StatefulSets().List(labels.Everything())
-		for _, ss := range ssets {
-			if ss.Status.ReadyReplicas < ss.Status.Replicas {
-				ageDur := now.Sub(ss.CreationTimestamp.Time)
-				problems = append(problems, DashboardProblem{
-					Kind:       "StatefulSet",
-					Namespace:  ss.Namespace,
-					Name:       ss.Name,
-					Status:     "error",
-					Reason:     fmt.Sprintf("%d/%d ready", ss.Status.ReadyReplicas, ss.Status.Replicas),
-					Age:        formatAge(ageDur),
-					AgeSeconds: int64(ageDur.Seconds()),
-				})
+		} else {
+			ssets, _ := ssLister.List(labels.Everything())
+			for _, ss := range ssets {
+				if ss.Status.ReadyReplicas < ss.Status.Replicas {
+					ageDur := now.Sub(ss.CreationTimestamp.Time)
+					problems = append(problems, DashboardProblem{
+						Kind:       "StatefulSet",
+						Namespace:  ss.Namespace,
+						Name:       ss.Name,
+						Status:     "error",
+						Reason:     fmt.Sprintf("%d/%d ready", ss.Status.ReadyReplicas, ss.Status.Replicas),
+						Age:        formatAge(ageDur),
+						AgeSeconds: int64(ageDur.Seconds()),
+					})
+				}
 			}
 		}
 	}
 
 	// DaemonSet problems: numberUnavailable > 0
-	if namespace != "" {
-		dsets, _ := cache.DaemonSets().DaemonSets(namespace).List(labels.Everything())
-		for _, ds := range dsets {
-			if ds.Status.NumberUnavailable > 0 {
-				ageDur := now.Sub(ds.CreationTimestamp.Time)
-				problems = append(problems, DashboardProblem{
-					Kind:       "DaemonSet",
-					Namespace:  ds.Namespace,
-					Name:       ds.Name,
-					Status:     "error",
-					Reason:     fmt.Sprintf("%d unavailable", ds.Status.NumberUnavailable),
-					Age:        formatAge(ageDur),
-					AgeSeconds: int64(ageDur.Seconds()),
-				})
+	if dsLister := cache.DaemonSets(); dsLister != nil {
+		if namespace != "" {
+			dsets, _ := dsLister.DaemonSets(namespace).List(labels.Everything())
+			for _, ds := range dsets {
+				if ds.Status.NumberUnavailable > 0 {
+					ageDur := now.Sub(ds.CreationTimestamp.Time)
+					problems = append(problems, DashboardProblem{
+						Kind:       "DaemonSet",
+						Namespace:  ds.Namespace,
+						Name:       ds.Name,
+						Status:     "error",
+						Reason:     fmt.Sprintf("%d unavailable", ds.Status.NumberUnavailable),
+						Age:        formatAge(ageDur),
+						AgeSeconds: int64(ageDur.Seconds()),
+					})
+				}
 			}
-		}
-	} else {
-		dsets, _ := cache.DaemonSets().List(labels.Everything())
-		for _, ds := range dsets {
-			if ds.Status.NumberUnavailable > 0 {
-				ageDur := now.Sub(ds.CreationTimestamp.Time)
-				problems = append(problems, DashboardProblem{
-					Kind:       "DaemonSet",
-					Namespace:  ds.Namespace,
-					Name:       ds.Name,
-					Status:     "error",
-					Reason:     fmt.Sprintf("%d unavailable", ds.Status.NumberUnavailable),
-					Age:        formatAge(ageDur),
-					AgeSeconds: int64(ageDur.Seconds()),
-				})
+		} else {
+			dsets, _ := dsLister.List(labels.Everything())
+			for _, ds := range dsets {
+				if ds.Status.NumberUnavailable > 0 {
+					ageDur := now.Sub(ds.CreationTimestamp.Time)
+					problems = append(problems, DashboardProblem{
+						Kind:       "DaemonSet",
+						Namespace:  ds.Namespace,
+						Name:       ds.Name,
+						Status:     "error",
+						Reason:     fmt.Sprintf("%d unavailable", ds.Status.NumberUnavailable),
+						Age:        formatAge(ageDur),
+						AgeSeconds: int64(ageDur.Seconds()),
+					})
+				}
 			}
 		}
 	}
 
 	// Node problems: Ready=False
-	nodes, _ := cache.Nodes().List(labels.Everything())
+	var nodes []*corev1.Node
+	if nodeLister := cache.Nodes(); nodeLister != nil {
+		nodes, _ = nodeLister.List(labels.Everything())
+	}
 	for _, n := range nodes {
 		ready := false
 		for _, cond := range n.Status.Conditions {
@@ -564,13 +577,18 @@ func podToProblem(pod *corev1.Pod, severity string, now time.Time) DashboardProb
 
 func (s *Server) getDashboardResourceCounts(cache *k8s.ResourceCache, namespace string) DashboardResourceCounts {
 	counts := DashboardResourceCounts{}
+	var restricted []string
 
 	// Pods
 	var pods []*corev1.Pod
-	if namespace != "" {
-		pods, _ = cache.Pods().Pods(namespace).List(labels.Everything())
+	if podLister := cache.Pods(); podLister != nil {
+		if namespace != "" {
+			pods, _ = podLister.Pods(namespace).List(labels.Everything())
+		} else {
+			pods, _ = podLister.List(labels.Everything())
+		}
 	} else {
-		pods, _ = cache.Pods().List(labels.Everything())
+		restricted = append(restricted, "pods")
 	}
 	counts.Pods.Total = len(pods)
 	for _, pod := range pods {
@@ -587,179 +605,215 @@ func (s *Server) getDashboardResourceCounts(cache *k8s.ResourceCache, namespace 
 	}
 
 	// Deployments
-	if namespace != "" {
-		deps, _ := cache.Deployments().Deployments(namespace).List(labels.Everything())
-		counts.Deployments.Total = len(deps)
-		for _, d := range deps {
-			if d.Status.AvailableReplicas == d.Status.Replicas && d.Status.Replicas > 0 {
-				counts.Deployments.Available++
-			} else if d.Status.Replicas > 0 {
-				counts.Deployments.Unavailable++
+	if depLister := cache.Deployments(); depLister != nil {
+		if namespace != "" {
+			deps, _ := depLister.Deployments(namespace).List(labels.Everything())
+			counts.Deployments.Total = len(deps)
+			for _, d := range deps {
+				if d.Status.AvailableReplicas == d.Status.Replicas && d.Status.Replicas > 0 {
+					counts.Deployments.Available++
+				} else if d.Status.Replicas > 0 {
+					counts.Deployments.Unavailable++
+				}
+			}
+		} else {
+			deps, _ := depLister.List(labels.Everything())
+			counts.Deployments.Total = len(deps)
+			for _, d := range deps {
+				if d.Status.AvailableReplicas == d.Status.Replicas && d.Status.Replicas > 0 {
+					counts.Deployments.Available++
+				} else if d.Status.Replicas > 0 {
+					counts.Deployments.Unavailable++
+				}
 			}
 		}
 	} else {
-		deps, _ := cache.Deployments().List(labels.Everything())
-		counts.Deployments.Total = len(deps)
-		for _, d := range deps {
-			if d.Status.AvailableReplicas == d.Status.Replicas && d.Status.Replicas > 0 {
-				counts.Deployments.Available++
-			} else if d.Status.Replicas > 0 {
-				counts.Deployments.Unavailable++
-			}
-		}
+		restricted = append(restricted, "deployments")
 	}
 
 	// StatefulSets (only count those with replicas > 0)
-	if namespace != "" {
-		ssets, _ := cache.StatefulSets().StatefulSets(namespace).List(labels.Everything())
-		for _, ss := range ssets {
-			if ss.Status.Replicas == 0 {
-				continue
+	if ssLister := cache.StatefulSets(); ssLister != nil {
+		if namespace != "" {
+			ssets, _ := ssLister.StatefulSets(namespace).List(labels.Everything())
+			for _, ss := range ssets {
+				if ss.Status.Replicas == 0 {
+					continue
+				}
+				counts.StatefulSets.Total++
+				if ss.Status.ReadyReplicas == ss.Status.Replicas {
+					counts.StatefulSets.Ready++
+				} else {
+					counts.StatefulSets.Unready++
+				}
 			}
-			counts.StatefulSets.Total++
-			if ss.Status.ReadyReplicas == ss.Status.Replicas {
-				counts.StatefulSets.Ready++
-			} else {
-				counts.StatefulSets.Unready++
+		} else {
+			ssets, _ := ssLister.List(labels.Everything())
+			for _, ss := range ssets {
+				if ss.Status.Replicas == 0 {
+					continue
+				}
+				counts.StatefulSets.Total++
+				if ss.Status.ReadyReplicas == ss.Status.Replicas {
+					counts.StatefulSets.Ready++
+				} else {
+					counts.StatefulSets.Unready++
+				}
 			}
 		}
 	} else {
-		ssets, _ := cache.StatefulSets().List(labels.Everything())
-		for _, ss := range ssets {
-			if ss.Status.Replicas == 0 {
-				continue
-			}
-			counts.StatefulSets.Total++
-			if ss.Status.ReadyReplicas == ss.Status.Replicas {
-				counts.StatefulSets.Ready++
-			} else {
-				counts.StatefulSets.Unready++
-			}
-		}
+		restricted = append(restricted, "statefulsets")
 	}
 
 	// DaemonSets (only count those with desired > 0)
-	if namespace != "" {
-		dsets, _ := cache.DaemonSets().DaemonSets(namespace).List(labels.Everything())
-		for _, ds := range dsets {
-			if ds.Status.DesiredNumberScheduled == 0 {
-				continue
+	if dsLister := cache.DaemonSets(); dsLister != nil {
+		if namespace != "" {
+			dsets, _ := dsLister.DaemonSets(namespace).List(labels.Everything())
+			for _, ds := range dsets {
+				if ds.Status.DesiredNumberScheduled == 0 {
+					continue
+				}
+				counts.DaemonSets.Total++
+				if ds.Status.NumberUnavailable == 0 {
+					counts.DaemonSets.Ready++
+				} else {
+					counts.DaemonSets.Unready++
+				}
 			}
-			counts.DaemonSets.Total++
-			if ds.Status.NumberUnavailable == 0 {
-				counts.DaemonSets.Ready++
-			} else {
-				counts.DaemonSets.Unready++
+		} else {
+			dsets, _ := dsLister.List(labels.Everything())
+			for _, ds := range dsets {
+				if ds.Status.DesiredNumberScheduled == 0 {
+					continue
+				}
+				counts.DaemonSets.Total++
+				if ds.Status.NumberUnavailable == 0 {
+					counts.DaemonSets.Ready++
+				} else {
+					counts.DaemonSets.Unready++
+				}
 			}
 		}
 	} else {
-		dsets, _ := cache.DaemonSets().List(labels.Everything())
-		for _, ds := range dsets {
-			if ds.Status.DesiredNumberScheduled == 0 {
-				continue
-			}
-			counts.DaemonSets.Total++
-			if ds.Status.NumberUnavailable == 0 {
-				counts.DaemonSets.Ready++
-			} else {
-				counts.DaemonSets.Unready++
-			}
-		}
+		restricted = append(restricted, "daemonsets")
 	}
 
 	// Services
-	if namespace != "" {
-		svcs, _ := cache.Services().Services(namespace).List(labels.Everything())
-		counts.Services = len(svcs)
+	if svcLister := cache.Services(); svcLister != nil {
+		if namespace != "" {
+			svcs, _ := svcLister.Services(namespace).List(labels.Everything())
+			counts.Services = len(svcs)
+		} else {
+			svcs, _ := svcLister.List(labels.Everything())
+			counts.Services = len(svcs)
+		}
 	} else {
-		svcs, _ := cache.Services().List(labels.Everything())
-		counts.Services = len(svcs)
+		restricted = append(restricted, "services")
 	}
 
 	// Ingresses
-	if namespace != "" {
-		ings, _ := cache.Ingresses().Ingresses(namespace).List(labels.Everything())
-		counts.Ingresses = len(ings)
+	if ingLister := cache.Ingresses(); ingLister != nil {
+		if namespace != "" {
+			ings, _ := ingLister.Ingresses(namespace).List(labels.Everything())
+			counts.Ingresses = len(ings)
+		} else {
+			ings, _ := ingLister.List(labels.Everything())
+			counts.Ingresses = len(ings)
+		}
 	} else {
-		ings, _ := cache.Ingresses().List(labels.Everything())
-		counts.Ingresses = len(ings)
+		restricted = append(restricted, "ingresses")
 	}
 
 	// Nodes (cluster-scoped, not filtered by namespace)
-	nodes, _ := cache.Nodes().List(labels.Everything())
-	counts.Nodes.Total = len(nodes)
-	for _, n := range nodes {
-		ready := false
-		for _, cond := range n.Status.Conditions {
-			if cond.Type == corev1.NodeReady && cond.Status == corev1.ConditionTrue {
-				ready = true
-				break
+	if nodeLister := cache.Nodes(); nodeLister != nil {
+		nodeList, _ := nodeLister.List(labels.Everything())
+		counts.Nodes.Total = len(nodeList)
+		for _, n := range nodeList {
+			ready := false
+			for _, cond := range n.Status.Conditions {
+				if cond.Type == corev1.NodeReady && cond.Status == corev1.ConditionTrue {
+					ready = true
+					break
+				}
+			}
+			if ready {
+				counts.Nodes.Ready++
+			} else {
+				counts.Nodes.NotReady++
 			}
 		}
-		if ready {
-			counts.Nodes.Ready++
-		} else {
-			counts.Nodes.NotReady++
-		}
+	} else {
+		restricted = append(restricted, "nodes")
 	}
 
 	// Namespaces (cluster-scoped)
-	nss, _ := cache.Namespaces().List(labels.Everything())
-	counts.Namespaces = len(nss)
+	if nsLister := cache.Namespaces(); nsLister != nil {
+		nss, _ := nsLister.List(labels.Everything())
+		counts.Namespaces = len(nss)
+	}
 
 	// Jobs
-	if namespace != "" {
-		jobs, _ := cache.Jobs().Jobs(namespace).List(labels.Everything())
-		counts.Jobs.Total = len(jobs)
-		for _, j := range jobs {
-			if j.Status.Active > 0 {
-				counts.Jobs.Active++
+	if jobLister := cache.Jobs(); jobLister != nil {
+		if namespace != "" {
+			jobList, _ := jobLister.Jobs(namespace).List(labels.Everything())
+			counts.Jobs.Total = len(jobList)
+			for _, j := range jobList {
+				if j.Status.Active > 0 {
+					counts.Jobs.Active++
+				}
+				counts.Jobs.Succeeded += int(j.Status.Succeeded)
+				counts.Jobs.Failed += int(j.Status.Failed)
 			}
-			counts.Jobs.Succeeded += int(j.Status.Succeeded)
-			counts.Jobs.Failed += int(j.Status.Failed)
+		} else {
+			jobList, _ := jobLister.List(labels.Everything())
+			counts.Jobs.Total = len(jobList)
+			for _, j := range jobList {
+				if j.Status.Active > 0 {
+					counts.Jobs.Active++
+				}
+				counts.Jobs.Succeeded += int(j.Status.Succeeded)
+				counts.Jobs.Failed += int(j.Status.Failed)
+			}
 		}
 	} else {
-		jobs, _ := cache.Jobs().List(labels.Everything())
-		counts.Jobs.Total = len(jobs)
-		for _, j := range jobs {
-			if j.Status.Active > 0 {
-				counts.Jobs.Active++
-			}
-			counts.Jobs.Succeeded += int(j.Status.Succeeded)
-			counts.Jobs.Failed += int(j.Status.Failed)
-		}
+		restricted = append(restricted, "jobs")
 	}
 
 	// CronJobs
-	if namespace != "" {
-		cronJobs, _ := cache.CronJobs().CronJobs(namespace).List(labels.Everything())
-		counts.CronJobs.Total = len(cronJobs)
-		for _, cj := range cronJobs {
-			if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
-				counts.CronJobs.Suspended++
-			} else if len(cj.Status.Active) > 0 {
-				counts.CronJobs.Active++
+	if cjLister := cache.CronJobs(); cjLister != nil {
+		if namespace != "" {
+			cronJobs, _ := cjLister.CronJobs(namespace).List(labels.Everything())
+			counts.CronJobs.Total = len(cronJobs)
+			for _, cj := range cronJobs {
+				if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
+					counts.CronJobs.Suspended++
+				} else if len(cj.Status.Active) > 0 {
+					counts.CronJobs.Active++
+				}
+			}
+		} else {
+			cronJobs, _ := cjLister.List(labels.Everything())
+			counts.CronJobs.Total = len(cronJobs)
+			for _, cj := range cronJobs {
+				if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
+					counts.CronJobs.Suspended++
+				} else if len(cj.Status.Active) > 0 {
+					counts.CronJobs.Active++
+				}
 			}
 		}
 	} else {
-		cronJobs, _ := cache.CronJobs().List(labels.Everything())
-		counts.CronJobs.Total = len(cronJobs)
-		for _, cj := range cronJobs {
-			if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
-				counts.CronJobs.Suspended++
-			} else if len(cj.Status.Active) > 0 {
-				counts.CronJobs.Active++
-			}
-		}
+		restricted = append(restricted, "cronjobs")
 	}
 
 	// ConfigMaps
-	if namespace != "" {
-		cms, _ := cache.ConfigMaps().ConfigMaps(namespace).List(labels.Everything())
-		counts.ConfigMaps = len(cms)
-	} else {
-		cms, _ := cache.ConfigMaps().List(labels.Everything())
-		counts.ConfigMaps = len(cms)
+	if cmLister := cache.ConfigMaps(); cmLister != nil {
+		if namespace != "" {
+			cms, _ := cmLister.ConfigMaps(namespace).List(labels.Everything())
+			counts.ConfigMaps = len(cms)
+		} else {
+			cms, _ := cmLister.List(labels.Everything())
+			counts.ConfigMaps = len(cms)
+		}
 	}
 
 	// Secrets (may be nil if RBAC doesn't allow listing secrets)
@@ -774,30 +828,32 @@ func (s *Server) getDashboardResourceCounts(cache *k8s.ResourceCache, namespace 
 	}
 
 	// PVCs
-	if namespace != "" {
-		pvcs, _ := cache.PersistentVolumeClaims().PersistentVolumeClaims(namespace).List(labels.Everything())
-		counts.PVCs.Total = len(pvcs)
-		for _, pvc := range pvcs {
-			switch pvc.Status.Phase {
-			case corev1.ClaimBound:
-				counts.PVCs.Bound++
-			case corev1.ClaimPending:
-				counts.PVCs.Pending++
-			default:
-				counts.PVCs.Unbound++
+	if pvcLister := cache.PersistentVolumeClaims(); pvcLister != nil {
+		if namespace != "" {
+			pvcs, _ := pvcLister.PersistentVolumeClaims(namespace).List(labels.Everything())
+			counts.PVCs.Total = len(pvcs)
+			for _, pvc := range pvcs {
+				switch pvc.Status.Phase {
+				case corev1.ClaimBound:
+					counts.PVCs.Bound++
+				case corev1.ClaimPending:
+					counts.PVCs.Pending++
+				default:
+					counts.PVCs.Unbound++
+				}
 			}
-		}
-	} else {
-		pvcs, _ := cache.PersistentVolumeClaims().List(labels.Everything())
-		counts.PVCs.Total = len(pvcs)
-		for _, pvc := range pvcs {
-			switch pvc.Status.Phase {
-			case corev1.ClaimBound:
-				counts.PVCs.Bound++
-			case corev1.ClaimPending:
-				counts.PVCs.Pending++
-			default:
-				counts.PVCs.Unbound++
+		} else {
+			pvcs, _ := pvcLister.List(labels.Everything())
+			counts.PVCs.Total = len(pvcs)
+			for _, pvc := range pvcs {
+				switch pvc.Status.Phase {
+				case corev1.ClaimBound:
+					counts.PVCs.Bound++
+				case corev1.ClaimPending:
+					counts.PVCs.Pending++
+				default:
+					counts.PVCs.Unbound++
+				}
 			}
 		}
 	}
@@ -811,16 +867,21 @@ func (s *Server) getDashboardResourceCounts(cache *k8s.ResourceCache, namespace 
 		}
 	}
 
+	counts.Restricted = restricted
 	return counts
 }
 
 func (s *Server) getDashboardRecentEvents(cache *k8s.ResourceCache, namespace string) []DashboardEvent {
+	eventLister := cache.Events()
+	if eventLister == nil {
+		return []DashboardEvent{}
+	}
 	var events []*corev1.Event
 	var err error
 	if namespace != "" {
-		events, err = cache.Events().Events(namespace).List(labels.Everything())
+		events, err = eventLister.Events(namespace).List(labels.Everything())
 	} else {
-		events, err = cache.Events().List(labels.Everything())
+		events, err = eventLister.List(labels.Everything())
 	}
 	if err != nil || len(events) == 0 {
 		return []DashboardEvent{}
@@ -1008,6 +1069,9 @@ func (s *Server) getDashboardHelmSummary(namespace string) DashboardHelmSummary 
 
 	releases, err := helmClient.ListReleases(namespace)
 	if err != nil {
+		if helm.IsForbiddenError(err) {
+			return DashboardHelmSummary{Releases: []DashboardHelmRelease{}, Restricted: true}
+		}
 		return DashboardHelmSummary{Releases: []DashboardHelmRelease{}}
 	}
 
@@ -1037,11 +1101,15 @@ func (s *Server) getDashboardHelmSummary(namespace string) DashboardHelmSummary 
 }
 
 func (s *Server) countWarningEvents(cache *k8s.ResourceCache, namespace string) int {
+	eventLister := cache.Events()
+	if eventLister == nil {
+		return 0
+	}
 	var events []*corev1.Event
 	if namespace != "" {
-		events, _ = cache.Events().Events(namespace).List(labels.Everything())
+		events, _ = eventLister.Events(namespace).List(labels.Everything())
 	} else {
-		events, _ = cache.Events().List(labels.Everything())
+		events, _ = eventLister.List(labels.Everything())
 	}
 	count := 0
 	for _, e := range events {
@@ -1093,7 +1161,11 @@ func (s *Server) getDashboardMetrics(ctx context.Context) *DashboardMetrics {
 	if cache == nil {
 		return nil
 	}
-	nodes, _ := cache.Nodes().List(labels.Everything())
+	nodeLister := cache.Nodes()
+	if nodeLister == nil {
+		return nil
+	}
+	nodes, _ := nodeLister.List(labels.Everything())
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -1117,8 +1189,11 @@ func (s *Server) getDashboardMetrics(ctx context.Context) *DashboardMetrics {
 	// Sum requests across all pods
 	var cpuRequestsMillis int64
 	var memRequestsBytes int64
-	pods, _ := cache.Pods().List(labels.Everything())
-	for _, pod := range pods {
+	var metricPods []*corev1.Pod
+	if podLister := cache.Pods(); podLister != nil {
+		metricPods, _ = podLister.List(labels.Everything())
+	}
+	for _, pod := range metricPods {
 		// Skip completed/failed pods
 		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 			continue

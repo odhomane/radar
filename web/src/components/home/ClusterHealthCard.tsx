@@ -3,7 +3,7 @@ import { HealthRing } from './HealthRing'
 import {
   AlertTriangle, CheckCircle, XCircle,
   Cpu, MemoryStick, Database, Container, Globe, Network as NetworkIcon, Briefcase, Clock,
-  ArrowRight, Server, Boxes,
+  ArrowRight, Server, Boxes, Shield,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { formatCPUMillicores, formatMemoryMiB } from '../../utils/format'
@@ -67,6 +67,9 @@ export function ClusterHealthCard({
   onUnhealthyClick,
 }: ClusterHealthCardProps) {
   void _topCRDs // Reserved for future CRD display
+
+  const restricted = counts.restricted ?? []
+  const isRestricted = (kind: string) => restricted.includes(kind)
 
   // Pods ring segments
   const podsTotal = health.healthy + health.warning + health.error
@@ -151,63 +154,75 @@ export function ClusterHealthCard({
           {/* Center: Three health rings */}
           <div className="flex-1 flex items-center justify-center gap-12">
             {/* Pods Ring */}
-            <button
-              onClick={() => onNavigateToKind('pods')}
-              className="flex flex-col items-center gap-2 cursor-pointer hover:-translate-y-1 hover:scale-105 transition-all duration-200"
-            >
-              <HealthRing segments={podsRingSegments} size={88} strokeWidth={8} label={String(podsTotal)} />
-              <span className="text-xs font-medium text-theme-text-secondary">Pods</span>
-              <div className="flex items-center gap-2 text-[11px]">
-                {health.healthy > 0 && (
-                  <span className="flex items-center gap-0.5 text-green-500">
-                    <CheckCircle className="w-3 h-3" />
-                    {health.healthy}
-                  </span>
-                )}
-                {health.warning > 0 && (
-                  <span className="flex items-center gap-0.5 text-yellow-500">
-                    <AlertTriangle className="w-3 h-3" />
-                    {health.warning}
-                  </span>
-                )}
-                {health.error > 0 && (
-                  <span className="flex items-center gap-0.5 text-red-500">
-                    <XCircle className="w-3 h-3" />
-                    {health.error}
-                  </span>
-                )}
-              </div>
-            </button>
+            {isRestricted('pods') ? (
+              <RestrictedRing label="Pods" />
+            ) : (
+              <button
+                onClick={() => onNavigateToKind('pods')}
+                className="flex flex-col items-center gap-2 cursor-pointer hover:-translate-y-1 hover:scale-105 transition-all duration-200"
+              >
+                <HealthRing segments={podsRingSegments} size={88} strokeWidth={8} label={String(podsTotal)} />
+                <span className="text-xs font-medium text-theme-text-secondary">Pods</span>
+                <div className="flex items-center gap-2 text-[11px]">
+                  {health.healthy > 0 && (
+                    <span className="flex items-center gap-0.5 text-green-500">
+                      <CheckCircle className="w-3 h-3" />
+                      {health.healthy}
+                    </span>
+                  )}
+                  {health.warning > 0 && (
+                    <span className="flex items-center gap-0.5 text-yellow-500">
+                      <AlertTriangle className="w-3 h-3" />
+                      {health.warning}
+                    </span>
+                  )}
+                  {health.error > 0 && (
+                    <span className="flex items-center gap-0.5 text-red-500">
+                      <XCircle className="w-3 h-3" />
+                      {health.error}
+                    </span>
+                  )}
+                </div>
+              </button>
+            )}
 
             {/* Deployments Ring */}
-            <button
-              onClick={() => onNavigateToKind('deployments')}
-              className="flex flex-col items-center gap-2 cursor-pointer hover:-translate-y-1 hover:scale-105 transition-all duration-200"
-            >
-              <HealthRing segments={deploymentsRingSegments} size={88} strokeWidth={8} label={String(counts.deployments.total)} />
-              <span className="text-xs font-medium text-theme-text-secondary">Deployments</span>
-              <div className="flex items-center gap-2 text-[11px]">
-                <span className="text-green-500">{counts.deployments.available} available</span>
-                {counts.deployments.unavailable > 0 && (
-                  <span className="text-red-500">{counts.deployments.unavailable} unavailable</span>
-                )}
-              </div>
-            </button>
+            {isRestricted('deployments') ? (
+              <RestrictedRing label="Deployments" />
+            ) : (
+              <button
+                onClick={() => onNavigateToKind('deployments')}
+                className="flex flex-col items-center gap-2 cursor-pointer hover:-translate-y-1 hover:scale-105 transition-all duration-200"
+              >
+                <HealthRing segments={deploymentsRingSegments} size={88} strokeWidth={8} label={String(counts.deployments.total)} />
+                <span className="text-xs font-medium text-theme-text-secondary">Deployments</span>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <span className="text-green-500">{counts.deployments.available} available</span>
+                  {counts.deployments.unavailable > 0 && (
+                    <span className="text-red-500">{counts.deployments.unavailable} unavailable</span>
+                  )}
+                </div>
+              </button>
+            )}
 
             {/* Nodes Ring */}
-            <button
-              onClick={() => onNavigateToKind('nodes')}
-              className="flex flex-col items-center gap-2 cursor-pointer hover:-translate-y-1 hover:scale-105 transition-all duration-200"
-            >
-              <HealthRing segments={nodesRingSegments} size={88} strokeWidth={8} label={String(counts.nodes.total)} />
-              <span className="text-xs font-medium text-theme-text-secondary">Nodes</span>
-              <div className="flex items-center gap-2 text-[11px]">
-                <span className="text-green-500">{counts.nodes.ready} ready</span>
-                {counts.nodes.notReady > 0 && (
-                  <span className="text-red-500">{counts.nodes.notReady} not ready</span>
-                )}
-              </div>
-            </button>
+            {isRestricted('nodes') ? (
+              <RestrictedRing label="Nodes" />
+            ) : (
+              <button
+                onClick={() => onNavigateToKind('nodes')}
+                className="flex flex-col items-center gap-2 cursor-pointer hover:-translate-y-1 hover:scale-105 transition-all duration-200"
+              >
+                <HealthRing segments={nodesRingSegments} size={88} strokeWidth={8} label={String(counts.nodes.total)} />
+                <span className="text-xs font-medium text-theme-text-secondary">Nodes</span>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <span className="text-green-500">{counts.nodes.ready} ready</span>
+                  {counts.nodes.notReady > 0 && (
+                    <span className="text-red-500">{counts.nodes.notReady} not ready</span>
+                  )}
+                </div>
+              </button>
+            )}
           </div>
 
           {/* Right: Resource utilization */}
@@ -277,13 +292,22 @@ export function ClusterHealthCard({
               onClick={() => onNavigateToKind(res.kind)}
               className="flex items-center justify-center gap-1.5 px-2 py-1 rounded hover:bg-theme-hover transition-colors cursor-pointer text-sm"
             >
-              <res.icon className={clsx('w-3.5 h-3.5', res.hasIssues ? 'text-yellow-500' : 'text-theme-text-tertiary')} />
-              <span className="text-theme-text-primary font-medium">{res.total}</span>
-              <span className="text-theme-text-secondary">{res.label}</span>
-              {res.subtitle && (
-                <span className={clsx('text-xs', res.hasIssues ? 'text-yellow-500' : 'text-theme-text-tertiary')}>
-                  ({res.subtitle})
-                </span>
+              {isRestricted(res.kind) ? (
+                <>
+                  <Shield className="w-3.5 h-3.5 text-amber-400/60" />
+                  <span className="text-theme-text-disabled">{res.label}</span>
+                </>
+              ) : (
+                <>
+                  <res.icon className={clsx('w-3.5 h-3.5', res.hasIssues ? 'text-yellow-500' : 'text-theme-text-tertiary')} />
+                  <span className="text-theme-text-primary font-medium">{res.total}</span>
+                  <span className="text-theme-text-secondary">{res.label}</span>
+                  {res.subtitle && (
+                    <span className={clsx('text-xs', res.hasIssues ? 'text-yellow-500' : 'text-theme-text-tertiary')}>
+                      ({res.subtitle})
+                    </span>
+                  )}
+                </>
               )}
             </button>
           ))}
@@ -298,6 +322,30 @@ export function ClusterHealthCard({
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
+    </div>
+  )
+}
+
+function RestrictedRing({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative w-[88px] h-[88px] flex items-center justify-center">
+        <svg width={88} height={88} viewBox="0 0 88 88" className="absolute inset-0">
+          <circle
+            cx={44}
+            cy={44}
+            r={36}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={8}
+            strokeDasharray="6 4"
+            className="text-theme-border"
+          />
+        </svg>
+        <Shield className="w-6 h-6 text-amber-400" />
+      </div>
+      <span className="text-xs font-medium text-theme-text-secondary">{label}</span>
+      <span className="text-[11px] text-amber-400">Restricted</span>
     </div>
   )
 }

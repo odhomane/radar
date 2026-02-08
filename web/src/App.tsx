@@ -231,7 +231,7 @@ function AppInner() {
   const hideGroupHeader = namespaces.length === 1 && groupingMode === 'none'
 
   // Fetch available namespaces
-  const { data: availableNamespaces } = useNamespaces()
+  const { data: availableNamespaces, error: namespacesError } = useNamespaces()
 
   // Context switch state
   const { isSwitching, targetContext, progressMessage, updateProgress, endSwitch } = useContextSwitch()
@@ -546,6 +546,7 @@ function AppInner() {
             value={namespaces}
             onChange={setNamespaces}
             namespaces={availableNamespaces}
+            namespacesError={namespacesError}
             disabled={mainView === 'helm'}
             disabledTooltip="Helm view always shows all namespaces"
           />

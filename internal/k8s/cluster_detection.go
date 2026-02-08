@@ -3,11 +3,42 @@ package k8s
 import (
 	"context"
 	"strings"
+	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
+
+var (
+	cachedServerVersion string
+	serverVersionOnce   sync.Once
+	serverVersionMu     sync.Mutex
+)
+
+// getServerVersion returns the cached Kubernetes server version.
+// The version is fetched once and cached for the lifetime of the context.
+func getServerVersion() string {
+	serverVersionMu.Lock()
+	defer serverVersionMu.Unlock()
+	serverVersionOnce.Do(func() {
+		if k8sClient != nil {
+			if v, err := k8sClient.Discovery().ServerVersion(); err == nil {
+				cachedServerVersion = v.GitVersion
+			}
+		}
+	})
+	return cachedServerVersion
+}
+
+// InvalidateServerVersionCache resets the cached server version.
+// Called during context switch so the next call re-fetches.
+func InvalidateServerVersionCache() {
+	serverVersionMu.Lock()
+	defer serverVersionMu.Unlock()
+	cachedServerVersion = ""
+	serverVersionOnce = sync.Once{}
+}
 
 // ClusterInfo contains detected cluster information
 type ClusterInfo struct {
@@ -33,24 +64,26 @@ func GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
 		InCluster: IsInCluster(),
 	}
 
-	// Get version info
-	if k8sClient != nil {
-		if version, err := k8sClient.Discovery().ServerVersion(); err == nil {
-			info.KubernetesVersion = version.GitVersion
-		}
-	}
+	// Get version info (cached — only fetched once per context)
+	info.KubernetesVersion = getServerVersion()
 
-	// Get counts from cache
+	// Get counts from cache (listers may be nil when RBAC restricts access)
 	cache := GetResourceCache()
 	if cache != nil {
-		if nodes, err := cache.Nodes().List(labels.Everything()); err == nil {
-			info.NodeCount = len(nodes)
+		if nodeLister := cache.Nodes(); nodeLister != nil {
+			if nodes, err := nodeLister.List(labels.Everything()); err == nil {
+				info.NodeCount = len(nodes)
+			}
 		}
-		if pods, err := cache.Pods().List(labels.Everything()); err == nil {
-			info.PodCount = len(pods)
+		if podLister := cache.Pods(); podLister != nil {
+			if pods, err := podLister.List(labels.Everything()); err == nil {
+				info.PodCount = len(pods)
+			}
 		}
-		if namespaces, err := cache.Namespaces().List(labels.Everything()); err == nil {
-			info.NamespaceCount = len(namespaces)
+		if nsLister := cache.Namespaces(); nsLister != nil {
+			if namespaces, err := nsLister.List(labels.Everything()); err == nil {
+				info.NamespaceCount = len(namespaces)
+			}
 		}
 	}
 
@@ -68,10 +101,12 @@ func GetClusterPlatform(ctx context.Context) (string, error) {
 	var nodes []corev1.Node
 	cache := GetResourceCache()
 	if cache != nil {
-		nodeList, err := cache.Nodes().List(labels.Everything())
-		if err == nil && len(nodeList) > 0 {
-			for _, n := range nodeList {
-				nodes = append(nodes, *n)
+		if nodeLister := cache.Nodes(); nodeLister != nil {
+			nodeList, err := nodeLister.List(labels.Everything())
+			if err == nil && len(nodeList) > 0 {
+				for _, n := range nodeList {
+					nodes = append(nodes, *n)
+				}
 			}
 		}
 	}
@@ -132,10 +167,12 @@ func IsGKEAutopilot(ctx context.Context) (bool, error) {
 	var nodes []corev1.Node
 	cache := GetResourceCache()
 	if cache != nil {
-		nodeList, err := cache.Nodes().List(labels.Everything())
-		if err == nil && len(nodeList) > 0 {
-			for _, n := range nodeList {
-				nodes = append(nodes, *n)
+		if nodeLister := cache.Nodes(); nodeLister != nil {
+			nodeList, err := nodeLister.List(labels.Everything())
+			if err == nil && len(nodeList) > 0 {
+				for _, n := range nodeList {
+					nodes = append(nodes, *n)
+				}
 			}
 		}
 	}
@@ -170,12 +207,14 @@ func checkAutopilotViaAnnotations(ctx context.Context) (bool, bool) {
 	var pods []corev1.Pod
 	cache := GetResourceCache()
 	if cache != nil {
-		podList, err := cache.Pods().Pods("kube-system").List(labels.Everything())
-		if err == nil && len(podList) > 0 {
-			for i, pod := range podList {
-				pods = append(pods, *pod)
-				if i >= 9 {
-					break
+		if podLister := cache.Pods(); podLister != nil {
+			podList, err := podLister.Pods("kube-system").List(labels.Everything())
+			if err == nil && len(podList) > 0 {
+				for i, pod := range podList {
+					pods = append(pods, *pod)
+					if i >= 9 {
+						break
+					}
 				}
 			}
 		}

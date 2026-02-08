@@ -26,11 +26,25 @@ import type { GitOpsOperationResponse } from '../types/gitops'
 
 const API_BASE = '/api'
 
+// ApiError preserves HTTP status code for callers to distinguish 403/404/500 etc.
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+export function isForbiddenError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 403
+}
+
 async function fetchJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`)
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-    throw new Error(error.error || `HTTP ${response.status}`)
+    throw new ApiError(error.error || `HTTP ${response.status}`, response.status)
   }
   return response.json()
 }
@@ -98,6 +112,7 @@ export interface DashboardResourceCounts {
   secrets: number
   pvcs: { total: number; bound: number; pending: number; unbound: number }
   helmReleases: number
+  restricted?: string[] // Resource kinds the user cannot list due to RBAC
 }
 
 export interface DashboardEvent {
@@ -148,6 +163,7 @@ export interface DashboardHelmRelease {
 export interface DashboardHelmSummary {
   total: number
   releases: DashboardHelmRelease[]
+  restricted?: boolean // True when user lacks permissions to list Helm releases
 }
 
 export interface DashboardCRDCount {

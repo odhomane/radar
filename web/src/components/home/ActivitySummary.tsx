@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { clsx } from 'clsx'
-import { Clock, ArrowRight } from 'lucide-react'
+import { Clock, ArrowRight, Shield } from 'lucide-react'
 import { useChanges } from '../../api/client'
 import { isChangeEvent } from '../../types'
 import type { TimelineEvent } from '../../types'
 import type { Topology } from '../../types'
+import { useHasLimitedAccess } from '../../contexts/CapabilitiesContext'
 import { buildResourceHierarchy, isProblematicEvent, type ResourceLane } from '../../utils/resource-hierarchy'
 import { buildHealthSpans, timeToX } from '../timeline/shared'
 
@@ -66,6 +67,7 @@ const KIND_SHORT: Record<string, string> = {
 }
 
 export function ActivitySummary({ namespaces, topology, onNavigate }: ActivitySummaryProps) {
+  const hasLimitedAccess = useHasLimitedAccess()
   const { data: events, isLoading, error } = useChanges({
     namespaces,
     timeRange: '1h',
@@ -123,8 +125,14 @@ export function ActivitySummary({ namespaces, topology, onNavigate }: ActivitySu
             Could not load activity
           </div>
         ) : !hasActivity ? (
-          <div className="flex items-center justify-center h-full py-4 text-xs text-theme-text-tertiary">
-            No recent activity
+          <div className="flex flex-col items-center justify-center h-full py-4 text-xs text-theme-text-tertiary">
+            <span>No recent activity</span>
+            {hasLimitedAccess && (
+              <span className="flex items-center gap-1 mt-1.5 text-[11px] text-amber-400/80">
+                <Shield className="w-3 h-3" />
+                Some resource types are not monitored due to RBAC restrictions
+              </span>
+            )}
           </div>
         ) : (
           <div className="space-y-1">

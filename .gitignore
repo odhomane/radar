@@ -1,5 +1,6 @@
 # Binaries
 /radar
+/explorer
 *.exe
 
 # Go

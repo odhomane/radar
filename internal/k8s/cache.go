@@ -39,11 +39,12 @@ var initialSyncComplete bool
 // ResourceCache provides fast, eventually-consistent access to K8s resources
 // using SharedInformers. Optimized for small-mid sized clusters.
 type ResourceCache struct {
-	factory        informers.SharedInformerFactory
-	changes        chan ResourceChange
-	stopCh         chan struct{}
-	stopOnce       sync.Once
-	secretsEnabled bool // Whether secrets informer is running (requires RBAC)
+	factory          informers.SharedInformerFactory
+	changes          chan ResourceChange
+	stopCh           chan struct{}
+	stopOnce         sync.Once
+	secretsEnabled   bool            // Whether secrets informer is running (requires RBAC)
+	enabledResources map[string]bool // Which resource types have informers running
 }
 
 // ResourceChange represents a resource change event
@@ -112,72 +113,95 @@ func InitResourceCache() error {
 			return
 		}
 
-		factory := informers.NewSharedInformerFactoryWithOptions(
-			k8sClient,
-			0, // no resync - updates come via watch
-			informers.WithTransform(dropManagedFields),
-		)
-
 		stopCh := make(chan struct{})
 		changes := make(chan ResourceChange, 10000)
 
-		// Check if we have secrets permission before creating informer
-		// This prevents crash loops when RBAC doesn't allow secrets access
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		caps, _ := CheckCapabilities(ctx)
+		// Check RBAC permissions for all resource types before creating informers
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		permResult := CheckResourcePermissions(ctx)
 		cancel()
-		secretsEnabled := caps != nil && caps.Secrets
+		perms := permResult.Perms
 
-		// Core resources
-		svcInf := factory.Core().V1().Services().Informer()
-		podInf := factory.Core().V1().Pods().Informer()
-		nodeInf := factory.Core().V1().Nodes().Informer()
-		nsInf := factory.Core().V1().Namespaces().Informer()
-		cmInf := factory.Core().V1().ConfigMaps().Informer()
-		var secretInf cache.SharedIndexInformer
-		if secretsEnabled {
-			secretInf = factory.Core().V1().Secrets().Informer()
+		// Create factory — namespace-scoped if user only has namespace-level access
+		factoryOpts := []informers.SharedInformerOption{
+			informers.WithTransform(dropManagedFields),
 		}
-		eventInf := factory.Core().V1().Events().Informer()
-		pvcInf := factory.Core().V1().PersistentVolumeClaims().Informer()
-
-		// Apps resources
-		depInf := factory.Apps().V1().Deployments().Informer()
-		dsInf := factory.Apps().V1().DaemonSets().Informer()
-		stsInf := factory.Apps().V1().StatefulSets().Informer()
-		rsInf := factory.Apps().V1().ReplicaSets().Informer()
-
-		// Networking resources
-		ingInf := factory.Networking().V1().Ingresses().Informer()
-
-		// Batch resources
-		jobInf := factory.Batch().V1().Jobs().Informer()
-		cronJobInf := factory.Batch().V1().CronJobs().Informer()
-
-		// Autoscaling resources
-		hpaInf := factory.Autoscaling().V2().HorizontalPodAutoscalers().Informer()
-
-		// Add event handlers - collect errors to fail fast on registration issues
-		handlerErrors := []error{
-			addChangeHandlers(svcInf, "Service", changes),
-			addChangeHandlers(podInf, "Pod", changes),
-			addChangeHandlers(nodeInf, "Node", changes),
-			addChangeHandlers(nsInf, "Namespace", changes),
-			addChangeHandlers(cmInf, "ConfigMap", changes),
-			addK8sEventHandlers(eventInf, changes), // K8s Events get special handling
-			addChangeHandlers(pvcInf, "PersistentVolumeClaim", changes),
-			addChangeHandlers(depInf, "Deployment", changes),
-			addChangeHandlers(dsInf, "DaemonSet", changes),
-			addChangeHandlers(stsInf, "StatefulSet", changes),
-			addChangeHandlers(rsInf, "ReplicaSet", changes),
-			addChangeHandlers(ingInf, "Ingress", changes),
-			addChangeHandlers(jobInf, "Job", changes),
-			addChangeHandlers(cronJobInf, "CronJob", changes),
-			addChangeHandlers(hpaInf, "HorizontalPodAutoscaler", changes),
+		if permResult.NamespaceScoped && permResult.Namespace != "" {
+			factoryOpts = append(factoryOpts, informers.WithNamespace(permResult.Namespace))
+			log.Printf("Using namespace-scoped informers for namespace %q", permResult.Namespace)
 		}
-		if secretsEnabled {
-			handlerErrors = append(handlerErrors, addChangeHandlers(secretInf, "Secret", changes))
+
+		factory := informers.NewSharedInformerFactoryWithOptions(
+			k8sClient,
+			0, // no resync - updates come via watch
+			factoryOpts...,
+		)
+
+		// Build map of enabled resources
+		enabled := map[string]bool{
+			"pods":                     perms.Pods,
+			"services":                 perms.Services,
+			"deployments":              perms.Deployments,
+			"daemonsets":               perms.DaemonSets,
+			"statefulsets":             perms.StatefulSets,
+			"replicasets":              perms.ReplicaSets,
+			"ingresses":               perms.Ingresses,
+			"configmaps":              perms.ConfigMaps,
+			"secrets":                  perms.Secrets,
+			"events":                   perms.Events,
+			"persistentvolumeclaims":   perms.PersistentVolumeClaims,
+			"nodes":                    perms.Nodes,
+			"namespaces":               perms.Namespaces,
+			"jobs":                     perms.Jobs,
+			"cronjobs":                 perms.CronJobs,
+			"horizontalpodautoscalers": perms.HorizontalPodAutoscalers,
 		}
+
+		// Conditionally create informers and register handlers
+		var syncFuncs []cache.InformerSynced
+		var handlerErrors []error
+
+		type informerSetup struct {
+			key     string
+			kind    string
+			setup   func() cache.SharedIndexInformer
+			isEvent bool // Uses special K8s event handler
+		}
+
+		setups := []informerSetup{
+			{"services", "Service", func() cache.SharedIndexInformer { return factory.Core().V1().Services().Informer() }, false},
+			{"pods", "Pod", func() cache.SharedIndexInformer { return factory.Core().V1().Pods().Informer() }, false},
+			{"nodes", "Node", func() cache.SharedIndexInformer { return factory.Core().V1().Nodes().Informer() }, false},
+			{"namespaces", "Namespace", func() cache.SharedIndexInformer { return factory.Core().V1().Namespaces().Informer() }, false},
+			{"configmaps", "ConfigMap", func() cache.SharedIndexInformer { return factory.Core().V1().ConfigMaps().Informer() }, false},
+			{"secrets", "Secret", func() cache.SharedIndexInformer { return factory.Core().V1().Secrets().Informer() }, false},
+			{"events", "Event", func() cache.SharedIndexInformer { return factory.Core().V1().Events().Informer() }, true},
+			{"persistentvolumeclaims", "PersistentVolumeClaim", func() cache.SharedIndexInformer { return factory.Core().V1().PersistentVolumeClaims().Informer() }, false},
+			{"deployments", "Deployment", func() cache.SharedIndexInformer { return factory.Apps().V1().Deployments().Informer() }, false},
+			{"daemonsets", "DaemonSet", func() cache.SharedIndexInformer { return factory.Apps().V1().DaemonSets().Informer() }, false},
+			{"statefulsets", "StatefulSet", func() cache.SharedIndexInformer { return factory.Apps().V1().StatefulSets().Informer() }, false},
+			{"replicasets", "ReplicaSet", func() cache.SharedIndexInformer { return factory.Apps().V1().ReplicaSets().Informer() }, false},
+			{"ingresses", "Ingress", func() cache.SharedIndexInformer { return factory.Networking().V1().Ingresses().Informer() }, false},
+			{"jobs", "Job", func() cache.SharedIndexInformer { return factory.Batch().V1().Jobs().Informer() }, false},
+			{"cronjobs", "CronJob", func() cache.SharedIndexInformer { return factory.Batch().V1().CronJobs().Informer() }, false},
+			{"horizontalpodautoscalers", "HorizontalPodAutoscaler", func() cache.SharedIndexInformer { return factory.Autoscaling().V2().HorizontalPodAutoscalers().Informer() }, false},
+		}
+
+		enabledCount := 0
+		for _, s := range setups {
+			if !enabled[s.key] {
+				continue
+			}
+			enabledCount++
+			inf := s.setup()
+			if s.isEvent {
+				handlerErrors = append(handlerErrors, addK8sEventHandlers(inf, changes))
+			} else {
+				handlerErrors = append(handlerErrors, addChangeHandlers(inf, s.kind, changes))
+			}
+			syncFuncs = append(syncFuncs, inf.HasSynced)
+		}
+
 		for _, err := range handlerErrors {
 			if err != nil {
 				initErr = fmt.Errorf("failed to register event handlers: %w", err)
@@ -185,37 +209,25 @@ func InitResourceCache() error {
 			}
 		}
 
+		if enabledCount == 0 {
+			log.Printf("Warning: No resource types are accessible (all RBAC checks failed)")
+			// Still create a valid but empty cache so the server can run
+			resourceCache = &ResourceCache{
+				factory:          factory,
+				changes:          changes,
+				stopCh:           stopCh,
+				secretsEnabled:   false,
+				enabledResources: enabled,
+			}
+			initialSyncComplete = true
+			return
+		}
+
 		// Start all informers
 		factory.Start(stopCh)
 
-		resourceCount := 15 // Base resource types without secrets
-		if secretsEnabled {
-			resourceCount = 16
-		}
-		log.Printf("Starting resource cache with SharedInformers for %d resource types (secrets=%v)", resourceCount, secretsEnabled)
+		log.Printf("Starting resource cache with SharedInformers for %d/%d resource types", enabledCount, len(setups))
 		syncStart := time.Now()
-
-		// Build list of sync functions - secrets is optional
-		syncFuncs := []cache.InformerSynced{
-			svcInf.HasSynced,
-			podInf.HasSynced,
-			nodeInf.HasSynced,
-			nsInf.HasSynced,
-			cmInf.HasSynced,
-			eventInf.HasSynced,
-			pvcInf.HasSynced,
-			depInf.HasSynced,
-			dsInf.HasSynced,
-			stsInf.HasSynced,
-			rsInf.HasSynced,
-			ingInf.HasSynced,
-			jobInf.HasSynced,
-			cronJobInf.HasSynced,
-			hpaInf.HasSynced,
-		}
-		if secretsEnabled {
-			syncFuncs = append(syncFuncs, secretInf.HasSynced)
-		}
 
 		// Wait for caches to sync
 		if !cache.WaitForCacheSync(stopCh, syncFuncs...) {
@@ -230,10 +242,11 @@ func InitResourceCache() error {
 		initialSyncComplete = true
 
 		resourceCache = &ResourceCache{
-			factory:        factory,
-			changes:        changes,
-			stopCh:         stopCh,
-			secretsEnabled: secretsEnabled,
+			factory:          factory,
+			changes:          changes,
+			stopCh:           stopCh,
+			secretsEnabled:   enabled["secrets"],
+			enabledResources: enabled,
 		}
 	})
 	return initErr
@@ -403,7 +416,7 @@ func recordK8sEventToTimeline(obj any) {
 	var owner *timeline.OwnerInfo
 	cache := GetResourceCache()
 	if cache != nil {
-		if event.InvolvedObject.Kind == "Pod" {
+		if event.InvolvedObject.Kind == "Pod" && cache.Pods() != nil {
 			if pod, err := cache.Pods().Pods(event.Namespace).Get(event.InvolvedObject.Name); err == nil && pod != nil {
 				for _, ref := range pod.OwnerReferences {
 					if ref.Controller != nil && *ref.Controller {
@@ -412,7 +425,7 @@ func recordK8sEventToTimeline(obj any) {
 					}
 				}
 			}
-		} else if event.InvolvedObject.Kind == "ReplicaSet" {
+		} else if event.InvolvedObject.Kind == "ReplicaSet" && cache.ReplicaSets() != nil {
 			if rs, err := cache.ReplicaSets().ReplicaSets(event.Namespace).Get(event.InvolvedObject.Name); err == nil && rs != nil {
 				for _, ref := range rs.OwnerReferences {
 					if ref.Controller != nil && *ref.Controller {
@@ -779,116 +792,136 @@ func extractTimelineHistoricalEvents(kind, namespace, name string, obj any, owne
 
 // Listers
 
+func (c *ResourceCache) isEnabled(key string) bool {
+	if c == nil || c.enabledResources == nil {
+		return false
+	}
+	return c.enabledResources[key]
+}
+
 func (c *ResourceCache) Services() listerscorev1.ServiceLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("services") {
 		return nil
 	}
 	return c.factory.Core().V1().Services().Lister()
 }
 
 func (c *ResourceCache) Pods() listerscorev1.PodLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("pods") {
 		return nil
 	}
 	return c.factory.Core().V1().Pods().Lister()
 }
 
 func (c *ResourceCache) Nodes() listerscorev1.NodeLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("nodes") {
 		return nil
 	}
 	return c.factory.Core().V1().Nodes().Lister()
 }
 
 func (c *ResourceCache) Namespaces() listerscorev1.NamespaceLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("namespaces") {
 		return nil
 	}
 	return c.factory.Core().V1().Namespaces().Lister()
 }
 
 func (c *ResourceCache) ConfigMaps() listerscorev1.ConfigMapLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("configmaps") {
 		return nil
 	}
 	return c.factory.Core().V1().ConfigMaps().Lister()
 }
 
 func (c *ResourceCache) Secrets() listerscorev1.SecretLister {
-	if c == nil || !c.secretsEnabled {
+	if c == nil || !c.isEnabled("secrets") {
 		return nil
 	}
 	return c.factory.Core().V1().Secrets().Lister()
 }
 
 func (c *ResourceCache) Events() listerscorev1.EventLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("events") {
 		return nil
 	}
 	return c.factory.Core().V1().Events().Lister()
 }
 
 func (c *ResourceCache) PersistentVolumeClaims() listerscorev1.PersistentVolumeClaimLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("persistentvolumeclaims") {
 		return nil
 	}
 	return c.factory.Core().V1().PersistentVolumeClaims().Lister()
 }
 
 func (c *ResourceCache) Deployments() listersappsv1.DeploymentLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("deployments") {
 		return nil
 	}
 	return c.factory.Apps().V1().Deployments().Lister()
 }
 
 func (c *ResourceCache) DaemonSets() listersappsv1.DaemonSetLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("daemonsets") {
 		return nil
 	}
 	return c.factory.Apps().V1().DaemonSets().Lister()
 }
 
 func (c *ResourceCache) StatefulSets() listersappsv1.StatefulSetLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("statefulsets") {
 		return nil
 	}
 	return c.factory.Apps().V1().StatefulSets().Lister()
 }
 
 func (c *ResourceCache) ReplicaSets() listersappsv1.ReplicaSetLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("replicasets") {
 		return nil
 	}
 	return c.factory.Apps().V1().ReplicaSets().Lister()
 }
 
 func (c *ResourceCache) Ingresses() listersnetworkingv1.IngressLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("ingresses") {
 		return nil
 	}
 	return c.factory.Networking().V1().Ingresses().Lister()
 }
 
 func (c *ResourceCache) Jobs() listersbatchv1.JobLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("jobs") {
 		return nil
 	}
 	return c.factory.Batch().V1().Jobs().Lister()
 }
 
 func (c *ResourceCache) CronJobs() listersbatchv1.CronJobLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("cronjobs") {
 		return nil
 	}
 	return c.factory.Batch().V1().CronJobs().Lister()
 }
 
 func (c *ResourceCache) HorizontalPodAutoscalers() listersautoscalingv2.HorizontalPodAutoscalerLister {
-	if c == nil {
+	if c == nil || !c.isEnabled("horizontalpodautoscalers") {
 		return nil
 	}
 	return c.factory.Autoscaling().V2().HorizontalPodAutoscalers().Lister()
+}
+
+// GetEnabledResources returns the map of which resource types have informers running
+func (c *ResourceCache) GetEnabledResources() map[string]bool {
+	if c == nil {
+		return nil
+	}
+	// Return a copy
+	result := make(map[string]bool, len(c.enabledResources))
+	for k, v := range c.enabledResources {
+		result[k] = v
+	}
+	return result
 }
 
 // Changes returns the channel for resource change notifications
@@ -928,32 +961,50 @@ func (c *ResourceCache) GetResourceCount() int {
 	}
 
 	count := 0
-	if services, err := c.Services().List(labels.Everything()); err == nil {
-		count += len(services)
+	if lister := c.Services(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
-	if pods, err := c.Pods().List(labels.Everything()); err == nil {
-		count += len(pods)
+	if lister := c.Pods(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
-	if nodes, err := c.Nodes().List(labels.Everything()); err == nil {
-		count += len(nodes)
+	if lister := c.Nodes(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
-	if namespaces, err := c.Namespaces().List(labels.Everything()); err == nil {
-		count += len(namespaces)
+	if lister := c.Namespaces(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
-	if deployments, err := c.Deployments().List(labels.Everything()); err == nil {
-		count += len(deployments)
+	if lister := c.Deployments(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
-	if daemonsets, err := c.DaemonSets().List(labels.Everything()); err == nil {
-		count += len(daemonsets)
+	if lister := c.DaemonSets(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
-	if statefulsets, err := c.StatefulSets().List(labels.Everything()); err == nil {
-		count += len(statefulsets)
+	if lister := c.StatefulSets(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
-	if replicasets, err := c.ReplicaSets().List(labels.Everything()); err == nil {
-		count += len(replicasets)
+	if lister := c.ReplicaSets(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
-	if ingresses, err := c.Ingresses().List(labels.Everything()); err == nil {
-		count += len(ingresses)
+	if lister := c.Ingresses(); lister != nil {
+		if items, err := lister.List(labels.Everything()); err == nil {
+			count += len(items)
+		}
 	}
 	return count
 }
@@ -1077,6 +1128,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 
 	switch kindLower {
 	case "pod", "pods":
+		if c.Pods() == nil {
+			return nil
+		}
 		pod, err := c.Pods().Pods(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1097,6 +1151,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		}
 
 	case "deployment", "deployments":
+		if c.Deployments() == nil {
+			return nil
+		}
 		dep, err := c.Deployments().Deployments(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1131,6 +1188,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		return result
 
 	case "statefulset", "statefulsets":
+		if c.StatefulSets() == nil {
+			return nil
+		}
 		sts, err := c.StatefulSets().StatefulSets(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1169,6 +1229,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		return result
 
 	case "daemonset", "daemonsets":
+		if c.DaemonSets() == nil {
+			return nil
+		}
 		ds, err := c.DaemonSets().DaemonSets(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1202,6 +1265,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		return result
 
 	case "replicaset", "replicasets":
+		if c.ReplicaSets() == nil {
+			return nil
+		}
 		rs, err := c.ReplicaSets().ReplicaSets(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1223,6 +1289,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		}
 
 	case "service", "services":
+		if c.Services() == nil {
+			return nil
+		}
 		_, err := c.Services().Services(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1232,6 +1301,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		}
 
 	case "configmap", "configmaps":
+		if c.ConfigMaps() == nil {
+			return nil
+		}
 		_, err := c.ConfigMaps().ConfigMaps(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1254,6 +1326,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		}
 
 	case "ingress", "ingresses":
+		if c.Ingresses() == nil {
+			return nil
+		}
 		_, err := c.Ingresses().Ingresses(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1263,6 +1338,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		}
 
 	case "job", "jobs":
+		if c.Jobs() == nil {
+			return nil
+		}
 		job, err := c.Jobs().Jobs(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1284,6 +1362,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		}
 
 	case "cronjob", "cronjobs":
+		if c.CronJobs() == nil {
+			return nil
+		}
 		cj, err := c.CronJobs().CronJobs(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1297,6 +1378,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		}
 
 	case "horizontalpodautoscaler", "horizontalpodautoscalers", "hpa":
+		if c.HorizontalPodAutoscalers() == nil {
+			return nil
+		}
 		hpa, err := c.HorizontalPodAutoscalers().HorizontalPodAutoscalers(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1307,6 +1391,9 @@ func (c *ResourceCache) GetResourceStatus(kind, namespace, name string) *Resourc
 		}
 
 	case "persistentvolumeclaim", "persistentvolumeclaims", "pvc":
+		if c.PersistentVolumeClaims() == nil {
+			return nil
+		}
 		pvc, err := c.PersistentVolumeClaims().PersistentVolumeClaims(namespace).Get(name)
 		if err != nil {
 			return nil
@@ -1462,7 +1549,7 @@ func (s *PodIssueSummary) FormatStatusSummary() string {
 
 // GetPodsForWorkload returns pods matching the given label selector in a namespace
 func (c *ResourceCache) GetPodsForWorkload(namespace string, selector *metav1.LabelSelector) []*corev1.Pod {
-	if c == nil || selector == nil {
+	if c == nil || selector == nil || c.Pods() == nil {
 		return nil
 	}
 

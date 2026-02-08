@@ -146,13 +146,60 @@ rbac:
   portForward: true   # Enable port forwarding
 ```
 
+### Graceful RBAC Degradation
+
+Radar works with whatever permissions are available — it does not require full cluster-admin access. At startup, Radar checks which resource types are accessible using `SelfSubjectAccessReview` and only starts informers for permitted resources.
+
+**What this means in practice:**
+
+- If your ServiceAccount can only list Pods and Services, Radar shows those — other resource types display an "Access Restricted" message
+- Cluster-scoped resources (Nodes, Namespaces) require a ClusterRole; if unavailable, those sections are gracefully hidden
+- For namespace-scoped ServiceAccounts (RoleBinding instead of ClusterRoleBinding), Radar automatically detects this and scopes its informers to the permitted namespace
+- The UI clearly indicates which resources are restricted vs simply empty
+
+**Example: Namespace-scoped deployment**
+
+```yaml
+# Custom Role granting access to a single namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: radar-viewer
+  namespace: my-team
+rules:
+  - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
+    resources: ["pods", "services", "deployments", "daemonsets", "statefulsets",
+                "replicasets", "jobs", "cronjobs", "configmaps", "events",
+                "ingresses", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: radar-viewer
+  namespace: my-team
+subjects:
+  - kind: ServiceAccount
+    name: radar
+    namespace: radar
+roleRef:
+  kind: Role
+  name: radar-viewer
+  apiGroup: rbac.authorization.k8s.io
+```
+
+Set `rbac.create: false` in the Helm values and apply the custom Role/RoleBinding above. Radar will detect the namespace-scoped permissions and work within `my-team` only.
+
 ## Security Considerations
 
 When deploying Radar in-cluster:
 
 1. **Authentication**: Always enable authentication when exposing via ingress. Use basic auth (shown above) or an auth proxy like oauth2-proxy.
 
-2. **RBAC scope**: The default ClusterRole grants cluster-wide read access. For namespace-restricted access, set `rbac.create: false` and create a custom Role/RoleBinding.
+2. **RBAC scope**: The default ClusterRole grants cluster-wide read access. For namespace-restricted access, set `rbac.create: false` and create a custom Role/RoleBinding. Radar will gracefully adapt to the available permissions.
 
 3. **Privileged features**: Terminal (`podExec`) and port forwarding grant significant access. Only enable these in trusted environments or when using per-user authentication.
 

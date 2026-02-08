@@ -1,5 +1,25 @@
 // Topology types matching the Go backend
 
+// Per-resource-type RBAC permissions (matches backend k8s.ResourcePermissions)
+export interface ResourcePermissions {
+  pods: boolean
+  services: boolean
+  deployments: boolean
+  daemonSets: boolean
+  statefulSets: boolean
+  replicaSets: boolean
+  ingresses: boolean
+  configMaps: boolean
+  secrets: boolean
+  events: boolean
+  pvcs: boolean
+  nodes: boolean
+  namespaces: boolean
+  jobs: boolean
+  cronJobs: boolean
+  hpas: boolean
+}
+
 // Feature capabilities based on RBAC permissions
 export interface Capabilities {
   exec: boolean        // Terminal feature (pods/exec)
@@ -7,6 +27,7 @@ export interface Capabilities {
   portForward: boolean // Port forwarding (pods/portforward)
   secrets: boolean     // List secrets
   helmWrite: boolean   // Helm write operations (install, upgrade, rollback, uninstall, apply values)
+  resources?: ResourcePermissions // Per-resource-type permissions
 }
 
 // Core node kinds that have specific UI handling

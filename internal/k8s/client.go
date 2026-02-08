@@ -23,10 +23,12 @@ var (
 	dynamicClient   dynamic.Interface
 	initOnce        sync.Once
 	initErr         error
-	kubeconfigPath  string
-	kubeconfigPaths []string // Multiple kubeconfig paths when using --kubeconfig-dir
-	contextName     string
-	clusterName     string
+	kubeconfigPath     string
+	kubeconfigPaths    []string // Multiple kubeconfig paths when using --kubeconfig-dir
+	contextName        string
+	clusterName        string
+	contextNamespace   string // Default namespace from kubeconfig context
+	fallbackNamespace  string // Explicit namespace from --namespace flag
 	// clientMu protects access to client variables during context switches.
 	// Readers use RLock, context switch uses Lock.
 	clientMu sync.RWMutex
@@ -116,6 +118,7 @@ func doInit(opts InitOptions) error {
 			contextName = rawConfig.CurrentContext
 			if ctx, ok := rawConfig.Contexts[contextName]; ok {
 				clusterName = ctx.Cluster
+				contextNamespace = ctx.Namespace
 			}
 		}
 
@@ -244,6 +247,33 @@ func GetClusterName() string {
 	clientMu.RLock()
 	defer clientMu.RUnlock()
 	return clusterName
+}
+
+// GetContextNamespace returns the default namespace from the kubeconfig context
+func GetContextNamespace() string {
+	clientMu.RLock()
+	defer clientMu.RUnlock()
+	return contextNamespace
+}
+
+// SetFallbackNamespace sets an explicit namespace to use as RBAC fallback
+// (typically from the --namespace CLI flag). Used when the kubeconfig context
+// doesn't specify a namespace but the user wants namespace-scoped access.
+func SetFallbackNamespace(ns string) {
+	clientMu.Lock()
+	defer clientMu.Unlock()
+	fallbackNamespace = ns
+}
+
+// GetEffectiveNamespace returns the namespace to use for RBAC fallback checks.
+// Prefers the kubeconfig context namespace, falls back to the explicit --namespace flag.
+func GetEffectiveNamespace() string {
+	clientMu.RLock()
+	defer clientMu.RUnlock()
+	if contextNamespace != "" {
+		return contextNamespace
+	}
+	return fallbackNamespace
 }
 
 // ForceInCluster overrides in-cluster detection for testing
@@ -386,6 +416,7 @@ func SwitchContext(name string) error {
 	dynamicClient = newDynamicClient
 	contextName = name
 	clusterName = ctx.Cluster
+	contextNamespace = ctx.Namespace
 	clientMu.Unlock()
 
 	return nil

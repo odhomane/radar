@@ -3,6 +3,8 @@ package k8s
 import (
 	"fmt"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +58,52 @@ var coreAPIGroups = map[string]bool{
 	"flowcontrol.apiserver.k8s.io": true,
 	"node.k8s.io":                  true,
 	"scheduling.k8s.io":            true,
+}
+
+// versionStability returns a score for API version stability.
+// Higher is more stable: stable (3) > beta (2) > alpha (1).
+func versionStability(version string) int {
+	if strings.Contains(version, "alpha") {
+		return 1
+	}
+	if strings.Contains(version, "beta") {
+		return 2
+	}
+	return 3 // v1, v2, etc.
+}
+
+// versionRegex parses Kubernetes API versions like "v1", "v2beta1", "v1alpha2".
+var versionRegex = regexp.MustCompile(`^v(\d+)(?:(alpha|beta)(\d+))?$`)
+
+// parseVersion extracts the numeric components of a Kubernetes API version.
+func parseVersion(version string) (major, qualifierNum int) {
+	m := versionRegex.FindStringSubmatch(version)
+	if m == nil {
+		return 0, 0
+	}
+	major, _ = strconv.Atoi(m[1])
+	if m[3] != "" {
+		qualifierNum, _ = strconv.Atoi(m[3])
+	}
+	return
+}
+
+// isMoreStableVersion returns true if newVersion is more stable than oldVersion.
+// Compares stability tier first (stable > beta > alpha), then numeric version
+// within the same tier (v1beta3 > v1beta2, v2 > v1).
+func isMoreStableVersion(newVersion, oldVersion string) bool {
+	newStab := versionStability(newVersion)
+	oldStab := versionStability(oldVersion)
+	if newStab != oldStab {
+		return newStab > oldStab
+	}
+	// Same stability tier — compare numerically
+	newMajor, newQual := parseVersion(newVersion)
+	oldMajor, oldQual := parseVersion(oldVersion)
+	if newMajor != oldMajor {
+		return newMajor > oldMajor
+	}
+	return newQual > oldQual
 }
 
 // InitResourceDiscovery initializes the resource discovery module
@@ -147,27 +195,29 @@ func (d *ResourceDiscovery) refresh() error {
 
 			d.resources = append(d.resources, resource)
 
-			// Store in map by lowercase kind for lookup
+			gvr := schema.GroupVersionResource{
+				Group:    gv.Group,
+				Version:  gv.Version,
+				Resource: apiRes.Name,
+			}
+
+			// Store in map by lowercase kind for lookup.
+			// Prefer: non-CRD over CRD, then stable versions over beta/alpha.
 			kindKey := strings.ToLower(apiRes.Kind)
-			// Prefer non-CRD resources if there's a conflict (unlikely)
-			if existing, ok := d.resourceMap[kindKey]; !ok || (!isCRD && existing.IsCRD) {
+			if existing, ok := d.resourceMap[kindKey]; !ok ||
+				(!isCRD && existing.IsCRD) ||
+				(isCRD == existing.IsCRD && existing.Group == gv.Group && isMoreStableVersion(gv.Version, existing.Version)) {
 				d.resourceMap[kindKey] = resource
-				d.gvrMap[kindKey] = schema.GroupVersionResource{
-					Group:    gv.Group,
-					Version:  gv.Version,
-					Resource: apiRes.Name,
-				}
+				d.gvrMap[kindKey] = gvr
 			}
 
 			// Also store by plural name (lowercase)
 			nameKey := strings.ToLower(apiRes.Name)
-			if existing, ok := d.resourceMap[nameKey]; !ok || (!isCRD && existing.IsCRD) {
+			if existing, ok := d.resourceMap[nameKey]; !ok ||
+				(!isCRD && existing.IsCRD) ||
+				(isCRD == existing.IsCRD && existing.Group == gv.Group && isMoreStableVersion(gv.Version, existing.Version)) {
 				d.resourceMap[nameKey] = resource
-				d.gvrMap[nameKey] = schema.GroupVersionResource{
-					Group:    gv.Group,
-					Version:  gv.Version,
-					Resource: apiRes.Name,
-				}
+				d.gvrMap[nameKey] = gvr
 			}
 		}
 	}

@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useRefreshAnimation } from '../../hooks/useRefreshAnimation'
-import { Package, Search, RefreshCw, ArrowUpCircle, LayoutGrid, List } from 'lucide-react'
+import { Package, Search, RefreshCw, ArrowUpCircle, LayoutGrid, List, Shield } from 'lucide-react'
 import { clsx } from 'clsx'
-import { useHelmReleases, useHelmBatchUpgradeInfo } from '../../api/client'
+import { useHelmReleases, useHelmBatchUpgradeInfo, isForbiddenError } from '../../api/client'
 import type { HelmRelease, SelectedHelmRelease, UpgradeInfo, ChartSource } from '../../types'
 import { getStatusColor, formatAge, truncate } from './helm-utils'
 import { Tooltip } from '../ui/Tooltip'
@@ -22,7 +22,8 @@ export function HelmView({ namespace, selectedRelease, onReleaseClick }: HelmVie
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedChart, setSelectedChart] = useState<{ repo: string; chart: string; version: string; source: ChartSource } | null>(null)
 
-  const { data: releases, isLoading, refetch: refetchReleases } = useHelmReleases(namespace || undefined)
+  const { data: releases, isLoading, error: releasesError, refetch: refetchReleases } = useHelmReleases(namespace || undefined)
+  const isForbidden = isForbiddenError(releasesError)
   const [handleRefresh, isRefreshAnimating] = useRefreshAnimation(refetchReleases)
 
   // Lazy load upgrade info after releases are loaded
@@ -131,6 +132,12 @@ export function HelmView({ namespace, selectedRelease, onReleaseClick }: HelmVie
               {isLoading ? (
                 <div className="flex items-center justify-center h-full text-theme-text-tertiary">
                   Loading...
+                </div>
+              ) : isForbidden ? (
+                <div className="flex flex-col items-center justify-center h-full text-theme-text-tertiary">
+                  <Shield className="w-8 h-8 text-amber-400 mb-2" />
+                  <p className="text-theme-text-secondary font-medium">Access Restricted</p>
+                  <p className="text-sm mt-1">Insufficient permissions to list Helm releases</p>
                 </div>
               ) : filteredReleases.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-theme-text-tertiary gap-2">

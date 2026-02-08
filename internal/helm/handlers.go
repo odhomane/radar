@@ -5,10 +5,20 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/skyhook-io/radar/internal/k8s"
 )
+
+// IsForbiddenError checks if an error is a Kubernetes RBAC forbidden error
+func IsForbiddenError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errLower := strings.ToLower(err.Error())
+	return strings.Contains(errLower, "forbidden") || strings.Contains(errLower, "unauthorized")
+}
 
 // Handlers provides HTTP handlers for Helm endpoints
 type Handlers struct{}
@@ -64,6 +74,10 @@ func (h *Handlers) handleListReleases(w http.ResponseWriter, r *http.Request) {
 
 	releases, err := client.ListReleases(namespace)
 	if err != nil {
+		if IsForbiddenError(err) {
+			writeError(w, http.StatusForbidden, "insufficient permissions to list Helm releases")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -84,6 +98,10 @@ func (h *Handlers) handleGetRelease(w http.ResponseWriter, r *http.Request) {
 
 	release, err := client.GetRelease(namespace, name)
 	if err != nil {
+		if IsForbiddenError(err) {
+			writeError(w, http.StatusForbidden, "insufficient permissions to get Helm release")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -249,6 +267,10 @@ func (h *Handlers) handleRollback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := client.Rollback(namespace, name, revision); err != nil {
+		if IsForbiddenError(err) {
+			writeError(w, http.StatusForbidden, "insufficient permissions to rollback Helm release")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -272,6 +294,10 @@ func (h *Handlers) handleUninstall(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
 	if err := client.Uninstall(namespace, name); err != nil {
+		if IsForbiddenError(err) {
+			writeError(w, http.StatusForbidden, "insufficient permissions to uninstall Helm release")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -301,6 +327,10 @@ func (h *Handlers) handleUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := client.Upgrade(namespace, name, version); err != nil {
+		if IsForbiddenError(err) {
+			writeError(w, http.StatusForbidden, "insufficient permissions to upgrade Helm release")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -356,6 +386,10 @@ func (h *Handlers) handleApplyValues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := client.ApplyValues(namespace, name, req.Values); err != nil {
+		if IsForbiddenError(err) {
+			writeError(w, http.StatusForbidden, "insufficient permissions to apply Helm values")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -509,6 +543,10 @@ func (h *Handlers) handleInstall(w http.ResponseWriter, r *http.Request) {
 
 	release, err := client.Install(&req)
 	if err != nil {
+		if IsForbiddenError(err) {
+			writeError(w, http.StatusForbidden, "insufficient permissions to install Helm release")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

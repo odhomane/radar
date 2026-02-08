@@ -77,10 +77,19 @@ func InitDynamicResourceCache(changeCh chan ResourceChange) error {
 			return
 		}
 
-		factory := dynamicinformer.NewDynamicSharedInformerFactory(
-			client,
-			0, // no resync - updates come via watch
-		)
+		// Use namespace-scoped factory if the user only has namespace-level access
+		var factory dynamicinformer.DynamicSharedInformerFactory
+		if permResult := GetCachedPermissionResult(); permResult != nil && permResult.NamespaceScoped && permResult.Namespace != "" {
+			factory = dynamicinformer.NewFilteredDynamicSharedInformerFactory(
+				client, 0, permResult.Namespace, nil,
+			)
+			log.Printf("Using namespace-scoped dynamic informers for namespace %q", permResult.Namespace)
+		} else {
+			factory = dynamicinformer.NewDynamicSharedInformerFactory(
+				client,
+				0, // no resync - updates come via watch
+			)
+		}
 
 		dynamicResourceCache = &DynamicResourceCache{
 			factory:         factory,
@@ -134,10 +143,31 @@ func (d *DynamicResourceCache) EnsureWatching(gvr schema.GroupVersionResource) e
 		return fmt.Errorf("resource %s.%s/%s does not support list/watch", gvr.Resource, gvr.Group, gvr.Version)
 	}
 
+	// Quick check under read lock — skip if already watching
+	d.mu.RLock()
+	_, exists := d.informers[gvr]
+	d.mu.RUnlock()
+	if exists {
+		return nil
+	}
+
+	// Probe access BEFORE acquiring write lock — this is a network call and
+	// must not hold the mutex. Prevents creating reflectors that would
+	// endlessly retry on forbidden/unauthorized resources.
+	if err := d.probeAccess(gvr); err != nil {
+		return fmt.Errorf("no access to %s.%s/%s: %w", gvr.Resource, gvr.Group, gvr.Version, err)
+	}
+
+	return d.startWatching(gvr)
+}
+
+// startWatching creates and starts an informer for a GVR (no access probe).
+// Callers must verify access before calling this method.
+func (d *DynamicResourceCache) startWatching(gvr schema.GroupVersionResource) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// Already watching
+	// Re-check after acquiring write lock (another goroutine may have started it)
 	if _, exists := d.informers[gvr]; exists {
 		return nil
 	}
@@ -175,6 +205,38 @@ func (d *DynamicResourceCache) EnsureWatching(gvr schema.GroupVersionResource) e
 		d.syncComplete[gvr] = true
 		d.mu.Unlock()
 	}()
+	return nil
+}
+
+// probeAccess does a quick list with limit=1 to verify the user can access this resource.
+// This prevents creating informers/reflectors that would endlessly retry on 403/401 errors.
+func (d *DynamicResourceCache) probeAccess(gvr schema.GroupVersionResource) error {
+	client := GetDynamicClient()
+	if client == nil {
+		return fmt.Errorf("dynamic client not initialized")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Use namespace-scoped list if we're running in namespace-scoped mode
+	var err error
+	if permResult := GetCachedPermissionResult(); permResult != nil && permResult.NamespaceScoped && permResult.Namespace != "" {
+		_, err = client.Resource(gvr).Namespace(permResult.Namespace).List(ctx, metav1.ListOptions{Limit: 1})
+	} else {
+		_, err = client.Resource(gvr).List(ctx, metav1.ListOptions{Limit: 1})
+	}
+
+	if err != nil {
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "forbidden") || strings.Contains(errLower, "unauthorized") {
+			return err
+		}
+		// Non-auth errors (e.g. network timeout) — allow the informer to be created;
+		// the reflector has its own retry logic for transient failures
+		log.Printf("[dynamic cache] Probe for %s.%s/%s returned non-auth error (allowing): %v", gvr.Resource, gvr.Group, gvr.Version, err)
+	}
+
 	return nil
 }
 
@@ -580,8 +642,8 @@ func (d *DynamicResourceCache) DiscoverAllCRDs() {
 			return
 		}
 
-		// Collect all CRDs that support watch
-		var gvrs []schema.GroupVersionResource
+		// Collect watchable CRDs, keeping only the most stable version per group+resource.
+		best := make(map[string]schema.GroupVersionResource) // key: "group/resource"
 		for _, res := range resources {
 			if !res.IsCRD {
 				continue
@@ -597,13 +659,25 @@ func (d *DynamicResourceCache) DiscoverAllCRDs() {
 					hasWatch = true
 				}
 			}
-			if hasList && hasWatch {
-				gvrs = append(gvrs, schema.GroupVersionResource{
-					Group:    res.Group,
-					Version:  res.Version,
-					Resource: res.Name,
-				})
+			if !hasList || !hasWatch {
+				continue
 			}
+			key := res.Group + "/" + res.Name
+			if existing, ok := best[key]; ok {
+				if !isMoreStableVersion(res.Version, existing.Version) {
+					continue
+				}
+			}
+			best[key] = schema.GroupVersionResource{
+				Group:    res.Group,
+				Version:  res.Version,
+				Resource: res.Name,
+			}
+		}
+
+		var gvrs []schema.GroupVersionResource
+		for _, gvr := range best {
+			gvrs = append(gvrs, gvr)
 		}
 
 		if len(gvrs) == 0 {
@@ -622,10 +696,41 @@ func (d *DynamicResourceCache) WarmupParallel(gvrs []schema.GroupVersionResource
 		return
 	}
 
-	// Start all informers in parallel (non-blocking)
-	var validGVRs []schema.GroupVersionResource
+	// Phase 1: Probe access for all GVRs concurrently (network calls).
+	// Limit concurrency to avoid overwhelming the API server on clusters
+	// with 100+ CRDs and to keep probes within their 5s timeout.
+	const maxConcurrentProbes = 50
+	type probeResult struct {
+		gvr schema.GroupVersionResource
+		ok  bool
+	}
+	results := make(chan probeResult, len(gvrs))
+	sem := make(chan struct{}, maxConcurrentProbes)
 	for _, gvr := range gvrs {
-		if err := d.EnsureWatching(gvr); err == nil {
+		go func(g schema.GroupVersionResource) {
+			sem <- struct{}{}
+			err := d.probeAccess(g)
+			<-sem
+			results <- probeResult{gvr: g, ok: err == nil}
+		}(gvr)
+	}
+
+	var accessibleGVRs []schema.GroupVersionResource
+	for range gvrs {
+		r := <-results
+		if r.ok {
+			accessibleGVRs = append(accessibleGVRs, r.gvr)
+		}
+	}
+
+	if len(accessibleGVRs) == 0 {
+		return
+	}
+
+	// Phase 2: Create informers for accessible resources (fast, no network)
+	var validGVRs []schema.GroupVersionResource
+	for _, gvr := range accessibleGVRs {
+		if err := d.startWatching(gvr); err == nil {
 			validGVRs = append(validGVRs, gvr)
 		}
 	}

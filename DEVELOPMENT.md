@@ -90,7 +90,7 @@ radar/
 - **SharedInformers** — Watch-based caching, no polling. Resource changes arrive in milliseconds.
 - **SSE Broadcaster** — Central hub for pushing real-time updates to all connected browsers.
 - **Topology Builder** — Constructs a directed graph from cached resources on demand. Two modes: resources (hierarchy) and traffic (network flow).
-- **Capabilities** — SelfSubjectAccessReview checks at startup to detect RBAC permissions. Resources that aren't accessible (e.g., secrets) are gracefully skipped.
+- **Capabilities & RBAC** — SelfSubjectAccessReview checks at startup detect per-resource permissions. Informers are only created for accessible resource types. For namespace-scoped users (RoleBinding instead of ClusterRoleBinding), checks fall back from cluster-wide to namespace-scoped, and informers are scoped to the permitted namespace. The frontend hides features the user cannot access.
 
 ### Frontend (React + TypeScript)
 

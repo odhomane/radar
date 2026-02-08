@@ -93,9 +93,13 @@ func ClassifyError(err error) string {
 	errStr := err.Error()
 	errLower := strings.ToLower(errStr)
 
-	// Authentication/authorization errors
+	// RBAC errors (403 Forbidden - authenticated but insufficient permissions)
+	if strings.Contains(errLower, "forbidden") {
+		return "rbac"
+	}
+
+	// Authentication errors (401 Unauthorized - bad credentials)
 	if strings.Contains(errLower, "unauthorized") ||
-		strings.Contains(errLower, "forbidden") ||
 		strings.Contains(errLower, "authentication required") ||
 		strings.Contains(errLower, "token has expired") ||
 		strings.Contains(errLower, "credentials") ||

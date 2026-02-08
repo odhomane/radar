@@ -32,6 +32,7 @@ frontend:
 # Copy built frontend to embed directory
 embed:
 	@echo "Copying frontend to static..."
+	rm -rf internal/static/dist
 	@mkdir -p internal/static/dist
 	cp -r web/dist/* internal/static/dist/
 

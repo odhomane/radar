@@ -21,7 +21,9 @@ import {
   HardDrive,
   Timer,
   RotateCcw,
+  Shield,
 } from 'lucide-react'
+import { useHasLimitedAccess } from '../../contexts/CapabilitiesContext'
 import type { TimelineEvent, Topology } from '../../types'
 import { isChangeEvent, isHistoricalEvent, isOperation } from '../../types'
 import { DiffViewer } from './DiffViewer'
@@ -167,6 +169,7 @@ function calculateInterestingnessWithBreakdown(lane: ResourceLane): ScoreBreakdo
 }
 
 export function TimelineSwimlanes({ events, isLoading, onResourceClick, viewMode, onViewModeChange, topology, namespaces }: TimelineSwimlanesProps) {
+  const hasLimitedAccess = useHasLimitedAccess()
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -633,6 +636,12 @@ export function TimelineSwimlanes({ events, isLoading, onResourceClick, viewMode
                 <>
                   <p className="text-lg">No events yet</p>
                   <p className="text-sm mt-1">Events will appear here as resources change</p>
+                  {hasLimitedAccess && (
+                    <p className="flex items-center gap-1 text-sm mt-2 text-amber-400/80">
+                      <Shield className="w-3.5 h-3.5" />
+                      Some resource types are not monitored due to RBAC restrictions
+                    </p>
+                  )}
                 </>
               )}
             </div>

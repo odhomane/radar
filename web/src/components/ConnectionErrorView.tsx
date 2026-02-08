@@ -9,6 +9,15 @@ interface ConnectionErrorViewProps {
 }
 
 const errorHints: Record<string, { title: string; hints: string[] }> = {
+  rbac: {
+    title: 'Insufficient Permissions',
+    hints: [
+      'Your user account can connect but lacks required RBAC permissions',
+      'Ask your cluster admin for a ClusterRole with list/watch access',
+      'For read-only access, the built-in "view" ClusterRole is usually sufficient',
+      'You can also try: kubectl auth can-i --list',
+    ],
+  },
   auth: {
     title: 'Authentication Failed',
     hints: [

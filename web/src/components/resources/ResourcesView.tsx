@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef, forwardRef } from 'r
 import { useRefreshAnimation } from '../../hooks/useRefreshAnimation'
 import { useLocation } from 'react-router-dom'
 import { useQueries } from '@tanstack/react-query'
+import { ApiError, isForbiddenError } from '../../api/client'
 import {
   Search,
   RefreshCw,
@@ -879,11 +880,21 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
         if (namespaces.length > 0) params.set('namespaces', namespaces.join(','))
         if (resource.group) params.set('group', resource.group)
         const res = await fetch(`/api/resources/${resource.name}?${params}`)
-        if (!res.ok) return []
+        if (!res.ok) {
+          if (res.status === 403) {
+            throw new ApiError('Insufficient permissions', 403)
+          }
+          return []
+        }
         return res.json()
       },
       staleTime: 30000,
       refetchInterval: 30000,
+      retry: (failureCount: number, error: Error) => {
+        // Don't retry on 403 - permissions won't change
+        if (isForbiddenError(error)) return false
+        return failureCount < 3
+      },
     })),
   })
 
@@ -897,6 +908,8 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
   const selectedQuery = resourceQueries[selectedQueryIndex]
   const resources = selectedQuery?.data
   const isLoading = selectedQuery?.isLoading ?? true
+  const selectedQueryError = selectedQuery?.error
+  const isSelectedForbidden = isForbiddenError(selectedQueryError)
   const refetchFn = selectedQuery?.refetch
   const dataUpdatedAt = selectedQuery?.dataUpdatedAt
 
@@ -917,6 +930,17 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
       results[resource.kind] = Array.isArray(data) ? data.length : 0
     })
     return results
+  }, [resourcesToCount, resourceQueries])
+
+  // Track which resource kinds returned 403 Forbidden
+  const forbiddenKinds = useMemo(() => {
+    const result = new Set<string>()
+    resourcesToCount.forEach((resource, index) => {
+      if (isForbiddenError(resourceQueries[index]?.error)) {
+        result.add(resource.kind)
+      }
+    })
+    return result
   }, [resourcesToCount, resourceQueries])
 
   // Reset sort and filters when kind changes
@@ -1492,6 +1516,7 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
                           resource={resource}
                           count={counts?.[resource.kind] ?? 0}
                           isSelected={isResourceSelected}
+                          isForbidden={forbiddenKinds.has(resource.kind)}
                           onClick={() => {
                             setSelectedKind({ name: resource.name, kind: resource.kind, group: resource.group })
                             onKindChange?.()
@@ -1802,6 +1827,12 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
             <div className="absolute inset-0 flex items-center justify-center text-theme-text-tertiary">
               Loading...
             </div>
+          ) : isSelectedForbidden ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-theme-text-tertiary">
+              <Shield className="w-8 h-8 text-amber-400 mb-2" />
+              <p className="text-theme-text-secondary font-medium">Access Restricted</p>
+              <p className="text-sm mt-1">Insufficient permissions to list {selectedKind.kind} resources</p>
+            </div>
           ) : filteredResources.length === 0 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-theme-text-tertiary">
               <p>No {selectedKind.kind} found</p>
@@ -1887,11 +1918,12 @@ interface ResourceTypeButtonProps {
   resource: APIResource
   count: number
   isSelected: boolean
+  isForbidden?: boolean
   onClick: () => void
 }
 
 const ResourceTypeButton = forwardRef<HTMLButtonElement, ResourceTypeButtonProps>(
-  function ResourceTypeButton({ resource, count, isSelected, onClick }, ref) {
+  function ResourceTypeButton({ resource, count, isSelected, isForbidden: forbidden, onClick }, ref) {
     const Icon = getResourceIcon(resource.kind)
     return (
       <button
@@ -1901,21 +1933,29 @@ const ResourceTypeButton = forwardRef<HTMLButtonElement, ResourceTypeButtonProps
           'w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors',
           isSelected
             ? 'bg-blue-500/20 text-blue-700 dark:text-blue-300'
-            : 'text-theme-text-secondary hover:bg-theme-elevated hover:text-theme-text-primary'
+            : forbidden
+              ? 'text-theme-text-disabled hover:bg-theme-elevated hover:text-theme-text-secondary'
+              : 'text-theme-text-secondary hover:bg-theme-elevated hover:text-theme-text-primary'
         )}
       >
         <Icon className="w-4 h-4 shrink-0" />
-        <Tooltip content={resource.kind} position="right">
+        <Tooltip content={forbidden ? `${resource.kind} (no access)` : resource.kind} position="right">
           <span className="flex-1 text-left truncate">
             {resource.kind}
           </span>
         </Tooltip>
-        <span className={clsx(
-          'text-xs px-1.5 py-0.5 rounded min-w-[1.5rem] text-center',
-          isSelected ? 'bg-blue-500/30 text-blue-700 dark:text-blue-300' : 'bg-theme-elevated'
-        )}>
-          {count}
-        </span>
+        {forbidden ? (
+          <Tooltip content="Insufficient permissions" position="left">
+            <Shield className="w-3.5 h-3.5 text-amber-400/60" />
+          </Tooltip>
+        ) : (
+          <span className={clsx(
+            'text-xs px-1.5 py-0.5 rounded min-w-[1.5rem] text-center',
+            isSelected ? 'bg-blue-500/30 text-blue-700 dark:text-blue-300' : 'bg-theme-elevated'
+          )}>
+            {count}
+          </span>
+        )}
       </button>
     )
   }

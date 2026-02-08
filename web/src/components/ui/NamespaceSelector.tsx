@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { ChevronDown, Search, X, Check } from 'lucide-react'
+import { ChevronDown, Search, X, Check, Shield } from 'lucide-react'
 import { Tooltip } from './Tooltip'
+import { isForbiddenError } from '../../api/client'
 
 interface Namespace {
   name: string
@@ -12,6 +13,7 @@ interface NamespaceSelectorProps {
   value: string[]
   onChange: (value: string[]) => void
   namespaces: Namespace[] | undefined
+  namespacesError?: Error | null
   className?: string
   disabled?: boolean
   disabledTooltip?: string
@@ -21,18 +23,22 @@ export function NamespaceSelector({
   value,
   onChange,
   namespaces,
+  namespacesError,
   className,
   disabled,
   disabledTooltip,
 }: NamespaceSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [manualInput, setManualInput] = useState('')
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
 
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const isForbidden = isForbiddenError(namespacesError)
 
   // Convert value to Set for efficient lookups
   const selectedSet = useMemo(() => new Set(value), [value])
@@ -98,6 +104,15 @@ export function NamespaceSelector({
   const clearAll = useCallback(() => {
     onChange([])
   }, [onChange])
+
+  // Add a manually typed namespace
+  const addManualNamespace = useCallback(() => {
+    const ns = manualInput.trim()
+    if (ns && !selectedSet.has(ns)) {
+      onChange([...value, ns])
+    }
+    setManualInput('')
+  }, [manualInput, selectedSet, value, onChange])
 
   // Focus search input when dropdown opens
   useEffect(() => {
@@ -232,111 +247,185 @@ export function NamespaceSelector({
             }}
             onKeyDown={handleKeyDown}
           >
-            {/* Search input */}
-            <div className="p-2 border-b border-theme-border">
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-theme-text-tertiary" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search namespaces..."
-                  className="w-full bg-theme-base text-theme-text-primary text-xs rounded px-2 py-1.5 pl-7 pr-7 border border-theme-border-light focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-theme-text-tertiary"
-                />
-                {search && (
+            {isForbidden ? (
+              <>
+                {/* Manual namespace input when listing is forbidden */}
+                <div className="p-2 border-b border-theme-border">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-400 mb-2">
+                    <Shield className="w-3 h-3" />
+                    <span>Cannot list namespaces — type a name</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={manualInput}
+                      onChange={(e) => setManualInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addManualNamespace()
+                        } else if (e.key === 'Escape') {
+                          closeDropdown()
+                        }
+                      }}
+                      placeholder="Namespace name..."
+                      className="flex-1 bg-theme-base text-theme-text-primary text-xs rounded px-2 py-1.5 border border-theme-border-light focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-theme-text-tertiary"
+                    />
+                    <button
+                      type="button"
+                      onClick={addManualNamespace}
+                      disabled={!manualInput.trim()}
+                      className="px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/30 text-white rounded transition-colors"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {/* Show currently selected namespaces with remove button */}
+                <div className="max-h-[200px] overflow-y-auto">
+                  {value.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-xs text-theme-text-tertiary">
+                      All namespaces (type a name to filter)
+                    </div>
+                  ) : (
+                    value.map((ns) => (
+                      <div
+                        key={ns}
+                        className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between gap-2 text-theme-text-primary hover:bg-theme-hover"
+                      >
+                        <span className="truncate">{ns}</span>
+                        <button
+                          type="button"
+                          onClick={() => onChange(value.filter(v => v !== ns))}
+                          className="text-theme-text-tertiary hover:text-red-400 flex-shrink-0"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {value.length > 0 && (
+                  <div className="px-3 py-1.5 text-[10px] text-theme-text-tertiary border-t border-theme-border bg-theme-base flex justify-between">
+                    <span>{value.length} selected</span>
+                    <button type="button" onClick={clearAll} className="text-blue-400 hover:text-blue-300">
+                      Clear all
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Search input */}
+                <div className="p-2 border-b border-theme-border">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-theme-text-tertiary" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search namespaces..."
+                      className="w-full bg-theme-base text-theme-text-primary text-xs rounded px-2 py-1.5 pl-7 pr-7 border border-theme-border-light focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-theme-text-tertiary"
+                    />
+                    {search && (
+                      <button
+                        type="button"
+                        onClick={() => setSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-text-tertiary hover:text-theme-text-secondary"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Select All / Clear All buttons */}
+                <div className="flex gap-1 px-2 py-1.5 border-b border-theme-border bg-theme-base">
                   <button
                     type="button"
-                    onClick={() => setSearch('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-text-tertiary hover:text-theme-text-secondary"
+                    onClick={selectAll}
+                    disabled={allSelected}
+                    className={clsx(
+                      'flex-1 text-[10px] px-2 py-1 rounded transition-colors',
+                      allSelected
+                        ? 'text-theme-text-tertiary cursor-not-allowed'
+                        : 'text-theme-text-secondary hover:bg-theme-hover hover:text-theme-text-primary'
+                    )}
                   >
-                    <X className="w-3.5 h-3.5" />
+                    Select All
                   </button>
-                )}
-              </div>
-            </div>
-
-            {/* Select All / Clear All buttons */}
-            <div className="flex gap-1 px-2 py-1.5 border-b border-theme-border bg-theme-base">
-              <button
-                type="button"
-                onClick={selectAll}
-                disabled={allSelected}
-                className={clsx(
-                  'flex-1 text-[10px] px-2 py-1 rounded transition-colors',
-                  allSelected
-                    ? 'text-theme-text-tertiary cursor-not-allowed'
-                    : 'text-theme-text-secondary hover:bg-theme-hover hover:text-theme-text-primary'
-                )}
-              >
-                Select All
-              </button>
-              <button
-                type="button"
-                onClick={clearAll}
-                disabled={value.length === 0}
-                className={clsx(
-                  'flex-1 text-[10px] px-2 py-1 rounded transition-colors',
-                  value.length === 0
-                    ? 'text-theme-text-tertiary cursor-not-allowed'
-                    : 'text-theme-text-secondary hover:bg-theme-hover hover:text-theme-text-primary'
-                )}
-              >
-                Clear All
-              </button>
-            </div>
-
-            {/* Options list with checkboxes */}
-            <div className="max-h-[240px] overflow-y-auto">
-              {filteredNamespaces.length === 0 ? (
-                <div className="px-3 py-6 text-center text-xs text-theme-text-tertiary">
-                  No namespaces match "{search}"
+                  <button
+                    type="button"
+                    onClick={clearAll}
+                    disabled={value.length === 0}
+                    className={clsx(
+                      'flex-1 text-[10px] px-2 py-1 rounded transition-colors',
+                      value.length === 0
+                        ? 'text-theme-text-tertiary cursor-not-allowed'
+                        : 'text-theme-text-secondary hover:bg-theme-hover hover:text-theme-text-primary'
+                    )}
+                  >
+                    Clear All
+                  </button>
                 </div>
-              ) : (
-                filteredNamespaces.map((ns, index) => {
-                  const isSelected = selectedSet.has(ns.name)
-                  return (
-                    <button
-                      key={ns.name}
-                      type="button"
-                      data-highlighted={index === highlightedIndex}
-                      onClick={() => toggleNamespace(ns.name)}
-                      onMouseEnter={() => setHighlightedIndex(index)}
-                      className={clsx(
-                        'w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2',
-                        'text-theme-text-primary',
-                        index === highlightedIndex && 'bg-theme-hover'
-                      )}
-                    >
-                      <div
-                        className={clsx(
-                          'w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0',
-                          isSelected
-                            ? 'bg-blue-500 border-blue-500'
-                            : 'border-theme-border-light bg-theme-base'
-                        )}
-                      >
-                        {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
-                      </div>
-                      <span className="truncate">{ns.name}</span>
-                    </button>
-                  )
-                })
-              )}
-            </div>
 
-            {/* Namespace count and selection info */}
-            {sortedNamespaces.length > 0 && (
-              <div className="px-3 py-1.5 text-[10px] text-theme-text-tertiary border-t border-theme-border bg-theme-base flex justify-between">
-                <span>
-                  {filteredNamespaces.length === sortedNamespaces.length
-                    ? `${sortedNamespaces.length} namespaces`
-                    : `${filteredNamespaces.length} of ${sortedNamespaces.length} namespaces`}
-                </span>
-                {value.length > 0 && (
-                  <span className="text-blue-400">{value.length} selected</span>
+                {/* Options list with checkboxes */}
+                <div className="max-h-[240px] overflow-y-auto">
+                  {filteredNamespaces.length === 0 ? (
+                    <div className="px-3 py-6 text-center text-xs text-theme-text-tertiary">
+                      No namespaces match "{search}"
+                    </div>
+                  ) : (
+                    filteredNamespaces.map((ns, index) => {
+                      const isSelected = selectedSet.has(ns.name)
+                      return (
+                        <button
+                          key={ns.name}
+                          type="button"
+                          data-highlighted={index === highlightedIndex}
+                          onClick={() => toggleNamespace(ns.name)}
+                          onMouseEnter={() => setHighlightedIndex(index)}
+                          className={clsx(
+                            'w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2',
+                            'text-theme-text-primary',
+                            index === highlightedIndex && 'bg-theme-hover'
+                          )}
+                        >
+                          <div
+                            className={clsx(
+                              'w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0',
+                              isSelected
+                                ? 'bg-blue-500 border-blue-500'
+                                : 'border-theme-border-light bg-theme-base'
+                            )}
+                          >
+                            {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
+                          </div>
+                          <span className="truncate">{ns.name}</span>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+
+                {/* Namespace count and selection info */}
+                {sortedNamespaces.length > 0 && (
+                  <div className="px-3 py-1.5 text-[10px] text-theme-text-tertiary border-t border-theme-border bg-theme-base flex justify-between">
+                    <span>
+                      {filteredNamespaces.length === sortedNamespaces.length
+                        ? `${sortedNamespaces.length} namespaces`
+                        : `${filteredNamespaces.length} of ${sortedNamespaces.length} namespaces`}
+                    </span>
+                    {value.length > 0 && (
+                      <span className="text-blue-400">{value.length} selected</span>
+                    )}
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </div>
           </>,

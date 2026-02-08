@@ -1,6 +1,6 @@
-import { createContext, useContext, ReactNode } from 'react'
+import { createContext, useContext, useMemo, ReactNode } from 'react'
 import { useCapabilities } from '../api/client'
-import type { Capabilities } from '../types'
+import type { Capabilities, ResourcePermissions } from '../types'
 
 // Default capabilities for local development (when running locally, all features work)
 const defaultCapabilities: Capabilities = {
@@ -71,4 +71,25 @@ export function useCanViewSecrets(): boolean {
 
 export function useCanHelmWrite(): boolean {
   return useContext(CapabilitiesContext).helmWrite
+}
+
+// RBAC resource permission hooks
+export function useResourcePermissions(): ResourcePermissions | undefined {
+  return useContext(CapabilitiesContext).resources
+}
+
+export function useRestrictedResources(): string[] {
+  const resources = useContext(CapabilitiesContext).resources
+  return useMemo(() => {
+    if (!resources) return []
+    return Object.entries(resources)
+      .filter(([, allowed]) => !allowed)
+      .map(([kind]) => kind)
+  }, [resources])
+}
+
+export function useHasLimitedAccess(): boolean {
+  const resources = useContext(CapabilitiesContext).resources
+  if (!resources) return false
+  return Object.values(resources).some(allowed => !allowed)
 }

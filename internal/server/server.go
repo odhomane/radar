@@ -333,6 +333,30 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Include resource permissions if cache is available
+	if cache := k8s.GetResourceCache(); cache != nil {
+		enabled := cache.GetEnabledResources()
+		caps.Resources = &k8s.ResourcePermissions{
+			Pods:                     enabled["pods"],
+			Services:                 enabled["services"],
+			Deployments:              enabled["deployments"],
+			DaemonSets:               enabled["daemonsets"],
+			StatefulSets:             enabled["statefulsets"],
+			ReplicaSets:              enabled["replicasets"],
+			Ingresses:                enabled["ingresses"],
+			ConfigMaps:               enabled["configmaps"],
+			Secrets:                  enabled["secrets"],
+			Events:                   enabled["events"],
+			PersistentVolumeClaims:   enabled["persistentvolumeclaims"],
+			Nodes:                    enabled["nodes"],
+			Namespaces:               enabled["namespaces"],
+			Jobs:                     enabled["jobs"],
+			CronJobs:                 enabled["cronjobs"],
+			HorizontalPodAutoscalers: enabled["horizontalpodautoscalers"],
+		}
+	}
+
 	s.writeJSON(w, caps)
 }
 
@@ -400,7 +424,13 @@ func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	namespaces, err := cache.Namespaces().List(labels.Everything())
+	lister := cache.Namespaces()
+	if lister == nil {
+		s.writeError(w, http.StatusForbidden, "insufficient permissions to list namespaces")
+		return
+	}
+
+	namespaces, err := lister.List(labels.Everything())
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -469,44 +499,81 @@ func (s *Server) handleListResources(w http.ResponseWriter, r *http.Request) {
 		return merged, nil
 	}
 
+	// forbiddenMsg returns a 403 error for RBAC-restricted resource types
+	forbiddenMsg := func(resourceKind string) {
+		s.writeError(w, http.StatusForbidden, fmt.Sprintf("insufficient permissions to list %s", resourceKind))
+	}
+
 	// Try typed cache for known resource types first
 	switch kind {
 	case "pods":
+		if cache.Pods() == nil {
+			forbiddenMsg("pods")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.Pods().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.Pods().Pods(ns).List(labels.Everything()) },
 		)
 	case "services":
+		if cache.Services() == nil {
+			forbiddenMsg("services")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.Services().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.Services().Services(ns).List(labels.Everything()) },
 		)
 	case "deployments":
+		if cache.Deployments() == nil {
+			forbiddenMsg("deployments")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.Deployments().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.Deployments().Deployments(ns).List(labels.Everything()) },
 		)
 	case "daemonsets":
+		if cache.DaemonSets() == nil {
+			forbiddenMsg("daemonsets")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.DaemonSets().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.DaemonSets().DaemonSets(ns).List(labels.Everything()) },
 		)
 	case "statefulsets":
+		if cache.StatefulSets() == nil {
+			forbiddenMsg("statefulsets")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.StatefulSets().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.StatefulSets().StatefulSets(ns).List(labels.Everything()) },
 		)
 	case "replicasets":
+		if cache.ReplicaSets() == nil {
+			forbiddenMsg("replicasets")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.ReplicaSets().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.ReplicaSets().ReplicaSets(ns).List(labels.Everything()) },
 		)
 	case "ingresses":
+		if cache.Ingresses() == nil {
+			forbiddenMsg("ingresses")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.Ingresses().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.Ingresses().Ingresses(ns).List(labels.Everything()) },
 		)
 	case "configmaps":
+		if cache.ConfigMaps() == nil {
+			forbiddenMsg("configmaps")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.ConfigMaps().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.ConfigMaps().ConfigMaps(ns).List(labels.Everything()) },
@@ -514,20 +581,27 @@ func (s *Server) handleListResources(w http.ResponseWriter, r *http.Request) {
 	case "secrets":
 		lister := cache.Secrets()
 		if lister == nil {
-			// Secrets not available (RBAC not granted)
-			result = []interface{}{}
-		} else {
-			result, err = listPerNs(
-				func() (any, error) { return lister.List(labels.Everything()) },
-				func(ns string) (any, error) { return lister.Secrets(ns).List(labels.Everything()) },
-			)
+			forbiddenMsg("secrets")
+			return
 		}
+		result, err = listPerNs(
+			func() (any, error) { return lister.List(labels.Everything()) },
+			func(ns string) (any, error) { return lister.Secrets(ns).List(labels.Everything()) },
+		)
 	case "events":
+		if cache.Events() == nil {
+			forbiddenMsg("events")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.Events().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.Events().Events(ns).List(labels.Everything()) },
 		)
 	case "persistentvolumeclaims", "pvcs":
+		if cache.PersistentVolumeClaims() == nil {
+			forbiddenMsg("persistentvolumeclaims")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.PersistentVolumeClaims().List(labels.Everything()) },
 			func(ns string) (any, error) {
@@ -535,16 +609,28 @@ func (s *Server) handleListResources(w http.ResponseWriter, r *http.Request) {
 			},
 		)
 	case "jobs":
+		if cache.Jobs() == nil {
+			forbiddenMsg("jobs")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.Jobs().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.Jobs().Jobs(ns).List(labels.Everything()) },
 		)
 	case "cronjobs":
+		if cache.CronJobs() == nil {
+			forbiddenMsg("cronjobs")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.CronJobs().List(labels.Everything()) },
 			func(ns string) (any, error) { return cache.CronJobs().CronJobs(ns).List(labels.Everything()) },
 		)
 	case "hpas", "horizontalpodautoscalers":
+		if cache.HorizontalPodAutoscalers() == nil {
+			forbiddenMsg("horizontalpodautoscalers")
+			return
+		}
 		result, err = listPerNs(
 			func() (any, error) { return cache.HorizontalPodAutoscalers().List(labels.Everything()) },
 			func(ns string) (any, error) {
@@ -552,8 +638,16 @@ func (s *Server) handleListResources(w http.ResponseWriter, r *http.Request) {
 			},
 		)
 	case "nodes":
+		if cache.Nodes() == nil {
+			forbiddenMsg("nodes")
+			return
+		}
 		result, err = cache.Nodes().List(labels.Everything())
 	case "namespaces":
+		if cache.Namespaces() == nil {
+			forbiddenMsg("namespaces")
+			return
+		}
 		result, err = cache.Namespaces().List(labels.Everything())
 	default:
 		// Fall back to dynamic cache for CRDs and other unknown resources
@@ -677,42 +771,103 @@ func (s *Server) handleGetResource(w http.ResponseWriter, r *http.Request) {
 	var resource any
 	var err error
 
+	// forbiddenGet returns a 403 error for RBAC-restricted resource types
+	forbiddenGet := func(resourceKind string) {
+		s.writeError(w, http.StatusForbidden, fmt.Sprintf("insufficient permissions to access %s", resourceKind))
+	}
+
 	// Try typed cache for known resource types first
 	switch kind {
 	case "pods", "pod":
+		if cache.Pods() == nil {
+			forbiddenGet("pods")
+			return
+		}
 		resource, err = cache.Pods().Pods(namespace).Get(name)
 	case "services", "service":
+		if cache.Services() == nil {
+			forbiddenGet("services")
+			return
+		}
 		resource, err = cache.Services().Services(namespace).Get(name)
 	case "deployments", "deployment":
+		if cache.Deployments() == nil {
+			forbiddenGet("deployments")
+			return
+		}
 		resource, err = cache.Deployments().Deployments(namespace).Get(name)
 	case "daemonsets", "daemonset":
+		if cache.DaemonSets() == nil {
+			forbiddenGet("daemonsets")
+			return
+		}
 		resource, err = cache.DaemonSets().DaemonSets(namespace).Get(name)
 	case "statefulsets", "statefulset":
+		if cache.StatefulSets() == nil {
+			forbiddenGet("statefulsets")
+			return
+		}
 		resource, err = cache.StatefulSets().StatefulSets(namespace).Get(name)
 	case "replicasets", "replicaset":
+		if cache.ReplicaSets() == nil {
+			forbiddenGet("replicasets")
+			return
+		}
 		resource, err = cache.ReplicaSets().ReplicaSets(namespace).Get(name)
 	case "ingresses", "ingress":
+		if cache.Ingresses() == nil {
+			forbiddenGet("ingresses")
+			return
+		}
 		resource, err = cache.Ingresses().Ingresses(namespace).Get(name)
 	case "configmaps", "configmap":
+		if cache.ConfigMaps() == nil {
+			forbiddenGet("configmaps")
+			return
+		}
 		resource, err = cache.ConfigMaps().ConfigMaps(namespace).Get(name)
 	case "secrets", "secret":
 		lister := cache.Secrets()
 		if lister == nil {
-			s.writeError(w, http.StatusForbidden, "secrets access not available (RBAC not granted)")
+			forbiddenGet("secrets")
 			return
 		}
 		resource, err = lister.Secrets(namespace).Get(name)
 	case "persistentvolumeclaims", "persistentvolumeclaim", "pvcs", "pvc":
+		if cache.PersistentVolumeClaims() == nil {
+			forbiddenGet("persistentvolumeclaims")
+			return
+		}
 		resource, err = cache.PersistentVolumeClaims().PersistentVolumeClaims(namespace).Get(name)
 	case "hpas", "hpa", "horizontalpodautoscaler", "horizontalpodautoscalers":
+		if cache.HorizontalPodAutoscalers() == nil {
+			forbiddenGet("horizontalpodautoscalers")
+			return
+		}
 		resource, err = cache.HorizontalPodAutoscalers().HorizontalPodAutoscalers(namespace).Get(name)
 	case "jobs", "job":
+		if cache.Jobs() == nil {
+			forbiddenGet("jobs")
+			return
+		}
 		resource, err = cache.Jobs().Jobs(namespace).Get(name)
 	case "cronjobs", "cronjob":
+		if cache.CronJobs() == nil {
+			forbiddenGet("cronjobs")
+			return
+		}
 		resource, err = cache.CronJobs().CronJobs(namespace).Get(name)
 	case "nodes", "node":
+		if cache.Nodes() == nil {
+			forbiddenGet("nodes")
+			return
+		}
 		resource, err = cache.Nodes().Get(name)
 	case "namespaces", "namespace":
+		if cache.Namespaces() == nil {
+			forbiddenGet("namespaces")
+			return
+		}
 		resource, err = cache.Namespaces().Get(name)
 	default:
 		// Fall back to dynamic cache for CRDs and other unknown resources
@@ -848,15 +1003,21 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	eventsLister := cache.Events()
+	if eventsLister == nil {
+		s.writeError(w, http.StatusForbidden, "insufficient permissions to list events")
+		return
+	}
+
 	var events any
 	var err error
 
 	if len(namespaces) == 1 {
-		events, err = cache.Events().Events(namespaces[0]).List(labels.Everything())
+		events, err = eventsLister.Events(namespaces[0]).List(labels.Everything())
 	} else if len(namespaces) > 1 {
 		var merged []any
 		for _, ns := range namespaces {
-			items, listErr := cache.Events().Events(ns).List(labels.Everything())
+			items, listErr := eventsLister.Events(ns).List(labels.Everything())
 			if listErr != nil {
 				s.writeError(w, http.StatusInternalServerError, listErr.Error())
 				return
@@ -865,7 +1026,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		events = merged
 	} else {
-		events, err = cache.Events().List(labels.Everything())
+		events, err = eventsLister.List(labels.Everything())
 	}
 
 	if err != nil {
@@ -993,6 +1154,14 @@ func (s *Server) handleUpdateResource(w http.ResponseWriter, r *http.Request) {
 		YAML:      string(body),
 	})
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			s.writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if apierrors.IsForbidden(err) {
+			s.writeError(w, http.StatusForbidden, err.Error())
+			return
+		}
 		if strings.Contains(err.Error(), "not found") {
 			s.writeError(w, http.StatusNotFound, err.Error())
 			return
@@ -1016,8 +1185,12 @@ func (s *Server) handleDeleteResource(w http.ResponseWriter, r *http.Request) {
 
 	err := k8s.DeleteResource(r.Context(), kind, namespace, name)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		if apierrors.IsNotFound(err) {
 			s.writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if apierrors.IsForbidden(err) {
+			s.writeError(w, http.StatusForbidden, err.Error())
 			return
 		}
 		s.writeError(w, http.StatusInternalServerError, err.Error())
@@ -1104,8 +1277,12 @@ func (s *Server) handleRestartWorkload(w http.ResponseWriter, r *http.Request) {
 
 	err := k8s.RestartWorkload(r.Context(), kind, namespace, name)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		if apierrors.IsNotFound(err) {
 			s.writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if apierrors.IsForbidden(err) {
+			s.writeError(w, http.StatusForbidden, err.Error())
 			return
 		}
 		s.writeError(w, http.StatusInternalServerError, err.Error())
@@ -1144,6 +1321,10 @@ func (s *Server) handleScaleWorkload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			s.writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if apierrors.IsForbidden(err) {
+			s.writeError(w, http.StatusForbidden, err.Error())
 			return
 		}
 		if strings.Contains(err.Error(), "not supported") {
