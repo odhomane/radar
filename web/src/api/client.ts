@@ -227,7 +227,7 @@ export function useClusterInfo() {
 }
 
 // Version check
-export type InstallMethod = 'homebrew' | 'krew' | 'scoop' | 'direct'
+export type InstallMethod = 'homebrew' | 'krew' | 'scoop' | 'direct' | 'desktop'
 
 export interface VersionInfo {
   currentVersion: string
@@ -246,6 +246,66 @@ export function useVersionCheck() {
     queryFn: () => fetchJSON('/version-check'),
     staleTime: 60 * 60 * 1000, // 1 hour
     retry: false, // Don't retry on failure
+  })
+}
+
+// ============================================================================
+// Desktop Update API hooks
+// ============================================================================
+
+export type DesktopUpdateState = 'idle' | 'downloading' | 'ready' | 'applying' | 'error'
+
+export interface DesktopUpdateStatus {
+  state: DesktopUpdateState
+  progress?: number // 0.0 - 1.0 during download
+  version?: string
+  error?: string
+}
+
+export function useStartDesktopUpdate() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_BASE}/desktop/update`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to start update',
+    },
+  })
+}
+
+export function useDesktopUpdateStatus(enabled: boolean) {
+  return useQuery<DesktopUpdateStatus>({
+    queryKey: ['desktop-update-status'],
+    queryFn: () => fetchJSON('/desktop/update/status'),
+    enabled,
+    refetchInterval: 500, // Poll every 500ms during active update
+    staleTime: 0, // Always refetch
+  })
+}
+
+export function useApplyDesktopUpdate() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`${API_BASE}/desktop/update/apply`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
+      return response.json()
+    },
+    meta: {
+      errorMessage: 'Failed to apply update',
+      successMessage: 'Update applied — restarting...',
+    },
   })
 }
 

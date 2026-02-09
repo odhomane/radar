@@ -114,6 +114,35 @@ release:
     sudo mv kubectl-radar /usr/local/bin/
     ```
 
+    ### Desktop App
+
+    **Homebrew (macOS):**
+    ```bash
+    brew install --cask skyhook-io/tap/radar-desktop
+    ```
+
+    **Debian/Ubuntu:**
+    ```bash
+    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar-desktop_v{{.Version}}_linux_amd64.deb
+    sudo dpkg -i radar-desktop_v{{.Version}}_linux_amd64.deb
+    ```
+
+    **Fedora/RHEL:**
+    ```bash
+    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar-desktop_v{{.Version}}_linux_amd64.rpm
+    sudo rpm -i radar-desktop_v{{.Version}}_linux_amd64.rpm
+    ```
+
+    **Scoop (Windows):**
+    ```powershell
+    scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
+    scoop install radar-desktop
+    ```
+
+    **Windows (direct download):** Download from the assets below.
+
+    ### CLI
+
     Then run: `kubectl radar`
 
 # Homebrew formula (publishes to skyhook-io/homebrew-tap)

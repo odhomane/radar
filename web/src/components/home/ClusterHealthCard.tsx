@@ -285,12 +285,12 @@ export function ClusterHealthCard({
       {/* Secondary resources row + Browse All button */}
       <div className="flex">
         {/* Left: Resources row - evenly spread */}
-        <div className="flex-1 grid grid-cols-6 px-4 py-2.5 bg-theme-surface/30">
+        <div className="flex-1 grid grid-cols-3 lg:grid-cols-6 px-4 py-2.5 bg-theme-surface/30">
           {secondaryResources.map((res) => (
             <button
               key={res.kind}
               onClick={() => onNavigateToKind(res.kind)}
-              className="flex items-center justify-center gap-1.5 px-2 py-1 rounded hover:bg-theme-hover transition-colors cursor-pointer text-sm"
+              className="flex items-center lg:justify-center gap-1.5 px-2 py-1 rounded hover:bg-theme-hover transition-colors cursor-pointer text-sm"
             >
               {isRestricted(res.kind) ? (
                 <>

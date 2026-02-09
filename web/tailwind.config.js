@@ -8,6 +8,12 @@ export default {
   ],
   darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
+    screens: {
+      'sm': '900px',
+      'md': '1100px',
+      'lg': '1280px',
+      'xl': '1536px',
+    },
     extend: {
       colors: {
         // Theme-aware colors (use CSS variables)

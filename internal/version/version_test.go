@@ -50,6 +50,7 @@ func TestGetUpdateCommand(t *testing.T) {
 		{InstallKrew, "kubectl krew upgrade radar"},
 		{InstallScoop, "scoop update radar"},
 		{InstallDirect, ""},
+		{InstallDesktop, ""},
 		{InstallMethod("unknown"), ""},
 	}
 

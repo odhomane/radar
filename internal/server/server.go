@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -31,6 +32,7 @@ import (
 	"github.com/skyhook-io/radar/internal/k8s"
 	"github.com/skyhook-io/radar/internal/timeline"
 	"github.com/skyhook-io/radar/internal/topology"
+	"github.com/skyhook-io/radar/internal/updater"
 	"github.com/skyhook-io/radar/internal/version"
 )
 
@@ -42,6 +44,8 @@ type Server struct {
 	devMode     bool
 	staticFS    fs.FS
 	startTime   time.Time
+	listener    net.Listener
+	updater     *updater.Updater
 }
 
 // Config holds server configuration
@@ -209,6 +213,11 @@ func (s *Server) setupRoutes() {
 			// Connection status routes (for graceful startup)
 			r.Get("/connection", s.handleConnectionStatus)
 			r.Post("/connection/retry", s.handleConnectionRetry)
+
+			// Desktop update routes (only active when updater is set)
+			r.Post("/desktop/update", s.handleDesktopUpdateStart)
+			r.Get("/desktop/update/status", s.handleDesktopUpdateStatus)
+			r.Post("/desktop/update/apply", s.handleDesktopUpdateApply)
 		})
 
 		// Traffic streaming (no timeout)
@@ -252,14 +261,50 @@ func spaHandler(fsys http.FileSystem) http.Handler {
 	})
 }
 
-// Start starts the server
+// Start starts the server. If port is 0, an OS-assigned port is used.
 func (s *Server) Start() error {
+	return s.StartWithReady(nil)
+}
+
+// StartWithReady starts the server and signals on the ready channel once it
+// is accepting connections. If port is 0, an OS-assigned port is used.
+func (s *Server) StartWithReady(ready chan<- struct{}) error {
 	s.broadcaster.Start()
 
 	addr := fmt.Sprintf(":%d", s.port)
-	log.Printf("Starting Explorer server on http://localhost%s", addr)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", addr, err)
+	}
+	s.listener = ln
 
-	return http.ListenAndServe(addr, s.router)
+	log.Printf("Starting Explorer server on http://localhost:%d", s.ActualPort())
+
+	if ready != nil {
+		close(ready)
+	}
+
+	return http.Serve(ln, s.router)
+}
+
+// ActualPort returns the port the server is listening on.
+// Useful when configured with port 0 (OS-assigned).
+func (s *Server) ActualPort() int {
+	if s.listener != nil {
+		return s.listener.Addr().(*net.TCPAddr).Port
+	}
+	return s.port
+}
+
+// ActualAddr returns the address the server is listening on (e.g. "localhost:9280").
+func (s *Server) ActualAddr() string {
+	return fmt.Sprintf("localhost:%d", s.ActualPort())
+}
+
+// SetUpdater attaches a desktop updater to the server, enabling the
+// /api/desktop/update/* endpoints. Only used by the desktop app.
+func (s *Server) SetUpdater(u *updater.Updater) {
+	s.updater = u
 }
 
 // Stop gracefully stops the server

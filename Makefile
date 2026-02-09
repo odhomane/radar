@@ -1,5 +1,6 @@
 .PHONY: build install clean dev frontend backend test lint help restart restart-fe kill watch-backend watch-frontend
 .PHONY: release release-binaries-dry docker docker-test docker-multiarch docker-push
+.PHONY: desktop desktop-binary desktop-dev desktop-package-darwin desktop-package-windows desktop-package-linux
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X main.version=$(VERSION)
@@ -101,7 +102,7 @@ install-tools:
 
 # Clean build artifacts
 clean:
-	rm -f radar
+	rm -f radar radar-desktop
 	rm -rf web/dist
 	rm -f internal/static/dist/index.html
 	rm -rf internal/static/dist/assets
@@ -163,6 +164,41 @@ docker-push:
 	docker push $(DOCKER_REPO):latest
 
 # ============================================================================
+# Desktop (Wails) Targets
+# ============================================================================
+
+# Build desktop app: frontend + Go desktop binary
+desktop: frontend embed desktop-binary
+	@echo "Desktop build complete: ./radar-desktop"
+
+# Build desktop binary only (assumes frontend is already in internal/static/dist)
+desktop-binary:
+	@echo "Building desktop binary..."
+	CGO_ENABLED=1 CGO_LDFLAGS="-framework UniformTypeIdentifiers" go build -tags production -ldflags "$(LDFLAGS)" -o radar-desktop ./cmd/desktop
+
+# Run desktop app in Wails dev mode with Go hot reload.
+# wails.json lives in cmd/desktop/ (Wails requires it next to the main package).
+# Requires wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+desktop-dev:
+	@command -v wails >/dev/null 2>&1 || { echo "Error: wails CLI not found. Install with: go install github.com/wailsapp/wails/v2/cmd/wails@latest"; exit 1; }
+	cd cmd/desktop && wails dev -ldflags "$(LDFLAGS)"
+
+# Package macOS .app bundle
+desktop-package-darwin:
+	@command -v wails >/dev/null 2>&1 || { echo "Error: wails CLI not found"; exit 1; }
+	cd cmd/desktop && wails build -platform darwin/universal -ldflags "$(LDFLAGS)"
+
+# Package Windows .exe
+desktop-package-windows:
+	@command -v wails >/dev/null 2>&1 || { echo "Error: wails CLI not found"; exit 1; }
+	cd cmd/desktop && wails build -platform windows/amd64 -ldflags "$(LDFLAGS)"
+
+# Package Linux binary
+desktop-package-linux:
+	@command -v wails >/dev/null 2>&1 || { echo "Error: wails CLI not found"; exit 1; }
+	cd cmd/desktop && wails build -platform linux/amd64 -ldflags "$(LDFLAGS)"
+
+# ============================================================================
 # Release Targets
 # ============================================================================
 
@@ -188,6 +224,12 @@ help:
 	@echo "  make watch-backend   - Go with air hot reload (port 9280)"
 	@echo "  make run             - Run built binary"
 	@echo "  make test            - Run tests"
+	@echo ""
+	@echo "Desktop:"
+	@echo "  make desktop                - Build desktop app (frontend + Wails binary)"
+	@echo "  make desktop-binary         - Build desktop binary only"
+	@echo "  make desktop-dev            - Run desktop in Wails dev mode"
+	@echo "  make desktop-package-darwin - Package macOS .app bundle"
 	@echo ""
 	@echo "Docker & In-Cluster:"
 	@echo "  make docker           - Build Docker image (local arch)"

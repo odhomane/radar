@@ -7,6 +7,20 @@ import { ToastProvider, showApiError, showApiSuccess } from './components/ui/Toa
 import { ThemeProvider } from './context/ThemeContext'
 import './index.css'
 
+// Mouse back/forward button navigation for desktop webview.
+// On Windows (WebView2/Chromium), these events fire natively — this handles them.
+// On macOS (WKWebView), these events never reach JS — handled by native NSEvent monitor in mouse_darwin.go.
+// On Linux (webkit2gtk), behavior varies by version — this catches it when supported.
+window.addEventListener('auxclick', (e: MouseEvent) => {
+  if (e.button === 3) {
+    e.preventDefault()
+    window.history.back()
+  } else if (e.button === 4) {
+    e.preventDefault()
+    window.history.forward()
+  }
+})
+
 // Type the meta property for mutations
 declare module '@tanstack/react-query' {
   interface Register {

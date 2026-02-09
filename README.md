@@ -39,37 +39,73 @@ curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | 
 
 ## Installation
 
-**Quick Install**
+**Quick Install:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | bash
 ```
 
-**Homebrew (macOS/Linux)**
+**Homebrew:**
 ```bash
 brew install skyhook-io/tap/radar
 ```
 
-**Krew (kubectl plugin manager)**
+Then run: `kubectl radar` (or simply `radar`)
+
+<details>
+<summary><b>More install options</b> — Desktop App (macOS/Linux/Windows), Krew, Scoop, In-Cluster Helm</summary>
+
+#### CLI
+
+**Krew (kubectl plugin manager):**
 ```bash
 kubectl krew install radar
 ```
 
-**Scoop (Windows)**
+**Scoop (Windows):**
 ```powershell
 scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
 scoop install radar
 ```
 
-**PowerShell (Windows)**
+**PowerShell (Windows):**
 ```powershell
 irm https://raw.githubusercontent.com/skyhook-io/radar/main/install.ps1 | iex
 ```
 
-**Direct Download** — [Download from GitHub Releases](https://github.com/skyhook-io/radar/releases) for macOS, Linux, or Windows.
+**Direct download** — [GitHub Releases](https://github.com/skyhook-io/radar/releases) for macOS, Linux, or Windows.
 
-**In-Cluster Deployment**
+#### Desktop App
 
-Deploy Radar to your Kubernetes cluster for shared team access:
+Native desktop app — no terminal needed.
+
+**Homebrew (macOS):**
+```bash
+brew install --cask skyhook-io/tap/radar-desktop
+```
+
+> Radar Desktop is not yet code-signed. Install with `--no-quarantine` or right-click → Open on first launch.
+
+**Debian/Ubuntu:**
+```bash
+sudo apt install ./radar-desktop_*.deb
+```
+
+**Fedora/RHEL:**
+```bash
+sudo rpm -i radar-desktop_*.rpm
+```
+
+**Scoop (Windows):**
+```powershell
+scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
+scoop install radar-desktop
+```
+
+**Windows (direct download)** — [GitHub Releases](https://github.com/skyhook-io/radar/releases).
+
+#### In-Cluster Deployment
+
+Deploy to your cluster for shared team access:
 
 ```bash
 helm repo add skyhook https://skyhook-io.github.io/helm-charts
@@ -77,6 +113,8 @@ helm install radar skyhook/radar -n radar --create-namespace
 ```
 
 See the [In-Cluster Deployment Guide](docs/in-cluster.md) for ingress, authentication, and RBAC configuration.
+
+</details>
 
 ---
 

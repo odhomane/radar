@@ -59,7 +59,30 @@ jobs:
           retention-days: 1
 
       - name: Update krew-index
+        if: "!contains(github.ref_name, '-')"
         uses: rajatjindal/krew-release-bot@v0.0.47
+
+      - name: Release summary
+        if: always()
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          {
+            echo "## CLI Release ${VERSION}"
+            echo ""
+            if [[ "$VERSION" == *-* ]]; then
+              echo "> **Pre-release** — not published to Homebrew/Scoop/Krew"
+              echo ""
+            fi
+            echo "### Assets"
+            echo '```'
+            ls -lh dist/*.tar.gz dist/*.zip 2>/dev/null | awk '{print $NF, $5}'
+            echo '```'
+            echo ""
+            echo "### Checksums"
+            echo '```'
+            cat dist/checksums.txt 2>/dev/null || echo "not available"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   docker:
     name: Docker Image

@@ -28,6 +28,7 @@ import { useNamespaces } from './api/client'
 import { Loader2 } from 'lucide-react'
 import { RefreshCw, FolderTree, Network, List, Clock, Package, Sun, Moon, Activity, Home } from 'lucide-react'
 import { useTheme } from './context/ThemeContext'
+import { Tooltip } from './components/ui/Tooltip'
 import type { TopologyNode, GroupingMode, MainView, SelectedResource, SelectedHelmRelease, NodeKind, Topology } from './types'
 
 // All possible node kinds (core + GitOps)
@@ -426,11 +427,11 @@ function AppInner() {
   }, [])
 
   return (
-    <div className="flex flex-col h-screen bg-theme-base">
+    <div className="flex flex-col h-screen bg-theme-base min-w-[800px]">
       {/* Header */}
       <header className="relative flex items-center justify-between px-4 py-2 bg-theme-surface border-b border-theme-border">
         {/* Left: Logo + Cluster info */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 shrink-0">
           <div className="flex items-center gap-2.5">
             <Logo />
             <span className="text-xl text-theme-text-primary leading-none -translate-y-0.5" style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 520 }}>radar</span>
@@ -445,7 +446,7 @@ function AppInner() {
                   connected ? 'bg-green-500' : 'bg-red-500'
                 }`}
               />
-              <span className="text-xs text-theme-text-tertiary hidden sm:inline">
+              <span className="text-xs text-theme-text-tertiary hidden xl:inline">
                 {connected ? 'Connected' : 'Disconnected'}
               </span>
               {!connected && (
@@ -462,78 +463,34 @@ function AppInner() {
           </div>
         </div>
 
-        {/* Center: View tabs (absolutely centered) */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 bg-theme-elevated/50 rounded-lg p-1">
-          <button
-            onClick={() => setMainView('home')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
-              mainView === 'home'
-                ? 'bg-blue-500 text-theme-text-primary'
-                : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-hover'
-            }`}
-          >
-            <Home className="w-4 h-4" />
-            <span className="hidden sm:inline">Home</span>
-          </button>
-          <button
-            onClick={() => setMainView('topology')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
-              mainView === 'topology'
-                ? 'bg-blue-500 text-theme-text-primary'
-                : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-hover'
-            }`}
-          >
-            <Network className="w-4 h-4" />
-            <span className="hidden sm:inline">Topology</span>
-          </button>
-          <button
-            onClick={() => setMainView('resources')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
-              mainView === 'resources'
-                ? 'bg-blue-500 text-theme-text-primary'
-                : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-hover'
-            }`}
-          >
-            <List className="w-4 h-4" />
-            <span className="hidden sm:inline">Resources</span>
-          </button>
-          <button
-            onClick={() => setMainView('timeline')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
-              mainView === 'timeline'
-                ? 'bg-blue-500 text-theme-text-primary'
-                : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-hover'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            <span className="hidden sm:inline">Timeline</span>
-          </button>
-          <button
-            onClick={() => setMainView('helm')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
-              mainView === 'helm'
-                ? 'bg-blue-500 text-theme-text-primary'
-                : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-hover'
-            }`}
-          >
-            <Package className="w-4 h-4" />
-            <span className="hidden sm:inline">Helm</span>
-          </button>
-          <button
-            onClick={() => setMainView('traffic')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
-              mainView === 'traffic'
-                ? 'bg-blue-500 text-theme-text-primary'
-                : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-hover'
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            <span className="hidden sm:inline">Traffic</span>
-          </button>
+        {/* Center: View tabs — absolute centered on wide, flows after left section on narrow */}
+        <div className="md:absolute md:left-1/2 md:-translate-x-1/2 flex items-center gap-1 bg-theme-elevated/50 rounded-lg p-1 ml-2 md:ml-0">
+          {([
+            { view: 'home' as const, icon: Home, label: 'Home' },
+            { view: 'topology' as const, icon: Network, label: 'Topology' },
+            { view: 'resources' as const, icon: List, label: 'Resources' },
+            { view: 'timeline' as const, icon: Clock, label: 'Timeline' },
+            { view: 'helm' as const, icon: Package, label: 'Helm' },
+            { view: 'traffic' as const, icon: Activity, label: 'Traffic' },
+          ] as const).map(({ view, icon: Icon, label }) => (
+            <Tooltip key={view} content={label} delay={100} position="bottom">
+              <button
+                onClick={() => setMainView(view)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
+                  mainView === view
+                    ? 'bg-blue-500 text-theme-text-primary'
+                    : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-hover'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span className="hidden lg:inline">{label}</span>
+              </button>
+            </Tooltip>
+          ))}
         </div>
 
         {/* Right: Controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           {/* CRD Discovery indicator */}
           {crdDiscoveryStatus === 'discovering' && (
             <div className="flex items-center gap-1.5 text-xs text-amber-400">
