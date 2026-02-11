@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { X, Folder, File, Link2, ChevronRight, ChevronDown, AlertTriangle, Loader2, Search, Download, HardDrive, Shield, ShieldCheck, Terminal, Copy, Check } from 'lucide-react'
+import { X, Folder, File, Link2, ChevronRight, ChevronDown, AlertTriangle, Loader2, Search, Download, HardDrive, Shield, ShieldCheck, Terminal, Copy, Check, RefreshCw } from 'lucide-react'
 import { clsx } from 'clsx'
-import { useImageMetadata } from '../../api/client'
+import { useImageMetadata, ApiError } from '../../api/client'
 import type { FileNode, ImageFilesystem } from '../../types'
 
 const API_BASE = '/api'
@@ -56,8 +56,13 @@ export function ImageFilesystemModal({
   const {
     data: metadata,
     isLoading: isLoadingMetadata,
-    error: metadataError
+    error: metadataError,
+    refetch: refetchMetadata,
   } = useImageMetadata(image, namespace, podName, pullSecrets, open)
+
+  // Detect auth errors from metadata fetch
+  const isAuthError = metadataError instanceof ApiError && metadataError.status === 401
+  const registryType = isAuthError ? (metadataError.data?.registryType as string) : undefined
 
   // Use cached filesystem from metadata if available
   const displayFilesystem: ImageFilesystem | undefined = metadata?.cached
@@ -178,8 +183,17 @@ export function ImageFilesystemModal({
             </div>
           )}
 
-          {/* Error state */}
-          {error && (
+          {/* Auth error - show guidance instead of generic error */}
+          {isAuthError && (
+            <AuthenticationHelp
+              image={image}
+              registryType={registryType}
+              onRetry={() => refetchMetadata()}
+            />
+          )}
+
+          {/* Non-auth errors keep the existing red error box */}
+          {error && !isAuthError && (
             <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
@@ -363,6 +377,105 @@ function DownloadConfirmation({ metadata, onConfirm, onCancel }: DownloadConfirm
   )
 }
 
+// ============================================================================
+// Authentication Help Component (shown on 401 errors)
+// ============================================================================
+
+interface AuthenticationHelpProps {
+  image: string
+  registryType?: string
+  onRetry: () => void
+}
+
+function AuthenticationHelp({ image, registryType, onRetry }: AuthenticationHelpProps) {
+  const [copied, setCopied] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  const registry = getRegistryHost(image)
+  const authMethod = registryType || 'generic'
+  const authCommand = getAuthCommand(authMethod, image)
+
+  const handleCopy = async () => {
+    if (!authCommand) return
+    try {
+      await navigator.clipboard.writeText(authCommand)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  const handleRetry = () => {
+    setRetrying(true)
+    onRetry()
+    // Reset after a short delay (the query state will update via React Query)
+    setTimeout(() => setRetrying(false), 1000)
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center py-8">
+      <Shield className="w-16 h-16 text-amber-400 mb-4" />
+
+      <h4 className="text-lg font-medium text-theme-text-primary mb-2">
+        Authentication Required
+      </h4>
+
+      <p className="text-sm text-theme-text-secondary text-center max-w-md mb-2">
+        This image is hosted on a private registry that requires authentication.
+      </p>
+
+      <p className="text-xs text-theme-text-tertiary text-center max-w-md mb-6">
+        Registry: <span className="font-mono text-theme-text-secondary">{registry}</span>
+        {registryType && registryType !== 'generic' && (
+          <> ({formatAuthMethod(registryType)})</>
+        )}
+      </p>
+
+      {/* Auth command */}
+      {authCommand && (
+        <div className="bg-theme-base border border-amber-500/30 rounded-lg p-4 mb-4 w-full max-w-lg">
+          <div className="flex items-center gap-2 text-amber-400 text-sm mb-2">
+            <Terminal className="w-4 h-4" />
+            <span className="font-medium">Run this command to authenticate</span>
+          </div>
+          <div className="relative">
+            <pre className="bg-theme-elevated rounded p-3 text-xs text-theme-text-primary overflow-x-auto font-mono">
+              {authCommand}
+            </pre>
+            <button
+              onClick={handleCopy}
+              className="absolute top-2 right-2 p-1.5 text-theme-text-tertiary hover:text-theme-text-primary hover:bg-theme-base rounded transition-colors"
+              title="Copy to clipboard"
+            >
+              {copied ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Explanation */}
+      <p className="text-xs text-theme-text-tertiary text-center max-w-md mb-6">
+        Radar uses your local Docker credentials (<span className="font-mono">~/.docker/config.json</span>).
+        Run the command above in your terminal, then click Retry.
+      </p>
+
+      {/* Retry button */}
+      <button
+        onClick={handleRetry}
+        disabled={retrying}
+        className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+      >
+        <RefreshCw className={clsx('w-4 h-4', retrying && 'animate-spin')} />
+        {retrying ? 'Retrying...' : 'Retry'}
+      </button>
+    </div>
+  )
+}
+
 function formatAuthMethod(method: string): string {
   switch (method) {
     case 'google': return 'Google Cloud'
@@ -377,17 +490,16 @@ function formatAuthMethod(method: string): string {
   }
 }
 
-function getAuthCommand(authMethod: string, image: string): string | null {
-  // Extract registry hostname from image
-  const getRegistryHost = (img: string): string => {
-    // Handle images like "nginx" (Docker Hub official)
-    if (!img.includes('/') || !img.split('/')[0].includes('.')) {
-      return 'docker.io'
-    }
-    // Extract hostname from "hostname/path/image:tag"
-    return img.split('/')[0]
+function getRegistryHost(img: string): string {
+  // Handle images like "nginx" (Docker Hub official)
+  if (!img.includes('/') || !img.split('/')[0].includes('.')) {
+    return 'docker.io'
   }
+  // Extract hostname from "hostname/path/image:tag"
+  return img.split('/')[0]
+}
 
+function getAuthCommand(authMethod: string, image: string): string | null {
   const registry = getRegistryHost(image)
 
   switch (authMethod) {

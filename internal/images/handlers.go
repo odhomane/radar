@@ -62,12 +62,12 @@ func (h *Handlers) handleMetadata(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.inspector.GetMetadata(r.Context(), req)
 	if err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "denied") {
-			writeError(w, http.StatusUnauthorized, "Authentication required for this image")
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "unauthorized") || strings.Contains(errLower, "denied") {
+			writeAuthError(w, image)
 			return
 		}
-		if strings.Contains(errStr, "not found") || strings.Contains(errStr, "manifest unknown") {
+		if strings.Contains(errLower, "not found") || strings.Contains(errLower, "manifest unknown") {
 			writeError(w, http.StatusNotFound, "Image not found: "+image)
 			return
 		}
@@ -110,12 +110,12 @@ func (h *Handlers) handleInspect(w http.ResponseWriter, r *http.Request) {
 	result, err := h.inspector.Inspect(r.Context(), req)
 	if err != nil {
 		// Check for common errors
-		errStr := err.Error()
-		if strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "denied") {
-			writeError(w, http.StatusUnauthorized, "Authentication required for this image")
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "unauthorized") || strings.Contains(errLower, "denied") {
+			writeAuthError(w, image)
 			return
 		}
-		if strings.Contains(errStr, "not found") || strings.Contains(errStr, "manifest unknown") {
+		if strings.Contains(errLower, "not found") || strings.Contains(errLower, "manifest unknown") {
 			writeError(w, http.StatusNotFound, "Image not found: "+image)
 			return
 		}
@@ -163,8 +163,12 @@ func (h *Handlers) handleGetFile(w http.ResponseWriter, r *http.Request) {
 
 	content, filename, err := h.inspector.GetFileContent(r.Context(), req, filePath)
 	if err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "not found") {
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "unauthorized") || strings.Contains(errLower, "denied") {
+			writeAuthError(w, image)
+			return
+		}
+		if strings.Contains(errLower, "not found") {
 			writeError(w, http.StatusNotFound, "File not found: "+filePath)
 			return
 		}
@@ -182,6 +186,15 @@ func (h *Handlers) handleGetFile(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+func writeAuthError(w http.ResponseWriter, image string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	json.NewEncoder(w).Encode(map[string]string{
+		"error":        "Authentication required for this image",
+		"registryType": string(DetectRegistryType(image)),
+	})
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

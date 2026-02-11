@@ -29,10 +29,12 @@ const API_BASE = '/api'
 // ApiError preserves HTTP status code for callers to distinguish 403/404/500 etc.
 export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  data?: Record<string, unknown>
+  constructor(message: string, status: number, data?: Record<string, unknown>) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.data = data
   }
 }
 
@@ -43,8 +45,8 @@ export function isForbiddenError(error: unknown): boolean {
 async function fetchJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`)
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-    throw new ApiError(error.error || `HTTP ${response.status}`, response.status)
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
   }
   return response.json()
 }
