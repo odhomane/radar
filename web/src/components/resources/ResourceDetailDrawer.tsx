@@ -21,6 +21,7 @@ import { stringify as yamlStringify } from 'yaml'
 import { useResource, useResourceEvents, useUpdateResource, useDeleteResource, useTriggerCronJob, useSuspendCronJob, useResumeCronJob, useRestartWorkload, useFluxReconcile, useFluxSyncWithSource, useFluxSuspend, useFluxResume, useArgoSync, useArgoRefresh, useArgoSuspend, useArgoResume } from '../../api/client'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import type { SelectedResource, Relationships, ResourceRef } from '../../types'
+import { refToSelectedResource } from '../../utils/navigation'
 import {
   getPodStatus,
   getWorkloadStatus,
@@ -37,7 +38,8 @@ import {
   getClusterIssuerStatus,
   getCertificateRequestStatus,
   getGatewayStatus,
-  getHTTPRouteStatus,
+  getGatewayClassStatus,
+  getRouteStatus,
   getSealedSecretStatus,
   getPDBStatus,
   getGitRepositoryStatus,
@@ -78,6 +80,7 @@ import {
   CertificateRequestRenderer,
   ClusterIssuerRenderer,
   GatewayRenderer,
+  GatewayClassRenderer,
   HTTPRouteRenderer,
   SealedSecretRenderer,
   WorkflowTemplateRenderer,
@@ -138,15 +141,7 @@ export function ResourceDetailDrawer({ resource, onClose, onNavigate }: Resource
   // Navigate to a related resource
   const handleNavigateToRelated = useCallback((ref: ResourceRef) => {
     if (onNavigate) {
-      // Convert kind to plural form for API consistency
-      const kindToPlural: Record<string, string> = {
-        pod: 'pods', service: 'services', deployment: 'deployments',
-        daemonset: 'daemonsets', statefulset: 'statefulsets', replicaset: 'replicasets',
-        ingress: 'ingresses', configmap: 'configmaps', secret: 'secrets',
-        job: 'jobs', cronjob: 'cronjobs', hpa: 'hpas',
-      }
-      const pluralKind = kindToPlural[ref.kind.toLowerCase()] || ref.kind.toLowerCase()
-      onNavigate({ kind: pluralKind, namespace: ref.namespace, name: ref.name })
+      onNavigate(refToSelectedResource(ref))
     }
   }, [onNavigate])
 
@@ -1133,6 +1128,7 @@ function ResourceContent({ resource, data, relationships, onCopy, copied, onNavi
       {kind === 'certificaterequests' && <CertificateRequestRenderer data={data} />}
       {kind === 'clusterissuers' && <ClusterIssuerRenderer data={data} />}
       {kind === 'gateways' && <GatewayRenderer data={data} />}
+      {kind === 'gatewayclasses' && <GatewayClassRenderer data={data} />}
       {kind === 'httproutes' && <HTTPRouteRenderer data={data} />}
       {kind === 'sealedsecrets' && <SealedSecretRenderer data={data} />}
       {kind === 'workflowtemplates' && <WorkflowTemplateRenderer data={data} />}
@@ -1251,8 +1247,13 @@ function getResourceStatus(kind: string, data: any): { text: string; color: stri
     return { text: status.text, color: status.color }
   }
 
-  if (k === 'httproutes') {
-    const status = getHTTPRouteStatus(data)
+  if (k === 'gatewayclasses') {
+    const status = getGatewayClassStatus(data)
+    return { text: status.text, color: status.color }
+  }
+
+  if (k === 'httproutes' || k === 'grpcroutes' || k === 'tcproutes' || k === 'tlsroutes') {
+    const status = getRouteStatus(data)
     return { text: status.text, color: status.color }
   }
 

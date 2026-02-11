@@ -279,6 +279,11 @@ body {
 }
 .topology-icon-internet { background: #3b82f6; border-radius: 50%; }
 .topology-icon-ingress { background: #8b5cf6; }
+.topology-icon-gateway { background: #8b5cf6; }
+.topology-icon-httproute { background: #a78bfa; }
+.topology-icon-grpcroute { background: #a78bfa; }
+.topology-icon-tcproute { background: #a78bfa; }
+.topology-icon-tlsroute { background: #a78bfa; }
 .topology-icon-service { background: #3b82f6; border-radius: 50%; }
 .topology-icon-deployment { background: #10b981; }
 .topology-icon-rollout { background: #10b981; }
@@ -289,10 +294,10 @@ body {
 .topology-icon-podgroup { background: #84cc16; border-radius: 50%; }
 .topology-icon-configmap { background: #f59e0b; }
 .topology-icon-secret { background: #ef4444; }
-.topology-icon-hpa { background: #ec4899; }
+.topology-icon-horizontalpodautoscaler { background: #ec4899; }
 .topology-icon-job { background: #a855f7; }
 .topology-icon-cronjob { background: #a855f7; }
-.topology-icon-pvc { background: #06b6d4; }
+.topology-icon-persistentvolumeclaim { background: #06b6d4; }
 .topology-icon-namespace { background: #6366f1; }
 .topology-icon-application { background: #f97316; }
 .topology-icon-kustomization { background: #0ea5e9; }

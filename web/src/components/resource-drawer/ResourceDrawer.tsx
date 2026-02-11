@@ -65,12 +65,27 @@ function getDisplayFields(kind: NodeKind, data: Record<string, unknown>): Array<
         ['Hostname', data.hostname],
         ['TLS', data.tls],
       ]
+    case 'Gateway':
+      return [
+        ...common,
+        ['Listeners', data.listenerCount],
+        ['Addresses', Array.isArray(data.addresses) ? (data.addresses as string[]).join(', ') : '-'],
+      ]
+    case 'HTTPRoute':
+    case 'GRPCRoute':
+    case 'TCPRoute':
+    case 'TLSRoute':
+      return [
+        ...common,
+        ['Hostnames', Array.isArray(data.hostnames) ? (data.hostnames as string[]).join(', ') : '-'],
+        ['Rules', data.rulesCount],
+      ]
     case 'ConfigMap':
       return [
         ...common,
         ['Keys', data.keys],
       ]
-    case 'HPA':
+    case 'HorizontalPodAutoscaler':
       return [
         ...common,
         ['Min Replicas', data.minReplicas],

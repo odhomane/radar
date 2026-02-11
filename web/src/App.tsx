@@ -30,43 +30,18 @@ import { RefreshCw, FolderTree, Network, List, Clock, Package, Sun, Moon, Activi
 import { useTheme } from './context/ThemeContext'
 import { Tooltip } from './components/ui/Tooltip'
 import type { TopologyNode, GroupingMode, MainView, SelectedResource, SelectedHelmRelease, NodeKind, Topology } from './types'
+import { kindToPlural } from './utils/navigation'
 
 // All possible node kinds (core + GitOps)
 const ALL_NODE_KINDS: NodeKind[] = [
-  'Internet', 'Ingress', 'Service', 'Deployment', 'Rollout', 'DaemonSet', 'StatefulSet',
-  'ReplicaSet', 'Pod', 'PodGroup', 'ConfigMap', 'Secret', 'HPA', 'Job', 'CronJob', 'PVC', 'Namespace',
+  'Internet', 'Ingress', 'Gateway', 'HTTPRoute', 'GRPCRoute', 'TCPRoute', 'TLSRoute',
+  'Service', 'Deployment', 'Rollout', 'DaemonSet', 'StatefulSet',
+  'ReplicaSet', 'Pod', 'PodGroup', 'ConfigMap', 'Secret', 'HorizontalPodAutoscaler', 'Job', 'CronJob', 'PersistentVolumeClaim', 'Namespace',
   'Application', 'Kustomization', 'HelmRelease', 'GitRepository'
 ]
 
 // Default visible kinds (ReplicaSet hidden by default - noisy intermediate object)
-const DEFAULT_VISIBLE_KINDS: NodeKind[] = [
-  'Internet', 'Ingress', 'Service', 'Deployment', 'Rollout', 'DaemonSet', 'StatefulSet',
-  'Pod', 'PodGroup', 'ConfigMap', 'Secret', 'HPA', 'Job', 'CronJob', 'PVC', 'Namespace',
-  'Application', 'Kustomization', 'HelmRelease', 'GitRepository'
-]
-
-// Convert node kind to plural API resource name
-function kindToApiResource(kind: NodeKind): string {
-  const kindMap: Record<string, string> = {
-    'Pod': 'pods',
-    'PodGroup': 'pods', // PodGroup represents multiple pods
-    'Service': 'services',
-    'Deployment': 'deployments',
-    'Rollout': 'rollouts',
-    'DaemonSet': 'daemonsets',
-    'StatefulSet': 'statefulsets',
-    'ReplicaSet': 'replicasets',
-    'Ingress': 'ingresses',
-    'ConfigMap': 'configmaps',
-    'Secret': 'secrets',
-    'HPA': 'hpas',
-    'Job': 'jobs',
-    'CronJob': 'cronjobs',
-    'PVC': 'persistentvolumeclaims',
-    'Namespace': 'namespaces',
-  }
-  return kindMap[kind] || kind.toLowerCase() + 's'
-}
+const DEFAULT_VISIBLE_KINDS = ALL_NODE_KINDS.filter(k => k !== 'ReplicaSet')
 
 // Convert API resource name back to topology node ID prefix
 function apiResourceToNodeIdPrefix(apiResource: string): string {
@@ -78,12 +53,17 @@ function apiResourceToNodeIdPrefix(apiResource: string): string {
     'statefulsets': 'statefulset',
     'replicasets': 'replicaset',
     'ingresses': 'ingress',
+    'gateways': 'gateway',
+    'httproutes': 'httproute',
+    'grpcroutes': 'grpcroute',
+    'tcproutes': 'tcproute',
+    'tlsroutes': 'tlsroute',
     'configmaps': 'configmap',
     'secrets': 'secret',
-    'hpas': 'hpa',
+    'horizontalpodautoscalers': 'horizontalpodautoscaler',
     'jobs': 'job',
     'cronjobs': 'cronjob',
-    'persistentvolumeclaims': 'pvc',
+    'persistentvolumeclaims': 'persistentvolumeclaim',
     'namespaces': 'namespace',
   }
   return prefixMap[apiResource] || apiResource.replace(/s$/, '')
@@ -283,7 +263,7 @@ function AppInner() {
     if (node.kind === 'PodGroup') return
 
     setSelectedResource({
-      kind: kindToApiResource(node.kind),
+      kind: kindToPlural(node.kind),
       namespace: (node.data.namespace as string) || '',
       name: node.name,
     })
@@ -305,17 +285,20 @@ function AppInner() {
     // Remove legacy 'namespace' param if present
     params.delete('namespace')
 
-    // Update mode param
-    if (topologyMode !== 'resources') {
-      params.set('mode', topologyMode)
+    // Topology-specific params: only set when on topology view, clean up otherwise
+    if (mainView === 'topology') {
+      if (topologyMode !== 'resources') {
+        params.set('mode', topologyMode)
+      } else {
+        params.delete('mode')
+      }
+      if (groupingMode !== 'none' && (namespaces.length === 0 || groupingMode !== 'namespace')) {
+        params.set('group', groupingMode)
+      } else {
+        params.delete('group')
+      }
     } else {
       params.delete('mode')
-    }
-
-    // Update group param
-    if (groupingMode !== 'none' && (namespaces.length === 0 || groupingMode !== 'namespace')) {
-      params.set('group', groupingMode)
-    } else {
       params.delete('group')
     }
 
@@ -601,6 +584,7 @@ function AppInner() {
               newParams.set('kind', kind)
               newParams.delete('mode')
               newParams.delete('resource')
+              newParams.delete('group') // Clear topology grouping param to avoid leaking into resources view
               if (apiGroup) {
                 newParams.set('apiGroup', apiGroup)
               } else {
@@ -616,6 +600,11 @@ function AppInner() {
               newParams.delete('mode')
               newParams.delete('group')
               newParams.delete('resource')
+              if (resource.group) {
+                newParams.set('apiGroup', resource.group)
+              } else {
+                newParams.delete('apiGroup')
+              }
               navigate({ pathname: '/resources', search: newParams.toString() })
             }}
           />
@@ -705,9 +694,7 @@ function AppInner() {
           <ResourcesView
             namespaces={namespaces}
             selectedResource={selectedResource}
-            onResourceClick={(kind, ns, name, group) => {
-              setSelectedResource({ kind, namespace: ns, name, group })
-            }}
+            onResourceClick={setSelectedResource}
             onKindChange={() => setSelectedResource(null)}
           />
         )}
@@ -716,7 +703,7 @@ function AppInner() {
         {mainView === 'timeline' && !detailResource && (
           <TimelineView
             namespaces={namespaces}
-            onResourceClick={(kind, ns, name) => setDetailResource({ kind, namespace: ns, name })}
+            onResourceClick={setDetailResource}
             initialViewMode={(searchParams.get('view') as 'list' | 'swimlane') || undefined}
             initialFilter={(searchParams.get('filter') as 'all' | 'changes' | 'k8s_events' | 'warnings' | 'unhealthy') || undefined}
             initialTimeRange={(searchParams.get('time') as '5m' | '30m' | '1h' | '6h' | '24h' | 'all') || undefined}
@@ -731,7 +718,7 @@ function AppInner() {
             namespace={detailResource.namespace}
             name={detailResource.name}
             onBack={() => setDetailResource(null)}
-            onNavigateToResource={(kind, ns, name) => setDetailResource({ kind, namespace: ns, name })}
+            onNavigateToResource={setDetailResource}
           />
         )}
 
@@ -768,11 +755,11 @@ function AppInner() {
         <HelmReleaseDrawer
           release={selectedHelmRelease}
           onClose={() => setSelectedHelmRelease(null)}
-          onNavigateToResource={(kind, ns, name) => {
+          onNavigateToResource={(resource) => {
             // Navigate to resources view and select the resource
             setSelectedHelmRelease(null)
             setMainView('resources')
-            setSelectedResource({ kind, namespace: ns, name })
+            setSelectedResource(resource)
           }}
         />
       )}

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { SelectedResource, APIResource } from '../../types'
+import type { NavigateToResource } from '../../utils/navigation'
 import { useAPIResources, categorizeResources, CORE_RESOURCES } from '../../api/apiResources'
 import {
   getPodStatus,
@@ -91,11 +92,15 @@ import {
   getGatewayStatus,
   getGatewayClass,
   getGatewayListeners,
+  getGatewayAttachedRoutes,
   getGatewayAddresses,
-  getHTTPRouteStatus,
-  getHTTPRouteParents,
-  getHTTPRouteHostnames,
-  getHTTPRouteRulesCount,
+  getGatewayClassStatus,
+  getGatewayClassController,
+  getGatewayClassDescription,
+  getRouteStatus,
+  getRouteParents,
+  getRouteHostnames,
+  getRouteBackends,
   getSealedSecretStatus,
   getSealedSecretKeyCount,
   getWorkflowTemplateCount,
@@ -419,7 +424,8 @@ const KNOWN_COLUMNS: Record<string, Column[]> = {
     { key: 'namespace', label: 'Namespace', width: 'w-48' },
     { key: 'status', label: 'Status', width: 'w-28' },
     { key: 'class', label: 'Class', width: 'w-36' },
-    { key: 'listeners', label: 'Listeners', width: 'w-24' },
+    { key: 'listeners', label: 'Listeners', width: 'w-40', tooltip: 'Protocol:Port for each listener' },
+    { key: 'routes', label: 'Routes', width: 'w-20', tooltip: 'Total attached routes across all listeners' },
     { key: 'addresses', label: 'Addresses', width: 'w-48', hideOnMobile: true },
     { key: 'age', label: 'Age', width: 'w-20' },
   ],
@@ -429,7 +435,40 @@ const KNOWN_COLUMNS: Record<string, Column[]> = {
     { key: 'status', label: 'Status', width: 'w-28' },
     { key: 'hostnames', label: 'Hostnames', width: 'w-48' },
     { key: 'parents', label: 'Gateways', width: 'w-36' },
-    { key: 'rules', label: 'Rules', width: 'w-20' },
+    { key: 'backends', label: 'Backends', width: 'w-48', tooltip: 'Backend services receiving traffic' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  gatewayclasses: [
+    { key: 'name', label: 'Name' },
+    { key: 'controller', label: 'Controller', width: 'w-64', tooltip: 'Gateway controller implementation (spec.controllerName)' },
+    { key: 'description', label: 'Description', width: 'w-64', hideOnMobile: true },
+    { key: 'status', label: 'Status', width: 'w-28' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  grpcroutes: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Status', width: 'w-28' },
+    { key: 'hostnames', label: 'Hostnames', width: 'w-48' },
+    { key: 'parents', label: 'Gateways', width: 'w-36' },
+    { key: 'backends', label: 'Backends', width: 'w-48', tooltip: 'Backend services receiving traffic' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  tcproutes: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Status', width: 'w-28' },
+    { key: 'parents', label: 'Gateways', width: 'w-36' },
+    { key: 'backends', label: 'Backends', width: 'w-48', tooltip: 'Backend services receiving traffic' },
+    { key: 'age', label: 'Age', width: 'w-20' },
+  ],
+  tlsroutes: [
+    { key: 'name', label: 'Name' },
+    { key: 'namespace', label: 'Namespace', width: 'w-48' },
+    { key: 'status', label: 'Status', width: 'w-28' },
+    { key: 'hostnames', label: 'Hostnames', width: 'w-48', tooltip: 'SNI hostnames for TLS routing' },
+    { key: 'parents', label: 'Gateways', width: 'w-36' },
+    { key: 'backends', label: 'Backends', width: 'w-48', tooltip: 'Backend services receiving traffic' },
     { key: 'age', label: 'Age', width: 'w-20' },
   ],
   sealedsecrets: [
@@ -600,7 +639,7 @@ function getColumnsForKind(kind: string): Column[] {
 interface ResourcesViewProps {
   namespaces: string[]
   selectedResource?: SelectedResource | null
-  onResourceClick?: (kind: string, namespace: string, name: string, group?: string) => void
+  onResourceClick?: NavigateToResource
   onKindChange?: () => void // Called when user changes resource type in sidebar
 }
 
@@ -798,44 +837,51 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
     if (resourceParam && onResourceClick) {
       const [ns, name] = resourceParam.split('/')
       if (ns && name) {
-        onResourceClick(selectedKind.name, ns, name)
+        onResourceClick({ kind: selectedKind.name, namespace: ns, name, group: selectedKind.group })
       }
     }
   }, []) // Only on mount
 
+  // Fetch API resources for dynamic sidebar (must be above effects that reference apiResources)
+  const { data: apiResources } = useAPIResources()
+
   // Sync selectedKind when selectedResource changes from external navigation (e.g., from Helm view)
+  // Also re-runs when apiResources loads, to correct CRD kinds that were initially resolved via fallback
   useEffect(() => {
     if (!selectedResource) return
 
-    // Clear owner filters when navigating to a specific resource
-    // (e.g., navigating from Deployment to Pod - the owner filter no longer applies)
-    setOwnerKind('')
-    setOwnerName('')
-
-    // Check if the selected resource's kind matches current selectedKind
     const resourceKindLower = selectedResource.kind.toLowerCase()
-    if (selectedKind.name.toLowerCase() === resourceKindLower) return
 
-    // Find matching resource from CORE_RESOURCES or use plural name directly
+    // Find the best match: prefer dynamic API discovery (has correct kind for CRDs) over hardcoded
+    const apiMatch = apiResources?.find(r =>
+      r.name.toLowerCase() === resourceKindLower ||
+      r.kind.toLowerCase() === resourceKindLower
+    )
     const coreMatch = CORE_RESOURCES.find(r =>
       r.name.toLowerCase() === resourceKindLower ||
       r.kind.toLowerCase() === resourceKindLower
     )
+    const match = apiMatch || coreMatch
 
-    if (coreMatch) {
-      setSelectedKind({ name: coreMatch.name, kind: coreMatch.kind, group: coreMatch.group })
+    if (match) {
+      // Skip if already correctly resolved (check kind too — fallback may have set wrong casing)
+      if (selectedKind.name === match.name && selectedKind.kind === match.kind && selectedKind.group === match.group) return
+      setOwnerKind('')
+      setOwnerName('')
+      setSelectedKind({ name: match.name, kind: match.kind, group: match.group })
     } else {
-      // Fallback: use the kind directly, derive singular from plural
+      // Last resort fallback: derive singular, preserve group from navigation
       const singular = resourceKindLower.endsWith('s')
         ? resourceKindLower.slice(0, -1).charAt(0).toUpperCase() + resourceKindLower.slice(1, -1)
         : resourceKindLower.charAt(0).toUpperCase() + resourceKindLower.slice(1)
-      setSelectedKind({ name: resourceKindLower, kind: singular, group: '' })
+      const group = selectedResource.group ?? ''
+      if (selectedKind.name === resourceKindLower && selectedKind.group === group) return
+      setOwnerKind('')
+      setOwnerName('')
+      setSelectedKind({ name: resourceKindLower, kind: singular, group })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedResource])
-
-  // Fetch API resources for dynamic sidebar
-  const { data: apiResources } = useAPIResources()
+  }, [selectedResource, apiResources])
 
   // Categorize resources for sidebar
   const categories = useMemo(() => {
@@ -870,6 +916,25 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
       group: '',
     }))
   }, [categories])
+
+  // Correct selectedKind when apiResources loads (handles URL deep-links to CRD resources)
+  // getInitialKindFromURL can't look up CRDs, so name may be wrong (e.g., 'HTTPRoute' instead of 'httproutes')
+  useEffect(() => {
+    if (!apiResources) return
+    // Check if current selectedKind already matches a discovered resource
+    const alreadyResolved = resourcesToCount.some(r =>
+      r.name === selectedKind.name && r.group === selectedKind.group
+    )
+    if (alreadyResolved) return
+
+    // Try to match by kind name (URL stores kind=HTTPRoute, API has name=httproutes)
+    const match = apiResources.find(r =>
+      r.kind === selectedKind.kind && r.group === selectedKind.group
+    )
+    if (match) {
+      setSelectedKind({ name: match.name, kind: match.kind, group: match.group })
+    }
+  }, [apiResources, resourcesToCount, selectedKind.name, selectedKind.kind, selectedKind.group])
 
   // Fetch ALL resources using useQueries - single source of truth for both counts and display
   const resourceQueries = useQueries({
@@ -1840,10 +1905,7 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
               {namespaces.length > 0 && <p className="text-sm mt-1 text-theme-text-disabled">Searching in {namespaces.length === 1 ? `namespace: ${namespaces[0]}` : `${namespaces.length} namespaces`}</p>}
             </div>
           ) : (
-            <table className={clsx(
-              'w-full',
-              selectedKind.name.toLowerCase() !== 'ingresses' && 'table-fixed'
-            )}>
+            <table className="w-full">
               <thead className="bg-theme-surface sticky top-0 z-10">
                 <tr>
                   {columns.map((col) => {
@@ -1900,7 +1962,7 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
                       kind={selectedKind.name}
                       columns={columns}
                       isSelected={isSelected}
-                      onClick={() => onResourceClick?.(selectedKind.name, resource.metadata?.namespace || '', resource.metadata?.name, selectedKind.group)}
+                      onClick={() => onResourceClick?.({ kind: selectedKind.name, namespace: resource.metadata?.namespace || '', name: resource.metadata?.name, group: selectedKind.group })}
                     />
                   )
                 })}
@@ -2077,7 +2139,12 @@ function CellContent({ resource, kind, column }: CellContentProps) {
     case 'gateways':
       return <GatewayCell resource={resource} column={column} />
     case 'httproutes':
-      return <HTTPRouteCell resource={resource} column={column} />
+    case 'grpcroutes':
+    case 'tcproutes':
+    case 'tlsroutes':
+      return <RouteCell resource={resource} column={column} />
+    case 'gatewayclasses':
+      return <GatewayClassCell resource={resource} column={column} />
     case 'sealedsecrets':
       return <SealedSecretCell resource={resource} column={column} />
     case 'workflowtemplates':
@@ -2932,8 +2999,16 @@ function GatewayCell({ resource, column }: { resource: any; column: string }) {
     }
     case 'class':
       return <span className="text-sm text-theme-text-secondary">{getGatewayClass(resource)}</span>
-    case 'listeners':
-      return <span className="text-sm text-theme-text-secondary">{getGatewayListeners(resource)}</span>
+    case 'listeners': {
+      const listeners = getGatewayListeners(resource)
+      return (
+        <Tooltip content={listeners}>
+          <span className="text-sm text-theme-text-secondary truncate block">{listeners}</span>
+        </Tooltip>
+      )
+    }
+    case 'routes':
+      return <span className="text-sm text-theme-text-secondary">{getGatewayAttachedRoutes(resource)}</span>
     case 'addresses': {
       const addrs = getGatewayAddresses(resource)
       return (
@@ -2947,10 +3022,42 @@ function GatewayCell({ resource, column }: { resource: any; column: string }) {
   }
 }
 
-function HTTPRouteCell({ resource, column }: { resource: any; column: string }) {
+function GatewayClassCell({ resource, column }: { resource: any; column: string }) {
   switch (column) {
     case 'status': {
-      const status = getHTTPRouteStatus(resource)
+      const status = getGatewayClassStatus(resource)
+      return (
+        <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
+          {status.text}
+        </span>
+      )
+    }
+    case 'controller': {
+      const controller = getGatewayClassController(resource)
+      return (
+        <Tooltip content={controller}>
+          <span className="text-sm text-theme-text-secondary truncate block">{controller}</span>
+        </Tooltip>
+      )
+    }
+    case 'description': {
+      const desc = getGatewayClassDescription(resource)
+      return (
+        <Tooltip content={desc}>
+          <span className="text-sm text-theme-text-secondary truncate block">{desc}</span>
+        </Tooltip>
+      )
+    }
+    default:
+      return <span className="text-sm text-theme-text-tertiary">-</span>
+  }
+}
+
+// Shared cell renderer for all Gateway API route types (HTTPRoute, GRPCRoute, TCPRoute, TLSRoute)
+function RouteCell({ resource, column }: { resource: any; column: string }) {
+  switch (column) {
+    case 'status': {
+      const status = getRouteStatus(resource)
       return (
         <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', status.color)}>
           {status.text}
@@ -2958,7 +3065,7 @@ function HTTPRouteCell({ resource, column }: { resource: any; column: string }) 
       )
     }
     case 'hostnames': {
-      const hostnames = getHTTPRouteHostnames(resource)
+      const hostnames = getRouteHostnames(resource)
       return (
         <Tooltip content={hostnames}>
           <span className="text-sm text-theme-text-secondary truncate block">{hostnames}</span>
@@ -2966,9 +3073,15 @@ function HTTPRouteCell({ resource, column }: { resource: any; column: string }) 
       )
     }
     case 'parents':
-      return <span className="text-sm text-theme-text-secondary">{getHTTPRouteParents(resource)}</span>
-    case 'rules':
-      return <span className="text-sm text-theme-text-secondary">{getHTTPRouteRulesCount(resource)}</span>
+      return <span className="text-sm text-theme-text-secondary">{getRouteParents(resource)}</span>
+    case 'backends': {
+      const backends = getRouteBackends(resource)
+      return (
+        <Tooltip content={backends}>
+          <span className="text-sm text-theme-text-secondary truncate block">{backends}</span>
+        </Tooltip>
+      )
+    }
     default:
       return <span className="text-sm text-theme-text-tertiary">-</span>
   }

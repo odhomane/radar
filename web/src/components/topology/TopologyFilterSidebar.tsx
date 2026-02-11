@@ -28,6 +28,11 @@ const RESOURCE_KINDS: {
 
   // Networking
   { kind: 'Ingress', label: 'Ingress', icon: getTopologyIcon('Ingress'), color: 'text-purple-400', category: 'networking' },
+  { kind: 'Gateway', label: 'Gateway', icon: getTopologyIcon('Gateway'), color: 'text-purple-400', category: 'networking' },
+  { kind: 'HTTPRoute', label: 'HTTPRoute', icon: getTopologyIcon('HTTPRoute'), color: 'text-purple-300', category: 'networking' },
+  { kind: 'GRPCRoute', label: 'GRPCRoute', icon: getTopologyIcon('GRPCRoute'), color: 'text-purple-300', category: 'networking' },
+  { kind: 'TCPRoute', label: 'TCPRoute', icon: getTopologyIcon('TCPRoute'), color: 'text-purple-300', category: 'networking' },
+  { kind: 'TLSRoute', label: 'TLSRoute', icon: getTopologyIcon('TLSRoute'), color: 'text-purple-300', category: 'networking' },
   { kind: 'Service', label: 'Service', icon: getTopologyIcon('Service'), color: 'text-blue-400', category: 'networking' },
 
   // Workloads
@@ -46,7 +51,7 @@ const RESOURCE_KINDS: {
   { kind: 'Secret', label: 'Secret', icon: getTopologyIcon('Secret'), color: 'text-red-400', category: 'config' },
 
   // Scaling
-  { kind: 'HPA', label: 'HPA', icon: getTopologyIcon('HPA'), color: 'text-pink-400', category: 'scaling' },
+  { kind: 'HorizontalPodAutoscaler', label: 'HPA', icon: getTopologyIcon('HorizontalPodAutoscaler'), color: 'text-pink-400', category: 'scaling' },
 ]
 
 const CATEGORIES = [

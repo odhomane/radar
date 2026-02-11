@@ -256,14 +256,19 @@ function pickGroupName(nodes: TopologyNode[]): string {
     'CronJob': 4,
     'Job': 5,
     'Service': 6,
+    'Gateway': 7,
+    'HTTPRoute': 6,
+    'GRPCRoute': 6,
+    'TCPRoute': 6,
+    'TLSRoute': 6,
     'Ingress': 7,
     'ReplicaSet': 8,
     'Pod': 9,
     'PodGroup': 9,
     'ConfigMap': 10,
     'Secret': 10,
-    'PVC': 10,
-    'HPA': 10,
+    'PersistentVolumeClaim': 10,
+    'HorizontalPodAutoscaler': 10,
   }
 
   // Sort by priority and pick the first

@@ -25,7 +25,9 @@ import {
 } from 'lucide-react'
 import { useHasLimitedAccess } from '../../contexts/CapabilitiesContext'
 import type { TimelineEvent, Topology } from '../../types'
-import { isChangeEvent, isHistoricalEvent, isOperation } from '../../types'
+import type { NavigateToResource } from '../../utils/navigation'
+import { kindToPlural } from '../../utils/navigation'
+import { isChangeEvent, isHistoricalEvent, isOperation, displayKind } from '../../types'
 import { DiffViewer } from './DiffViewer'
 import { getOperationColor, getHealthBadgeColor, getEventTypeColor } from '../../utils/badge-colors'
 import { Tooltip } from '../ui/Tooltip'
@@ -41,7 +43,7 @@ import {
 interface TimelineSwimlanesProps {
   events: TimelineEvent[]
   isLoading?: boolean
-  onResourceClick?: (kind: string, namespace: string, name: string) => void
+  onResourceClick?: NavigateToResource
   viewMode?: 'list' | 'swimlane'
   onViewModeChange?: (mode: 'list' | 'swimlane') => void
   topology?: Topology
@@ -89,12 +91,13 @@ function calculateInterestingnessWithBreakdown(lane: ResourceLane): ScoreBreakdo
     GitRepository: 52, OCIRepository: 52, HelmRepository: 52, // FluxCD sources
     // Core workloads
     Deployment: 50, Rollout: 50, StatefulSet: 50, DaemonSet: 50,
-    Service: 45, Ingress: 45,
+    Service: 45, Ingress: 45, Gateway: 45,
+    HTTPRoute: 42, GRPCRoute: 42, TCPRoute: 42, TLSRoute: 42,
     Job: 40, CronJob: 40, Workflow: 40, CronWorkflow: 40,
     Pod: 30,
-    HPA: 25,
+    HorizontalPodAutoscaler: 25,
     ReplicaSet: 20,
-    ConfigMap: 10, Secret: 10, PVC: 10,
+    ConfigMap: 10, Secret: 10, PersistentVolumeClaim: 10,
   }
   breakdown.kind = kindScores[lane.kind] || 15
 
@@ -685,14 +688,14 @@ export function TimelineSwimlanes({ events, isLoading, onResourceClick, viewMode
                         )}
                         <div
                           className="flex-1 min-w-0 cursor-pointer hover:bg-theme-surface/30 rounded px-1 -mx-1 group"
-                          onClick={() => onResourceClick?.(lane.kind, lane.namespace, lane.name)}
+                          onClick={() => onResourceClick?.({ kind: kindToPlural(lane.kind), namespace: lane.namespace, name: lane.name })}
                         >
                           <div className="flex items-center gap-1">
                             <span className={clsx(
                               'text-xs px-1 py-0.5 rounded',
                               lane.isWorkload ? 'bg-blue-500/15 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'bg-theme-elevated text-theme-text-secondary'
                             )}>
-                              {lane.kind}
+                              {displayKind(lane.kind)}
                             </span>
                             {hasChildren && (
                               <span className="text-xs text-theme-text-tertiary">
@@ -760,12 +763,12 @@ export function TimelineSwimlanes({ events, isLoading, onResourceClick, viewMode
                           <div className="flex">
                             <div
                               className="w-[19.25rem] shrink-0 border-r border-theme-border/50 pl-4 pr-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-theme-elevated/30 group"
-                              onClick={() => onResourceClick?.(lane.kind, lane.namespace, lane.name)}
+                              onClick={() => onResourceClick?.({ kind: kindToPlural(lane.kind), namespace: lane.namespace, name: lane.name })}
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1">
                                   <span className="text-xs px-1 py-0.5 rounded bg-blue-500/15 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
-                                    {lane.kind}
+                                    {displayKind(lane.kind)}
                                   </span>
                                 </div>
                                 <div className="text-sm text-theme-text-secondary break-words group-hover:text-blue-600 dark:group-hover:text-blue-300 group-hover:underline cursor-pointer">
@@ -812,12 +815,12 @@ export function TimelineSwimlanes({ events, isLoading, onResourceClick, viewMode
                             {/* Child lane label - indented */}
                             <div
                               className="w-[19.25rem] shrink-0 border-r border-theme-border/50 pl-4 pr-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-theme-elevated/30 group"
-                              onClick={() => onResourceClick?.(child.kind, child.namespace, child.name)}
+                              onClick={() => onResourceClick?.({ kind: kindToPlural(child.kind), namespace: child.namespace, name: child.name })}
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1">
                                   <span className="text-xs px-1 py-0.5 rounded bg-theme-elevated/50 text-theme-text-secondary">
-                                    {child.kind}
+                                    {displayKind(child.kind)}
                                   </span>
                                 </div>
                                 <div className="text-sm text-theme-text-secondary break-words group-hover:text-blue-600 dark:group-hover:text-blue-300 group-hover:underline cursor-pointer">
@@ -1215,7 +1218,7 @@ function EventMarker({ event, x, selected, onClick, dimmed, small }: EventMarker
 interface EventDetailPanelProps {
   event: TimelineEvent
   onClose: () => void
-  onResourceClick?: (kind: string, namespace: string, name: string) => void
+  onResourceClick?: NavigateToResource
 }
 
 function EventDetailPanel({ event, onClose, onResourceClick }: EventDetailPanelProps) {
@@ -1232,10 +1235,10 @@ function EventDetailPanel({ event, onClose, onResourceClick }: EventDetailPanelP
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs px-1.5 py-0.5 bg-theme-elevated rounded text-theme-text-secondary">
-              {event.kind}
+              {displayKind(event.kind)}
             </span>
             <button
-              onClick={() => onResourceClick?.(event.kind, event.namespace, event.name)}
+              onClick={() => onResourceClick?.({ kind: kindToPlural(event.kind), namespace: event.namespace, name: event.name })}
               className="text-theme-text-primary font-medium hover:text-blue-600 dark:hover:text-blue-300 cursor-pointer"
             >
               {event.name}

@@ -1,11 +1,25 @@
 package topology
 
 // NodeKind represents the type of a topology node
+//
+// When adding a new NodeKind constant, also update:
+// - builder.go: node creation + edge creation (both resources and traffic views)
+// - builder.go: genericCRDExclusion check (if kind is handled via dynamic cache)
+// - relationships.go: buildNodeID + normalizeKind maps, EdgeRoutesTo dispatch
+// - history.go: diff dispatch switch
+// - dashboard.go: resource counting (if applicable)
+// - capabilities.go: ResourcePermissions struct + permCheck array (if needs RBAC)
+// - dynamic_cache.go: warmup list (if CRD)
 type NodeKind string
 
 const (
 	KindInternet      NodeKind = "Internet"
 	KindIngress       NodeKind = "Ingress"
+	KindGateway       NodeKind = "Gateway"
+	KindHTTPRoute     NodeKind = "HTTPRoute"
+	KindGRPCRoute     NodeKind = "GRPCRoute"
+	KindTCPRoute      NodeKind = "TCPRoute"
+	KindTLSRoute      NodeKind = "TLSRoute"
 	KindService       NodeKind = "Service"
 	KindDeployment    NodeKind = "Deployment"
 	KindRollout       NodeKind = "Rollout"
@@ -20,10 +34,10 @@ const (
 	KindPodGroup      NodeKind = "PodGroup"
 	KindConfigMap     NodeKind = "ConfigMap"
 	KindSecret        NodeKind = "Secret"
-	KindHPA           NodeKind = "HPA"
+	KindHPA           NodeKind = "HorizontalPodAutoscaler"
 	KindJob           NodeKind = "Job"
 	KindCronJob       NodeKind = "CronJob"
-	KindPVC           NodeKind = "PVC"
+	KindPVC           NodeKind = "PersistentVolumeClaim"
 	KindNamespace     NodeKind = "Namespace"
 )
 
@@ -83,7 +97,7 @@ type Topology struct {
 type ViewMode string
 
 const (
-	ViewModeTraffic   ViewMode = "traffic"   // Network-focused (Ingress -> Service -> Pod)
+	ViewModeTraffic   ViewMode = "traffic"   // Network-focused (Ingress/Gateway -> Service -> Pod)
 	ViewModeResources ViewMode = "resources" // Comprehensive tree
 )
 
@@ -153,6 +167,7 @@ type ResourceRef struct {
 	Kind      string `json:"kind"`
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
+	Group     string `json:"group,omitempty"` // API group for CRDs (e.g., "cert-manager.io")
 }
 
 // Relationships holds computed relationships for a resource
@@ -161,6 +176,8 @@ type Relationships struct {
 	Children    []ResourceRef `json:"children,omitempty"`    // Resources this owns (manages edge)
 	Services    []ResourceRef `json:"services,omitempty"`    // Services selecting/exposing this
 	Ingresses   []ResourceRef `json:"ingresses,omitempty"`   // Ingresses routing to this
+	Gateways    []ResourceRef `json:"gateways,omitempty"`    // Gateways routing to this (via routes)
+	Routes      []ResourceRef `json:"routes,omitempty"`      // Routes attached to this Gateway
 	ConfigRefs  []ResourceRef `json:"configRefs,omitempty"`  // ConfigMaps/Secrets used by this
 	HPA         *ResourceRef  `json:"hpa,omitempty"`         // HPA scaling this
 	ScaleTarget *ResourceRef  `json:"scaleTarget,omitempty"` // For HPA: what it scales

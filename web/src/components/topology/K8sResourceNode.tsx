@@ -84,6 +84,11 @@ export const DEFAULT_NODE_DIMENSIONS = { width: 260, height: 56 }
 export const NODE_DIMENSIONS: Record<NodeKind, { width: number; height: number }> = {
   Internet: { width: 120, height: 52 },
   Ingress: { width: 300, height: 56 },
+  Gateway: { width: 300, height: 56 },
+  HTTPRoute: { width: 300, height: 56 },
+  GRPCRoute: { width: 300, height: 56 },
+  TCPRoute: { width: 300, height: 56 },
+  TLSRoute: { width: 300, height: 56 },
   Service: { width: 260, height: 56 },
   Deployment: { width: 280, height: 56 },
   Rollout: { width: 280, height: 56 },
@@ -98,10 +103,10 @@ export const NODE_DIMENSIONS: Record<NodeKind, { width: number; height: number }
   PodGroup: { width: 200, height: 64 },
   ConfigMap: { width: 180, height: 48 },
   Secret: { width: 180, height: 48 },
-  HPA: { width: 160, height: 48 },
+  HorizontalPodAutoscaler: { width: 160, height: 48 },
   Job: { width: 180, height: 56 },
   CronJob: { width: 200, height: 56 },
-  PVC: { width: 200, height: 48 },
+  PersistentVolumeClaim: { width: 200, height: 48 },
   Namespace: { width: 180, height: 48 },
 }
 
@@ -181,7 +186,22 @@ function getSubtitle(kind: NodeKind, nodeData: Record<string, unknown>): string 
     }
     case 'Ingress':
       return (nodeData.hostname as string) || 'No host'
-    case 'HPA': {
+    case 'Gateway': {
+      const listeners = nodeData.listenerCount as number || 0
+      const addresses = nodeData.addresses as string[]
+      const addr = addresses?.length ? addresses[0] : ''
+      return addr ? `${listeners} listeners • ${addr}` : `${listeners} listeners`
+    }
+    case 'HTTPRoute':
+    case 'GRPCRoute':
+    case 'TCPRoute':
+    case 'TLSRoute': {
+      const hostnames = nodeData.hostnames as string[]
+      const rulesCount = nodeData.rulesCount as number || 0
+      const host = hostnames?.length ? hostnames[0] : ''
+      return host ? `${host} • ${rulesCount} rules` : `${rulesCount} rules`
+    }
+    case 'HorizontalPodAutoscaler': {
       const min = nodeData.minReplicas ?? 1
       const max = nodeData.maxReplicas ?? 10
       const current = nodeData.current ?? 0
@@ -191,7 +211,7 @@ function getSubtitle(kind: NodeKind, nodeData: Record<string, unknown>): string 
       return `${nodeData.keys ?? 0} keys`
     case 'Secret':
       return `${nodeData.keys ?? 0} keys`
-    case 'PVC': {
+    case 'PersistentVolumeClaim': {
       const storage = (nodeData.storage as string) || ''
       const phase = (nodeData.phase as string) || ''
       return storage ? `${storage} (${phase})` : phase
@@ -234,7 +254,7 @@ export const K8sResourceNode = memo(function K8sResourceNode({
   const subtitle = getSubtitle(kind, nodeData)
   const isInternet = kind === 'Internet'
   const isPodGroup = kind === 'PodGroup'
-  const isSmallNode = kind === 'ConfigMap' || kind === 'Secret' || kind === 'HPA'
+  const isSmallNode = kind === 'ConfigMap' || kind === 'Secret' || kind === 'HorizontalPodAutoscaler'
   const canExpand = isPodGroup && onExpand && !isExpanded
   const canCollapse = isPodGroup && onCollapse && isExpanded
   const statusIssue = nodeData.statusIssue as string | undefined
