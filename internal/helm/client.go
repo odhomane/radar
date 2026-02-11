@@ -43,10 +43,50 @@ var (
 	helmClientMu sync.Mutex
 )
 
+// ensureHelmWritablePaths sets HELM_CACHE_HOME, HELM_CONFIG_HOME, and HELM_DATA_HOME
+// to writable /tmp paths when the default home directory is not writable (e.g.
+// readOnlyRootFilesystem containers). On local machines this is a no-op since the
+// home directory is writable and the Helm SDK uses its normal XDG-based defaults.
+// Must be called BEFORE cli.New(), which reads these env vars at init time.
+func ensureHelmWritablePaths() {
+	// If all env vars are already set explicitly, nothing to do
+	if os.Getenv("HELM_CACHE_HOME") != "" && os.Getenv("HELM_CONFIG_HOME") != "" && os.Getenv("HELM_DATA_HOME") != "" {
+		return
+	}
+
+	// Check if the home directory is writable by attempting to create a temp file
+	homeDir, err := os.UserHomeDir()
+	if err != nil || !isDirWritable(homeDir) {
+		defaults := map[string]string{
+			"HELM_CACHE_HOME":  "/tmp/helm/cache",
+			"HELM_CONFIG_HOME": "/tmp/helm/config",
+			"HELM_DATA_HOME":   "/tmp/helm/data",
+		}
+		for key, val := range defaults {
+			if os.Getenv(key) == "" {
+				os.Setenv(key, val)
+			}
+		}
+		log.Printf("[helm] Home directory not writable, using /tmp/helm for Helm SDK paths")
+	}
+}
+
+// isDirWritable checks if a directory is writable by creating and removing a temp file.
+func isDirWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".helm-write-test-*")
+	if err != nil {
+		return false
+	}
+	f.Close()
+	os.Remove(f.Name())
+	return true
+}
+
 // Initialize sets up the global Helm client
 func Initialize(kubeconfig string) error {
 	var initErr error
 	clientOnce.Do(func() {
+		ensureHelmWritablePaths()
 		settings := cli.New()
 		if kubeconfig != "" {
 			settings.KubeConfig = kubeconfig
@@ -55,7 +95,8 @@ func Initialize(kubeconfig string) error {
 			settings:   settings,
 			kubeconfig: kubeconfig,
 		}
-		log.Printf("Helm client initialized")
+		log.Printf("Helm client initialized (cache=%s, config=%s, data=%s)",
+			settings.RepositoryCache, settings.RepositoryConfig, settings.PluginsDirectory)
 	})
 	return initErr
 }
@@ -91,6 +132,12 @@ func (c *Client) getActionConfig(namespace string) (*action.Configuration, error
 	// Use RESTClientGetter for kubeconfig
 	// NOTE: Use false for usePersistentConfig to avoid caching issues during context switches
 	configFlags := genericclioptions.NewConfigFlags(false)
+	// Override the default discovery cache dir ($HOME/.kube/cache) to a writable path
+	// when running on a read-only filesystem (e.g. in-cluster with readOnlyRootFilesystem).
+	if homeDir, err := os.UserHomeDir(); err != nil || !isDirWritable(homeDir) {
+		kubeCacheDir := "/tmp/helm/kube-cache"
+		configFlags.CacheDir = &kubeCacheDir
+	}
 	if c.kubeconfig != "" {
 		configFlags.KubeConfig = &c.kubeconfig
 	}
