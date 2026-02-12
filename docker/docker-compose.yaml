@@ -1,0 +1,22 @@
+services:
+  radar:
+    image: ghcr.io/skyhook-io/radar:latest
+    container_name: radar
+    restart: unless-stopped
+    command:
+      - --no-browser
+      - --port
+      - "8585"
+    ports:
+      - "8585:8585"
+    environment:
+      # Required by Helm operations in read-only style environments
+      HELM_CACHE_HOME: /tmp/helm/cache
+      HELM_CONFIG_HOME: /tmp/helm/config
+      HELM_DATA_HOME: /tmp/helm/data
+    volumes:
+      # Mount your kubeconfig so Radar can connect to your cluster
+      - ${HOME}/.kube/config:/home/nonroot/.kube/config:ro
+    read_only: true
+    tmpfs:
+      - /tmp
