@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Server, HardDrive, Terminal as TerminalIcon, FileText, AlertTriangle, Activity } from 'lucide-react'
+import { Server, HardDrive, Terminal as TerminalIcon, FileText, AlertTriangle, Activity, FolderOpen } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Section, PropertyList, Property, ConditionsSection, CopyHandler } from '../drawer-components'
 import { formatResources } from '../resource-utils'
@@ -10,6 +10,7 @@ import { useCanExec, useCanViewLogs, useCanPortForward } from '../../../contexts
 import { usePodMetrics, usePodMetricsHistory } from '../../../api/client'
 import { MetricsChart } from '../../ui/MetricsChart'
 import { ImageFilesystemModal } from '../ImageFilesystemModal'
+import { PodFilesystemModal } from '../PodFilesystemModal'
 
 interface PodRendererProps {
   data: any
@@ -107,6 +108,7 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
 
   // Image filesystem modal state
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [filesystemContainer, setFilesystemContainer] = useState<string | null>(null)
   const imagePullSecrets = data.spec?.imagePullSecrets?.map((s: { name: string }) => s.name) || []
 
   const handleOpenTerminal = (containerName?: string) => {
@@ -209,6 +211,15 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
                         title={`Open terminal in ${container.name}`}
                       >
                         <TerminalIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                    {stateKey === 'running' && canExec && (
+                      <button
+                        onClick={() => setFilesystemContainer(container.name)}
+                        className="p-1 text-slate-400 hover:text-blue-400 hover:bg-slate-600/50 rounded transition-colors"
+                        title={`Open live filesystem in ${container.name}`}
+                      >
+                        <FolderOpen className="w-4 h-4" />
                       </button>
                     )}
                     {canViewLogs && (
@@ -414,6 +425,15 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
           namespace={namespace || ''}
           podName={podName || ''}
           pullSecrets={imagePullSecrets}
+        />
+      )}
+      {filesystemContainer && namespace && podName && (
+        <PodFilesystemModal
+          open={!!filesystemContainer}
+          onClose={() => setFilesystemContainer(null)}
+          namespace={namespace}
+          podName={podName}
+          containerName={filesystemContainer}
         />
       )}
     </>

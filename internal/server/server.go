@@ -140,6 +140,15 @@ func (s *Server) setupRoutes() {
 
 			// Pod logs (non-streaming)
 			r.Get("/pods/{namespace}/{name}/logs", s.handlePodLogs)
+			r.Get("/pods/{namespace}/{name}/filesystem", s.handlePodFilesystemList)
+			r.Get("/pods/{namespace}/{name}/filesystem/search", s.handlePodFilesystemSearch)
+			r.Get("/pods/{namespace}/{name}/filesystem/file", s.handlePodFilesystemDownload)
+			r.Put("/pods/{namespace}/{name}/filesystem/file", s.handlePodFilesystemSave)
+			r.Get("/pods/{namespace}/{name}/filesystem/archive", s.handlePodFilesystemArchive)
+			r.Post("/pods/{namespace}/{name}/filesystem/upload", s.handlePodFilesystemUpload)
+			r.Post("/pods/{namespace}/{name}/filesystem/mkdir", s.handlePodFilesystemMkdir)
+			r.Post("/pods/{namespace}/{name}/filesystem/rename", s.handlePodFilesystemRename)
+			r.Post("/pods/{namespace}/{name}/filesystem/delete", s.handlePodFilesystemDelete)
 
 			// Pod debug (ephemeral container)
 			r.Post("/pods/{namespace}/{name}/debug", s.handleCreateDebugContainer)
@@ -347,7 +356,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if dynCache := k8s.GetDynamicResourceCache(); dynCache != nil {
 		dynamicInformerCount = dynCache.GetInformerCount()
 	}
-	runtimeStats["typedInformers"] = 16  // Fixed count of typed informers in cache.go
+	runtimeStats["typedInformers"] = 16 // Fixed count of typed informers in cache.go
 	runtimeStats["dynamicInformers"] = dynamicInformerCount
 
 	s.writeJSON(w, map[string]any{

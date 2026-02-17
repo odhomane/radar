@@ -1613,6 +1613,200 @@ export function useImageFilesystem(
 }
 
 // ============================================================================
+// Live Pod Filesystem
+// ============================================================================
+
+export interface PodFilesystemEntry {
+  name: string
+  path: string
+  type: 'dir' | 'file' | 'symlink'
+  size: number
+  permissions?: string
+  linkTarget?: string
+}
+
+export interface PodFilesystemListResponse {
+  currentPath: string
+  entries: PodFilesystemEntry[]
+}
+
+export interface PodFilesystemSearchResponse {
+  query: string
+  root: string
+  entries: PodFilesystemEntry[]
+}
+
+export async function getPodFilesystem(
+  namespace: string,
+  podName: string,
+  container: string,
+  targetPath: string
+): Promise<PodFilesystemListResponse> {
+  const params = new URLSearchParams()
+  if (container) params.set('container', container)
+  params.set('path', targetPath)
+  return fetchJSON(`/pods/${namespace}/${podName}/filesystem?${params.toString()}`)
+}
+
+export async function searchPodFilesystem(
+  namespace: string,
+  podName: string,
+  container: string,
+  query: string,
+  rootPath = '/',
+  limit = 500,
+  signal?: AbortSignal
+): Promise<PodFilesystemSearchResponse> {
+  const params = new URLSearchParams()
+  if (container) params.set('container', container)
+  params.set('path', rootPath)
+  params.set('q', query)
+  params.set('limit', String(limit))
+  const response = await fetch(`${API_BASE}/pods/${namespace}/${podName}/filesystem/search?${params.toString()}`, { signal })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+  return response.json()
+}
+
+export async function downloadPodFile(
+  namespace: string,
+  podName: string,
+  container: string,
+  filePath: string
+): Promise<Blob> {
+  const params = new URLSearchParams()
+  if (container) params.set('container', container)
+  params.set('path', filePath)
+
+  const response = await fetch(`${API_BASE}/pods/${namespace}/${podName}/filesystem/file?${params.toString()}`)
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+  return response.blob()
+}
+
+export async function savePodFile(
+  namespace: string,
+  podName: string,
+  container: string,
+  filePath: string,
+  content: string
+): Promise<void> {
+  const params = new URLSearchParams()
+  if (container) params.set('container', container)
+  params.set('path', filePath)
+
+  const response = await fetch(`${API_BASE}/pods/${namespace}/${podName}/filesystem/file?${params.toString()}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    body: content,
+  })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+}
+
+export async function downloadPodArchive(
+  namespace: string,
+  podName: string,
+  container: string,
+  targetPath: string
+): Promise<Blob> {
+  const params = new URLSearchParams()
+  if (container) params.set('container', container)
+  params.set('path', targetPath)
+
+  const response = await fetch(`${API_BASE}/pods/${namespace}/${podName}/filesystem/archive?${params.toString()}`)
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+  return response.blob()
+}
+
+export async function uploadPodFile(
+  namespace: string,
+  podName: string,
+  container: string,
+  destinationPath: string,
+  file: File
+): Promise<void> {
+  const params = new URLSearchParams()
+  if (container) params.set('container', container)
+  params.set('path', destinationPath)
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${API_BASE}/pods/${namespace}/${podName}/filesystem/upload?${params.toString()}`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+}
+
+export async function mkdirPodPath(
+  namespace: string,
+  podName: string,
+  container: string,
+  targetPath: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/pods/${namespace}/${podName}/filesystem/mkdir`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ container, path: targetPath }),
+  })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+}
+
+export async function renamePodPath(
+  namespace: string,
+  podName: string,
+  container: string,
+  oldPath: string,
+  newPath: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/pods/${namespace}/${podName}/filesystem/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ container, oldPath, newPath }),
+  })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+}
+
+export async function deletePodPath(
+  namespace: string,
+  podName: string,
+  container: string,
+  targetPath: string,
+  recursive: boolean
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/pods/${namespace}/${podName}/filesystem/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ container, path: targetPath, recursive }),
+  })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+}
+
+// ============================================================================
 // Workload Logs (aggregated from all pods)
 // ============================================================================
 
