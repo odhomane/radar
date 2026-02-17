@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "radar.fullname" . }}
+  name: {{ include "cmdb-kubeexplorer.fullname" . }}
   labels:
-    {{- include "radar.labels" . | nindent 4 }}
+    {{- include "cmdb-kubeexplorer.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "radar.selectorLabels" . | nindent 6 }}
+      {{- include "cmdb-kubeexplorer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -16,13 +16,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "radar.selectorLabels" . | nindent 8 }}
+        {{- include "cmdb-kubeexplorer.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "radar.serviceAccountName" . }}
+      serviceAccountName: {{ include "cmdb-kubeexplorer.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -95,7 +95,7 @@ spec:
         {{- if and .Values.persistence.enabled (eq .Values.timeline.storage "sqlite") }}
         - name: data
           persistentVolumeClaim:
-            claimName: {{ include "radar.fullname" . }}
+            claimName: {{ include "cmdb-kubeexplorer.fullname" . }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

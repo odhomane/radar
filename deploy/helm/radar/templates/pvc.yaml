@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "radar.fullname" . }}
+  name: {{ include "cmdb-kubeexplorer.fullname" . }}
   labels:
-    {{- include "radar.labels" . | nindent 4 }}
+    {{- include "cmdb-kubeexplorer.labels" . | nindent 4 }}
 spec:
   accessModes:
     - {{ .Values.persistence.accessMode }}

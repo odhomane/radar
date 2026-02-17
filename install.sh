@@ -1,11 +1,11 @@
 #!/bin/bash
-# Radar installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | bash
+# CMDB KubeExplorer installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/cmdb/kubeexplorer/main/install.sh | bash
 
 set -e
 
-REPO="skyhook-io/radar"
-BINARY_NAME="kubectl-radar"
+REPO="cmdb/kubeexplorer"
+BINARY_NAME="kubectl-cmdb-kubeexplorer"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and architecture
@@ -34,10 +34,10 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
-echo "Installing Radar v${VERSION}..."
+echo "Installing CMDB KubeExplorer v${VERSION}..."
 
 # Download
-FILENAME="radar_v${VERSION}_${OS}_${ARCH}"
+FILENAME="cmdb-kubeexplorer_v${VERSION}_${OS}_${ARCH}"
 if [ "$OS" = "windows" ]; then
   FILENAME="${FILENAME}.zip"
 else
@@ -70,10 +70,10 @@ fi
 rm -rf "$TMP_DIR"
 
 echo ""
-echo "Radar v${VERSION} installed successfully!"
+echo "CMDB KubeExplorer v${VERSION} installed successfully!"
 echo ""
 echo "Usage:"
-echo "  kubectl radar          # as kubectl plugin"
-echo "  kubectl-radar          # standalone"
+echo "  kubectl cmdb-kubeexplorer          # as kubectl plugin"
+echo "  kubectl-cmdb-kubeexplorer          # standalone"
 echo ""
-echo "Run 'kubectl radar --help' for more options."
+echo "Run 'kubectl cmdb-kubeexplorer --help' for more options."

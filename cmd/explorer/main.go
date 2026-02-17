@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/skyhook-io/radar/internal/app"
+	"github.com/cmdb/kubeexplorer/internal/app"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // Register all auth provider plugins (OIDC, GCP, Azure, etc.)
 	"k8s.io/klog/v2"
 )
@@ -33,13 +33,13 @@ func main() {
 	disableHelmWrite := flag.Bool("disable-helm-write", false, "Simulate restricted Helm permissions (disables install/upgrade/rollback/uninstall)")
 	// Timeline storage options
 	timelineStorage := flag.String("timeline-storage", "memory", "Timeline storage backend: memory or sqlite")
-	timelineDBPath := flag.String("timeline-db", "", "Path to timeline database file (default: ~/.radar/timeline.db)")
+	timelineDBPath := flag.String("timeline-db", "", "Path to timeline database file (default: ~/.cmdb-kubeexplorer/timeline.db)")
 	// Traffic/metrics options
 	prometheusURL := flag.String("prometheus-url", "", "Manual Prometheus/VictoriaMetrics URL (skips auto-discovery)")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("radar %s\n", version)
+		fmt.Printf("cmdb-kubeexplorer %s\n", version)
 		os.Exit(0)
 	}
 
@@ -50,7 +50,7 @@ func main() {
 	_ = flag.Set("alsologtostderr", "false")
 	klog.SetOutput(os.Stderr)
 
-	log.Printf("Radar %s starting...", version)
+	log.Printf("CMDB KubeExplorer %s starting...", version)
 
 	// Validate mutually exclusive flags
 	if *kubeconfig != "" && *kubeconfigDir != "" {

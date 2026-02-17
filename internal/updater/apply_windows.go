@@ -21,7 +21,7 @@ func applyUpdate(_ context.Context, assetPath string) error {
 	}
 
 	// Extract zip to temp dir
-	extractDir, err := os.MkdirTemp("", "radar-update-*")
+	extractDir, err := os.MkdirTemp("", "cmdb-kubeexplorer-update-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
@@ -46,7 +46,7 @@ func applyUpdate(_ context.Context, assetPath string) error {
 	// 3. Launch new exe
 	// 4. Clean up temp dir and self
 	pid := os.Getpid()
-	bat := filepath.Join(os.TempDir(), fmt.Sprintf("radar-update-%d.bat", pid))
+	bat := filepath.Join(os.TempDir(), fmt.Sprintf("cmdb-kubeexplorer-update-%d.bat", pid))
 	script := fmt.Sprintf(`@echo off
 :wait
 tasklist /FI "PID eq %d" 2>NUL | find /I "%d" >NUL
@@ -56,8 +56,8 @@ if not errorlevel 1 (
 )
 copy /Y "%s" "%s"
 if errorlevel 1 (
-    echo [%%date%% %%time%%] Update failed: could not replace binary. >> "%%USERPROFILE%%\.radar\update-error.log"
-    echo The new version is at: %s >> "%%USERPROFILE%%\.radar\update-error.log"
+    echo [%%date%% %%time%%] Update failed: could not replace binary. >> "%%USERPROFILE%%\.cmdb-kubeexplorer\update-error.log"
+    echo The new version is at: %s >> "%%USERPROFILE%%\.cmdb-kubeexplorer\update-error.log"
     exit /b 1
 )
 start "" "%s"
@@ -79,7 +79,7 @@ del "%%~f0"
 // Relaunch on Windows starts the trampoline and exits.
 func Relaunch() error {
 	pid := os.Getpid()
-	bat := filepath.Join(os.TempDir(), fmt.Sprintf("radar-update-%d.bat", pid))
+	bat := filepath.Join(os.TempDir(), fmt.Sprintf("cmdb-kubeexplorer-update-%d.bat", pid))
 	if _, err := os.Stat(bat); err != nil {
 		return fmt.Errorf("trampoline not found: %w", err)
 	}
@@ -103,7 +103,7 @@ func findExtractedExe(dir string) (string, error) {
 func cleanupPlatform() {
 	// On Windows, the trampoline handles cleanup.
 	// Remove any leftover trampoline .bat files from previous runs.
-	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "radar-update-*.bat"))
+	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "cmdb-kubeexplorer-update-*.bat"))
 	if err != nil {
 		return
 	}

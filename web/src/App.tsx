@@ -421,7 +421,7 @@ function AppInner() {
         <div className="flex items-center gap-4 shrink-0">
           <div className="flex items-center gap-2.5">
             <Logo />
-            <span className="text-xl text-theme-text-primary leading-none -translate-y-0.5" style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 520 }}>radar</span>
+            <span className="text-xl text-theme-text-primary leading-none -translate-y-0.5" style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 520 }}>CMDB KubeExplorer</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -804,14 +804,14 @@ function App() {
   )
 }
 
-// Skyhook logo that switches based on theme
+// CMDB logo that switches based on theme
 function Logo() {
   const { theme } = useTheme()
   const logoSrc = theme === 'dark'
-    ? '/assets/skyhook/logotype-white-color.svg'
-    : '/assets/skyhook/logotype-dark-color.svg'
+    ? '/assets/cmdb-kubeexplorer/logotype-white-color.svg'
+    : '/assets/cmdb-kubeexplorer/logotype-dark-color.svg'
 
-  return <img src={logoSrc} alt="Skyhook" className="h-5 w-auto" />
+  return <img src={logoSrc} alt="CMDB" className="h-5 w-auto" />
 }
 
 // Theme toggle button component

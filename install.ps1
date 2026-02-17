@@ -1,11 +1,11 @@
-# Radar installer for Windows
-# Usage: irm https://raw.githubusercontent.com/skyhook-io/radar/main/install.ps1 | iex
+# CMDB KubeExplorer installer for Windows
+# Usage: irm https://raw.githubusercontent.com/cmdb/kubeexplorer/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "skyhook-io/radar"
-$BinaryName = "kubectl-radar.exe"
-$InstallDir = "$env:LOCALAPPDATA\radar"
+$Repo = "cmdb/kubeexplorer"
+$BinaryName = "kubectl-cmdb-kubeexplorer.exe"
+$InstallDir = "$env:LOCALAPPDATA\cmdb-kubeexplorer"
 
 # Only amd64 is supported on Windows
 $Arch = "amd64"
@@ -20,12 +20,12 @@ try {
     exit 1
 }
 
-Write-Host "Installing Radar v$Version..." -ForegroundColor Cyan
+Write-Host "Installing CMDB KubeExplorer v$Version..." -ForegroundColor Cyan
 
 # Download
-$Filename = "radar_v${Version}_windows_${Arch}.zip"
+$Filename = "cmdb-kubeexplorer_v${Version}_windows_${Arch}.zip"
 $DownloadUrl = "https://github.com/$Repo/releases/download/v$Version/$Filename"
-$TmpDir = Join-Path $env:TEMP "radar-install-$(Get-Random)"
+$TmpDir = Join-Path $env:TEMP "cmdb-kubeexplorer-install-$(Get-Random)"
 $ZipPath = Join-Path $TmpDir $Filename
 
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
@@ -50,10 +50,10 @@ if (-not (Test-Path $InstallDir)) {
 
 Move-Item -Path (Join-Path $TmpDir $BinaryName) -Destination $InstallDir -Force
 
-# Create radar.exe symlink/copy for convenience
-$RadarExe = Join-Path $InstallDir "radar.exe"
-if (-not (Test-Path $RadarExe)) {
-    Copy-Item -Path (Join-Path $InstallDir $BinaryName) -Destination $RadarExe
+# Create cmdb-kubeexplorer.exe symlink/copy for convenience
+$CmdbKubeExplorerExe = Join-Path $InstallDir "cmdb-kubeexplorer.exe"
+if (-not (Test-Path $CmdbKubeExplorerExe)) {
+    Copy-Item -Path (Join-Path $InstallDir $BinaryName) -Destination $CmdbKubeExplorerExe
 }
 
 # Cleanup
@@ -68,13 +68,13 @@ if ($UserPath -notlike "*$InstallDir*") {
 }
 
 Write-Host ""
-Write-Host "Radar v$Version installed successfully!" -ForegroundColor Green
+Write-Host "CMDB KubeExplorer v$Version installed successfully!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Usage:" -ForegroundColor Yellow
-Write-Host "  kubectl radar          # as kubectl plugin"
-Write-Host "  kubectl-radar          # standalone"
-Write-Host "  radar                  # short alias"
+Write-Host "  kubectl cmdb-kubeexplorer          # as kubectl plugin"
+Write-Host "  kubectl-cmdb-kubeexplorer          # standalone"
+Write-Host "  cmdb-kubeexplorer                  # short alias"
 Write-Host ""
-Write-Host "Run 'radar --help' for more options." -ForegroundColor Yellow
+Write-Host "Run 'cmdb-kubeexplorer --help' for more options." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Note: Restart your terminal for PATH changes to take effect." -ForegroundColor Cyan

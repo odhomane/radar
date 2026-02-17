@@ -1,13 +1,13 @@
-# Radar Docker Compose Deployment
+# CMDB KubeExplorer Docker Compose Deployment
 
-This folder contains a ready-to-use, multi-architecture Docker Compose setup for Radar.
+This folder contains a ready-to-use, multi-architecture Docker Compose setup for CMDB KubeExplorer.
 
 ## What this gives you
 
-- Uses the official image: `ghcr.io/skyhook-io/radar:latest`
+- Uses the official image: `ghcr.io/cmdb/kubeexplorer:latest`
 - Works on any architecture supported by the image manifest (for example `amd64` and `arm64`)
-- Exposes Radar on **port `8585` by default**
-- Mounts your local kubeconfig so Radar can connect to your cluster
+- Exposes CMDB KubeExplorer on **port `8585` by default**
+- Mounts your local kubeconfig so CMDB KubeExplorer can connect to your cluster
 
 ## Prerequisites
 
@@ -54,5 +54,5 @@ docker compose up
 
 ```bash
 cd docker
-docker compose logs -f radar
+docker compose logs -f cmdb-kubeexplorer
 ```

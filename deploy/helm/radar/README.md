@@ -1,6 +1,6 @@
-# Radar Helm Chart
+# CMDB KubeExplorer Helm Chart
 
-Deploy Radar to your Kubernetes cluster for web-based cluster visualization and management.
+Deploy CMDB KubeExplorer to your Kubernetes cluster for web-based cluster visualization and management.
 
 > **See also:** [In-Cluster Deployment Guide](../../../docs/in-cluster.md) for ingress and DNS setup.
 
@@ -14,25 +14,25 @@ Deploy Radar to your Kubernetes cluster for web-based cluster visualization and 
 ### Quick Start
 
 ```bash
-helm repo add skyhook https://skyhook-io.github.io/helm-charts
-helm repo update skyhook
-helm upgrade --install radar skyhook/radar -n radar --create-namespace
+helm repo add cmdb https://cmdb.github.io/helm-charts
+helm repo update cmdb
+helm upgrade --install cmdb-kubeexplorer cmdb/cmdb-kubeexplorer -n cmdb-kubeexplorer --create-namespace
 ```
 
 Access via port-forward:
 ```bash
-kubectl port-forward svc/radar 9280:9280 -n radar
+kubectl port-forward svc/cmdb-kubeexplorer 9280:9280 -n cmdb-kubeexplorer
 open http://localhost:9280
 ```
 
 ### With Ingress
 
 ```bash
-helm upgrade --install radar skyhook/radar \
-  -n radar --create-namespace \
+helm upgrade --install cmdb-kubeexplorer cmdb/cmdb-kubeexplorer \
+  -n cmdb-kubeexplorer --create-namespace \
   --set ingress.enabled=true \
   --set ingress.className=nginx \
-  --set ingress.hosts[0].host=radar.example.com \
+  --set ingress.hosts[0].host=cmdb-kubeexplorer.example.com \
   --set ingress.hosts[0].paths[0].path=/ \
   --set ingress.hosts[0].paths[0].pathType=Prefix
 ```
@@ -40,15 +40,15 @@ helm upgrade --install radar skyhook/radar \
 ### With TLS
 
 ```bash
-helm upgrade --install radar skyhook/radar \
-  -n radar --create-namespace \
+helm upgrade --install cmdb-kubeexplorer cmdb/cmdb-kubeexplorer \
+  -n cmdb-kubeexplorer --create-namespace \
   --set ingress.enabled=true \
   --set ingress.className=nginx \
-  --set ingress.hosts[0].host=radar.example.com \
+  --set ingress.hosts[0].host=cmdb-kubeexplorer.example.com \
   --set ingress.hosts[0].paths[0].path=/ \
   --set ingress.hosts[0].paths[0].pathType=Prefix \
-  --set ingress.tls[0].secretName=radar-tls \
-  --set ingress.tls[0].hosts[0]=radar.example.com
+  --set ingress.tls[0].secretName=cmdb-kubeexplorer-tls \
+  --set ingress.tls[0].hosts[0]=cmdb-kubeexplorer.example.com
 ```
 
 ## Configuration
@@ -56,7 +56,7 @@ helm upgrade --install radar skyhook/radar \
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `replicaCount` | Number of replicas | `1` |
-| `image.repository` | Image repository | `ghcr.io/skyhook-io/radar` |
+| `image.repository` | Image repository | `ghcr.io/cmdb/kubeexplorer` |
 | `image.tag` | Image tag | Chart appVersion |
 | `service.type` | Service type | `ClusterIP` |
 | `service.port` | Service port | `9280` |
@@ -100,7 +100,7 @@ Disabled by default for security:
 
 ### CRD Access
 
-Radar discovers CRDs in your cluster. All common CRD groups are enabled by default. Granting RBAC for CRDs that don't exist has no effect.
+CMDB KubeExplorer discovers CRDs in your cluster. All common CRD groups are enabled by default. Granting RBAC for CRDs that don't exist has no effect.
 
 **Wildcard option:** Grant read access to ALL CRDs with one setting:
 ```bash
@@ -154,7 +154,7 @@ rbac:
 
 ### Troubleshooting: "Failed to list resource" Warnings
 
-If you see these warnings, Radar discovered a CRD but doesn't have RBAC access. This is **not an error** — add the API group to `additionalCrdGroups` if you need it.
+If you see these warnings, CMDB KubeExplorer discovered a CRD but doesn't have RBAC access. This is **not an error** — add the API group to `additionalCrdGroups` if you need it.
 
 ### Advanced: Custom Rules
 
@@ -172,11 +172,11 @@ rbac:
 
 ### Capability Detection
 
-Radar uses its ServiceAccount permissions to access the Kubernetes API. The UI automatically detects which features are available based on RBAC and hides unavailable features (e.g., the terminal button won't appear if `podExec` is disabled).
+CMDB KubeExplorer uses its ServiceAccount permissions to access the Kubernetes API. The UI automatically detects which features are available based on RBAC and hides unavailable features (e.g., the terminal button won't appear if `podExec` is disabled).
 
 ## Uninstalling
 
 ```bash
-helm uninstall radar -n radar
-kubectl delete namespace radar
+helm uninstall cmdb-kubeexplorer -n cmdb-kubeexplorer
+kubectl delete namespace cmdb-kubeexplorer
 ```

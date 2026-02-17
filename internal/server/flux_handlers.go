@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/skyhook-io/radar/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
 )
 
 // FluxCD API groups and versions

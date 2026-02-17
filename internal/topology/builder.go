@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/skyhook-io/radar/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
 )
 
 // Builder constructs topology graphs from K8s resources

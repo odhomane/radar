@@ -14,11 +14,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	"github.com/skyhook-io/radar/internal/helm"
-	"github.com/skyhook-io/radar/internal/k8s"
-	"github.com/skyhook-io/radar/internal/timeline"
-	"github.com/skyhook-io/radar/internal/topology"
-	"github.com/skyhook-io/radar/internal/traffic"
+	"github.com/cmdb/kubeexplorer/internal/helm"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/timeline"
+	"github.com/cmdb/kubeexplorer/internal/topology"
+	"github.com/cmdb/kubeexplorer/internal/traffic"
 )
 
 // DashboardResponse is the aggregated response for the home dashboard

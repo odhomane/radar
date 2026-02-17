@@ -28,7 +28,7 @@ func applyUpdate(_ context.Context, assetPath string) error {
 	}
 
 	// Extract tar.gz
-	extractDir, err := os.MkdirTemp("", "radar-update-*")
+	extractDir, err := os.MkdirTemp("", "cmdb-kubeexplorer-update-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
@@ -102,7 +102,7 @@ func Relaunch() error {
 
 func findExtractedBinary(dir string) (string, error) {
 	return findInExtracted(dir, func(e os.DirEntry) bool {
-		return !e.IsDir() && strings.Contains(e.Name(), "radar-desktop")
+		return !e.IsDir() && strings.Contains(e.Name(), "cmdb-kubeexplorer-desktop")
 	})
 }
 

@@ -1,7 +1,8 @@
-# GoReleaser configuration for Radar
+# GoReleaser configuration for CMDB KubeExplorer
 # Documentation: https://goreleaser.com
 
 version: 2
+project_name: cmdb-kubeexplorer
 
 before:
   hooks:
@@ -12,9 +13,9 @@ before:
     - sh -c "cp -r web/dist/* internal/static/dist/"
 
 builds:
-  - id: radar
+  - id: cmdb-kubeexplorer
     main: ./cmd/explorer
-    binary: kubectl-radar
+    binary: kubectl-cmdb-kubeexplorer
     env:
       - CGO_ENABLED=0
     goos:
@@ -63,13 +64,13 @@ changelog:
 
 release:
   github:
-    owner: skyhook-io
-    name: radar
+    owner: cmdb
+    name: cmdb-kubeexplorer
   draft: false
   prerelease: auto
   name_template: "v{{.Version}}"
   header: |
-    ## Radar v{{.Version}}
+    ## CMDB KubeExplorer v{{.Version}}
 
     **Modern Kubernetes visibility.** Local-first. No account. No cloud dependency. Fast.
 
@@ -79,97 +80,97 @@ release:
 
     **Homebrew (macOS/Linux):**
     ```bash
-    brew install skyhook-io/tap/radar
+    brew install cmdb/tap/cmdb-kubeexplorer
     ```
 
     **Scoop (Windows):**
     ```powershell
-    scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
-    scoop install radar
+    scoop bucket add cmdb https://github.com/cmdb/scoop-bucket
+    scoop install cmdb-kubeexplorer
     ```
 
     **PowerShell (Windows):**
     ```powershell
-    irm https://raw.githubusercontent.com/skyhook-io/radar/main/install.ps1 | iex
+    irm https://raw.githubusercontent.com/cmdb/cmdb-kubeexplorer/main/install.ps1 | iex
     ```
 
     **Manual (macOS Apple Silicon):**
     ```bash
-    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_v{{.Version}}_darwin_arm64.tar.gz
-    tar -xzf radar_v{{.Version}}_darwin_arm64.tar.gz
-    sudo mv kubectl-radar /usr/local/bin/
+    curl -LO https://github.com/cmdb/kubeexplorer/releases/download/v{{.Version}}/cmdb-kubeexplorer_v{{.Version}}_darwin_arm64.tar.gz
+    tar -xzf cmdb-kubeexplorer_v{{.Version}}_darwin_arm64.tar.gz
+    sudo mv kubectl-cmdb-kubeexplorer /usr/local/bin/
     ```
 
     **Manual (macOS Intel):**
     ```bash
-    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_v{{.Version}}_darwin_amd64.tar.gz
-    tar -xzf radar_v{{.Version}}_darwin_amd64.tar.gz
-    sudo mv kubectl-radar /usr/local/bin/
+    curl -LO https://github.com/cmdb/kubeexplorer/releases/download/v{{.Version}}/cmdb-kubeexplorer_v{{.Version}}_darwin_amd64.tar.gz
+    tar -xzf cmdb-kubeexplorer_v{{.Version}}_darwin_amd64.tar.gz
+    sudo mv kubectl-cmdb-kubeexplorer /usr/local/bin/
     ```
 
     **Manual (Linux amd64):**
     ```bash
-    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar_v{{.Version}}_linux_amd64.tar.gz
-    tar -xzf radar_v{{.Version}}_linux_amd64.tar.gz
-    sudo mv kubectl-radar /usr/local/bin/
+    curl -LO https://github.com/cmdb/kubeexplorer/releases/download/v{{.Version}}/cmdb-kubeexplorer_v{{.Version}}_linux_amd64.tar.gz
+    tar -xzf cmdb-kubeexplorer_v{{.Version}}_linux_amd64.tar.gz
+    sudo mv kubectl-cmdb-kubeexplorer /usr/local/bin/
     ```
 
     ### Desktop App
 
     **Homebrew (macOS):**
     ```bash
-    brew install --cask skyhook-io/tap/radar-desktop
+    brew install --cask cmdb/tap/cmdb-kubeexplorer-desktop
     ```
 
     **Debian/Ubuntu:**
     ```bash
-    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar-desktop_v{{.Version}}_linux_amd64.deb
-    sudo dpkg -i radar-desktop_v{{.Version}}_linux_amd64.deb
+    curl -LO https://github.com/cmdb/kubeexplorer/releases/download/v{{.Version}}/cmdb-kubeexplorer-desktop_v{{.Version}}_linux_amd64.deb
+    sudo dpkg -i cmdb-kubeexplorer-desktop_v{{.Version}}_linux_amd64.deb
     ```
 
     **Fedora/RHEL:**
     ```bash
-    curl -LO https://github.com/skyhook-io/radar/releases/download/v{{.Version}}/radar-desktop_v{{.Version}}_linux_amd64.rpm
-    sudo rpm -i radar-desktop_v{{.Version}}_linux_amd64.rpm
+    curl -LO https://github.com/cmdb/kubeexplorer/releases/download/v{{.Version}}/cmdb-kubeexplorer-desktop_v{{.Version}}_linux_amd64.rpm
+    sudo rpm -i cmdb-kubeexplorer-desktop_v{{.Version}}_linux_amd64.rpm
     ```
 
     **Scoop (Windows):**
     ```powershell
-    scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
-    scoop install radar-desktop
+    scoop bucket add cmdb https://github.com/cmdb/scoop-bucket
+    scoop install cmdb-kubeexplorer-desktop
     ```
 
     **Windows (direct download):** Download from the assets below.
 
     ### CLI
 
-    Then run: `kubectl radar`
+    Then run: `kubectl cmdb-kubeexplorer`
 
-# Homebrew formula (publishes to skyhook-io/homebrew-tap)
+# Homebrew formula (publishes to cmdb/homebrew-tap)
 brews:
-  - name: radar
+  - name: cmdb-kubeexplorer
     repository:
-      owner: skyhook-io
+      owner: cmdb
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/skyhook-io/radar"
+    homepage: "https://github.com/cmdb/kubeexplorer"
     description: "Modern Kubernetes visibility — topology, traffic, and Helm management"
     license: "Apache-2.0"
     install: |
-      bin.install "kubectl-radar"
-      bin.install_symlink "kubectl-radar" => "radar"
+      bin.install "kubectl-cmdb-kubeexplorer"
+      bin.install_symlink "kubectl-cmdb-kubeexplorer" => "cmdb-kubeexplorer"
     test: |
-      system "#{bin}/kubectl-radar", "--version"
+      system "#{bin}/kubectl-cmdb-kubeexplorer", "--version"
 
-# Scoop manifest (publishes to skyhook-io/scoop-bucket)
+# Scoop manifest (publishes to cmdb/scoop-bucket)
 scoops:
-  - name: radar
+  - name: cmdb-kubeexplorer
     repository:
-      owner: skyhook-io
+      owner: cmdb
       name: scoop-bucket
       token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
-    homepage: "https://github.com/skyhook-io/radar"
+    homepage: "https://github.com/cmdb/kubeexplorer"
     description: "Modern Kubernetes visibility — topology, traffic, and Helm management"
     license: Apache-2.0
-    post_install: ["Write-Host 'Run: kubectl-radar or radar' -ForegroundColor Green"]
+    post_install: ["Write-Host 'Run: kubectl-cmdb-kubeexplorer or cmdb-kubeexplorer' -ForegroundColor Green"]

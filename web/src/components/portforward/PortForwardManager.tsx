@@ -154,7 +154,7 @@ export function PortForwardManager({
   }
 
   const handleCopyUrl = useCallback((session: PortForwardSession) => {
-    // Always use localhost for copy (works on the machine running Radar)
+    // Always use localhost for copy (works on the machine running CMDB KubeExplorer)
     navigator.clipboard.writeText(`http://localhost:${session.localPort}`)
     setCopiedId(session.id)
     setTimeout(() => setCopiedId(null), 2000)

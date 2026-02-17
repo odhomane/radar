@@ -53,18 +53,18 @@ func createMenu(desktopApp *DesktopApp) *menu.Menu {
 		runtime.EventsEmit(desktopApp.ctx, "check-for-updates")
 	})
 	helpMenu.AddSeparator()
-	helpMenu.AddText("About Radar", nil, func(_ *menu.CallbackData) {
+	helpMenu.AddText("About CMDB KubeExplorer", nil, func(_ *menu.CallbackData) {
 		runtime.MessageDialog(desktopApp.ctx, runtime.MessageDialogOptions{
 			Type:    runtime.InfoDialog,
-			Title:   "About Radar",
-			Message: "Radar — Kubernetes Visibility Tool\nBuilt by Skyhook\n\nhttps://github.com/skyhook-io/radar",
+			Title:   "About CMDB KubeExplorer",
+			Message: "CMDB KubeExplorer — Kubernetes Visibility Tool\nBuilt by CMDB\n\nhttps://github.com/cmdb/kubeexplorer",
 		})
 	})
 	helpMenu.AddText("Documentation", nil, func(_ *menu.CallbackData) {
-		runtime.BrowserOpenURL(desktopApp.ctx, "https://github.com/skyhook-io/radar#readme")
+		runtime.BrowserOpenURL(desktopApp.ctx, "https://github.com/cmdb/kubeexplorer#readme")
 	})
 	helpMenu.AddText("GitHub Repository", nil, func(_ *menu.CallbackData) {
-		runtime.BrowserOpenURL(desktopApp.ctx, "https://github.com/skyhook-io/radar")
+		runtime.BrowserOpenURL(desktopApp.ctx, "https://github.com/cmdb/kubeexplorer")
 	})
 
 	return appMenu

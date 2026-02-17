@@ -1,31 +1,31 @@
-# Radar
+# CMDB KubeExplorer
 
 **Modern Kubernetes visibility.**
 <br>Local-first. No account. No cloud dependency. Blazing Fast.
 
 Topology, event timeline, and service traffic — plus resource browsing, Helm management, and GitOps support for FluxCD and ArgoCD.
 
-[![CI](https://github.com/skyhook-io/radar/actions/workflows/ci.yml/badge.svg)](https://github.com/skyhook-io/radar/actions/workflows/ci.yml)
-[![Snyk](https://snyk.io/test/github/skyhook-io/radar/badge.svg?targetFile=go.mod)](https://snyk.io/test/github/skyhook-io/radar)
-[![Release](https://img.shields.io/github/v/release/skyhook-io/radar?logo=github)](https://github.com/skyhook-io/radar/releases/latest)
-[![Go Report Card](https://goreportcard.com/badge/github.com/skyhook-io/radar?v=2)](https://goreportcard.com/report/github.com/skyhook-io/radar)
-[![Downloads](https://img.shields.io/github/downloads/skyhook-io/radar/total?logo=github)](https://github.com/skyhook-io/radar/releases)
+[![CI](https://github.com/cmdb/kubeexplorer/actions/workflows/ci.yml/badge.svg)](https://github.com/cmdb/kubeexplorer/actions/workflows/ci.yml)
+[![Snyk](https://snyk.io/test/github/cmdb/kubeexplorer/badge.svg?targetFile=go.mod)](https://snyk.io/test/github/cmdb/kubeexplorer)
+[![Release](https://img.shields.io/github/v/release/cmdb/kubeexplorer?logo=github)](https://github.com/cmdb/kubeexplorer/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cmdb/kubeexplorer?v=2)](https://goreportcard.com/report/github.com/cmdb/kubeexplorer)
+[![Downloads](https://img.shields.io/github/downloads/cmdb/kubeexplorer/total?logo=github)](https://github.com/cmdb/kubeexplorer/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 
 Visualize your cluster topology, browse resources, stream logs, exec into pods, inspect container image filesystems, manage Helm releases, monitor GitOps workflows (FluxCD & ArgoCD), and forward ports — all from a single binary with zero cluster-side installation.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Radar Screenshot" width="800">
+  <img src="docs/screenshot.png" alt="CMDB KubeExplorer Screenshot" width="800">
 </p>
 
 **Install and run in 30 seconds:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | bash && kubectl radar
+curl -fsSL https://raw.githubusercontent.com/cmdb/kubeexplorer/main/install.sh | bash && kubectl cmdb-kubeexplorer
 ```
 [More installation options ↓](#installation)
 
-## Why Radar?
+## Why CMDB KubeExplorer?
 
 - **Zero install on your cluster** — runs on your laptop, talks to the K8s API directly
 - **Single binary** — no dependencies, no agents, no CRDs
@@ -41,15 +41,15 @@ curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | 
 
 **Quick Install:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cmdb/kubeexplorer/main/install.sh | bash
 ```
 
 **Homebrew:**
 ```bash
-brew install skyhook-io/tap/radar
+brew install cmdb/tap/cmdb-kubeexplorer
 ```
 
-Then run: `kubectl radar` (or simply `radar`)
+Then run: `kubectl cmdb-kubeexplorer` (or simply `cmdb-kubeexplorer`)
 
 <details>
 <summary><b>More install options</b> — Desktop App (macOS/Linux/Windows), Krew, Scoop, In-Cluster Helm</summary>
@@ -58,21 +58,21 @@ Then run: `kubectl radar` (or simply `radar`)
 
 **Krew (kubectl plugin manager):**
 ```bash
-kubectl krew install radar
+kubectl krew install cmdb-kubeexplorer
 ```
 
 **Scoop (Windows):**
 ```powershell
-scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
-scoop install radar
+scoop bucket add cmdb https://github.com/cmdb/scoop-bucket
+scoop install cmdb-kubeexplorer
 ```
 
 **PowerShell (Windows):**
 ```powershell
-irm https://raw.githubusercontent.com/skyhook-io/radar/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/cmdb/kubeexplorer/main/install.ps1 | iex
 ```
 
-**Direct download** — [GitHub Releases](https://github.com/skyhook-io/radar/releases) for macOS, Linux, or Windows.
+**Direct download** — [GitHub Releases](https://github.com/cmdb/kubeexplorer/releases) for macOS, Linux, or Windows.
 
 #### Desktop App
 
@@ -80,36 +80,36 @@ Native desktop app — no terminal needed.
 
 **Homebrew (macOS):**
 ```bash
-brew install --cask skyhook-io/tap/radar-desktop
+brew install --cask cmdb/tap/cmdb-kubeexplorer-desktop
 ```
 
-> Radar Desktop is not yet code-signed. Install with `--no-quarantine` or right-click → Open on first launch.
+> CMDB KubeExplorer Desktop is not yet code-signed. Install with `--no-quarantine` or right-click → Open on first launch.
 
 **Debian/Ubuntu:**
 ```bash
-sudo apt install ./radar-desktop_*.deb
+sudo apt install ./cmdb-kubeexplorer-desktop_*.deb
 ```
 
 **Fedora/RHEL:**
 ```bash
-sudo rpm -i radar-desktop_*.rpm
+sudo rpm -i cmdb-kubeexplorer-desktop_*.rpm
 ```
 
 **Scoop (Windows):**
 ```powershell
-scoop bucket add skyhook https://github.com/skyhook-io/scoop-bucket
-scoop install radar-desktop
+scoop bucket add cmdb https://github.com/cmdb/scoop-bucket
+scoop install cmdb-kubeexplorer-desktop
 ```
 
-**Windows (direct download)** — [GitHub Releases](https://github.com/skyhook-io/radar/releases).
+**Windows (direct download)** — [GitHub Releases](https://github.com/cmdb/kubeexplorer/releases).
 
 #### In-Cluster Deployment
 
 Deploy to your cluster for shared team access:
 
 ```bash
-helm repo add skyhook https://skyhook-io.github.io/helm-charts
-helm install radar skyhook/radar -n radar --create-namespace
+helm repo add cmdb https://cmdb.github.io/helm-charts
+helm install cmdb-kubeexplorer cmdb/cmdb-kubeexplorer -n cmdb-kubeexplorer --create-namespace
 ```
 
 See the [In-Cluster Deployment Guide](docs/in-cluster.md) for ingress, authentication, and RBAC configuration.
@@ -122,10 +122,10 @@ See the [In-Cluster Deployment Guide](docs/in-cluster.md) for ingress, authentic
 
 ```bash
 # Opens browser automatically
-kubectl radar
+kubectl cmdb-kubeexplorer
 
 # Or simply
-radar
+cmdb-kubeexplorer
 ```
 
 **CLI Flags**
@@ -138,7 +138,7 @@ radar
 | `--port` | `9280` | Server port |
 | `--no-browser` | `false` | Don't auto-open browser |
 | `--timeline-storage` | `memory` | Timeline storage backend: `memory` or `sqlite` |
-| `--timeline-db` | `~/.radar/timeline.db` | Path to SQLite database (when using sqlite storage) |
+| `--timeline-db` | `~/.cmdb-kubeexplorer/timeline.db` | Path to SQLite database (when using sqlite storage) |
 | `--history-limit` | `10000` | Maximum events to retain in timeline |
 | `--version` | | Show version and exit |
 
@@ -226,7 +226,7 @@ Monitor and manage FluxCD and ArgoCD resources with unified status views and act
 - Real-time sync status, health indicators, and reconciliation countdowns
 - Trigger reconciliation, suspend/resume resources, and view managed resource inventory
 - Problem detection with clear alerts for degraded or out-of-sync resources
-- **Note**: Topology connections between GitOps resources and managed workloads only appear when both are in the same cluster. FluxCD typically deploys to its own cluster. ArgoCD often manages remote clusters — connect Radar to the target cluster to see workloads, or to the ArgoCD cluster to see Application status.
+- **Note**: Topology connections between GitOps resources and managed workloads only appear when both are in the same cluster. FluxCD typically deploys to its own cluster. ArgoCD often manages remote clusters — connect CMDB KubeExplorer to the target cluster to see workloads, or to the ArgoCD cluster to see Application status.
 
 ### Traffic
 
@@ -284,8 +284,8 @@ See the **[Development Guide](DEVELOPMENT.md)** for building from source, archit
 
 Quick start:
 ```bash
-git clone https://github.com/skyhook-io/radar.git
-cd radar
+git clone https://github.com/cmdb/kubeexplorer.git
+cd cmdb-kubeexplorer
 make deps
 
 # Terminal 1: Frontend with hot reload (port 9273)
@@ -312,5 +312,5 @@ Apache 2.0 — see [LICENSE](LICENSE)
 <p align="center">
   <strong>Open source. Free forever.</strong>
   <br>
-  <sub>Built by <a href="https://skyhook.io">Skyhook</a></sub>
+  <sub>Built by <a href="https://cmdb.io">CMDB</a></sub>
 </p>

@@ -16,7 +16,7 @@ import (
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/skyhook-io/radar/internal/timeline"
+	"github.com/cmdb/kubeexplorer/internal/timeline"
 )
 
 // CRDDiscoveryStatus represents the state of CRD discovery

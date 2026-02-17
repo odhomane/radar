@@ -26,7 +26,7 @@ import (
 	listersnetworkingv1 "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/skyhook-io/radar/internal/timeline"
+	"github.com/cmdb/kubeexplorer/internal/timeline"
 )
 
 // DebugEvents enables verbose event debugging when true (set via --debug-events flag)

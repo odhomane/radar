@@ -18,7 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/skyhook-io/radar/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
 )
 
 // WorkloadPodInfo contains basic info about a pod for the UI

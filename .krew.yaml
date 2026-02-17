@@ -1,13 +1,13 @@
 apiVersion: krew.googlecontainertools.github.com/v1alpha2
 kind: Plugin
 metadata:
-  name: radar
+  name: cmdb-kubeexplorer
 spec:
   version: {{ .TagName }}
-  homepage: https://github.com/skyhook-io/radar
+  homepage: https://github.com/cmdb/kubeexplorer
   shortDescription: Cluster dashboard with topology and traffic maps
   description: |
-    Radar provides real-time visibility into your Kubernetes cluster.
+    CMDB KubeExplorer provides real-time visibility into your Kubernetes cluster.
 
     Features:
     - Topology visualization of resources and their relationships
@@ -23,10 +23,10 @@ spec:
     This plugin opens a web UI in your browser by default.
     Use --no-browser to start the server without opening a browser.
   platforms:
-  - bin: kubectl-radar
-    {{ addURIAndSha "https://github.com/skyhook-io/radar/releases/download/{{ .TagName }}/radar_{{ .TagName }}_darwin_arm64.tar.gz" .TagName }}
+  - bin: kubectl-cmdb-kubeexplorer
+    {{ addURIAndSha "https://github.com/cmdb/kubeexplorer/releases/download/{{ .TagName }}/cmdb-kubeexplorer_{{ .TagName }}_darwin_arm64.tar.gz" .TagName }}
     files:
-    - from: kubectl-radar
+    - from: kubectl-cmdb-kubeexplorer
       to: .
     - from: LICENSE
       to: .
@@ -34,10 +34,10 @@ spec:
       matchLabels:
         os: darwin
         arch: arm64
-  - bin: kubectl-radar
-    {{ addURIAndSha "https://github.com/skyhook-io/radar/releases/download/{{ .TagName }}/radar_{{ .TagName }}_darwin_amd64.tar.gz" .TagName }}
+  - bin: kubectl-cmdb-kubeexplorer
+    {{ addURIAndSha "https://github.com/cmdb/kubeexplorer/releases/download/{{ .TagName }}/cmdb-kubeexplorer_{{ .TagName }}_darwin_amd64.tar.gz" .TagName }}
     files:
-    - from: kubectl-radar
+    - from: kubectl-cmdb-kubeexplorer
       to: .
     - from: LICENSE
       to: .
@@ -45,10 +45,10 @@ spec:
       matchLabels:
         os: darwin
         arch: amd64
-  - bin: kubectl-radar
-    {{ addURIAndSha "https://github.com/skyhook-io/radar/releases/download/{{ .TagName }}/radar_{{ .TagName }}_linux_amd64.tar.gz" .TagName }}
+  - bin: kubectl-cmdb-kubeexplorer
+    {{ addURIAndSha "https://github.com/cmdb/kubeexplorer/releases/download/{{ .TagName }}/cmdb-kubeexplorer_{{ .TagName }}_linux_amd64.tar.gz" .TagName }}
     files:
-    - from: kubectl-radar
+    - from: kubectl-cmdb-kubeexplorer
       to: .
     - from: LICENSE
       to: .
@@ -56,10 +56,10 @@ spec:
       matchLabels:
         os: linux
         arch: amd64
-  - bin: kubectl-radar
-    {{ addURIAndSha "https://github.com/skyhook-io/radar/releases/download/{{ .TagName }}/radar_{{ .TagName }}_linux_arm64.tar.gz" .TagName }}
+  - bin: kubectl-cmdb-kubeexplorer
+    {{ addURIAndSha "https://github.com/cmdb/kubeexplorer/releases/download/{{ .TagName }}/cmdb-kubeexplorer_{{ .TagName }}_linux_arm64.tar.gz" .TagName }}
     files:
-    - from: kubectl-radar
+    - from: kubectl-cmdb-kubeexplorer
       to: .
     - from: LICENSE
       to: .
@@ -67,10 +67,10 @@ spec:
       matchLabels:
         os: linux
         arch: arm64
-  - bin: kubectl-radar.exe
-    {{ addURIAndSha "https://github.com/skyhook-io/radar/releases/download/{{ .TagName }}/radar_{{ .TagName }}_windows_amd64.zip" .TagName }}
+  - bin: kubectl-cmdb-kubeexplorer.exe
+    {{ addURIAndSha "https://github.com/cmdb/kubeexplorer/releases/download/{{ .TagName }}/cmdb-kubeexplorer_{{ .TagName }}_windows_amd64.zip" .TagName }}
     files:
-    - from: kubectl-radar.exe
+    - from: kubectl-cmdb-kubeexplorer.exe
       to: .
     - from: LICENSE
       to: .

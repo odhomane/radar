@@ -1,5 +1,5 @@
 apiVersion: v2
-name: radar
+name: cmdb-kubeexplorer
 description: Modern Kubernetes visibility — topology, traffic, and Helm management
 type: application
 version: 0.6.9
@@ -10,9 +10,9 @@ keywords:
   - monitoring
   - kubectl
   - dashboard
-home: https://github.com/skyhook-io/radar
+home: https://github.com/cmdb/kubeexplorer
 sources:
-  - https://github.com/skyhook-io/radar
+  - https://github.com/cmdb/kubeexplorer
 maintainers:
-  - name: Skyhook Team
-    email: support@skyhook.io
+  - name: CMDB Team
+    email: support@cmdb.io

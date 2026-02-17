@@ -8,7 +8,7 @@ We are committed to providing a welcoming and inclusive environment for everyone
 
 ## Reporting
 
-If you experience or witness unacceptable behavior, please report it by emailing conduct@skyhook.io.
+If you experience or witness unacceptable behavior, please report it by emailing conduct@cmdb.io.
 
 All reports will be reviewed and investigated promptly and fairly.
 

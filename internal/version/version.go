@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	// Current is the current version of Radar, set at build time
+	// Current is the current version of CMDB KubeExplorer, set at build time
 	Current = "dev"
 
 	// isDesktop is set to true when running as a desktop app (Wails).
@@ -30,7 +30,7 @@ var (
 	errorTTL     = 5 * time.Minute
 )
 
-// InstallMethod represents how Radar was installed
+// InstallMethod represents how CMDB KubeExplorer was installed
 type InstallMethod string
 
 const (
@@ -122,13 +122,13 @@ func fetchLatestRelease(ctx context.Context) *UpdateInfo {
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/skyhook-io/radar/releases/latest", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/cmdb/kubeexplorer/releases/latest", nil)
 	if err != nil {
 		result.Error = fmt.Sprintf("failed to create request: %v", err)
 		log.Printf("[version] %s", result.Error)
 		return result
 	}
-	req.Header.Set("User-Agent", fmt.Sprintf("radar/%s", Current))
+	req.Header.Set("User-Agent", fmt.Sprintf("cmdb-kubeexplorer/%s", Current))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -185,7 +185,7 @@ func truncateNotes(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// detectInstallMethod determines how Radar was installed based on binary path
+// detectInstallMethod determines how CMDB KubeExplorer was installed based on binary path
 func detectInstallMethod() InstallMethod {
 	if isDesktop {
 		return InstallDesktop
@@ -229,11 +229,11 @@ func detectInstallMethodFromPath(exe string) InstallMethod {
 func getUpdateCommand(method InstallMethod) string {
 	switch method {
 	case InstallHomebrew:
-		return "brew upgrade skyhook-io/tap/radar"
+		return "brew upgrade cmdb/tap/cmdb-kubeexplorer"
 	case InstallKrew:
-		return "kubectl krew upgrade radar"
+		return "kubectl krew upgrade cmdb-kubeexplorer"
 	case InstallScoop:
-		return "scoop update radar"
+		return "scoop update cmdb-kubeexplorer"
 	case InstallDesktop:
 		return "" // in-app update, no CLI command
 	default:

@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/skyhook-io/radar/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
 )
 
 // ArgoCD Application GVR - all handlers operate on Applications
@@ -77,7 +77,7 @@ func (s *Server) handleArgoSync(w http.ResponseWriter, r *http.Request) {
 		},
 		"operation": map[string]any{
 			"initiatedBy": map[string]any{
-				"username": "radar",
+				"username": "cmdb-kubeexplorer",
 			},
 			"sync": map[string]any{
 				"revision": "", // Empty means use the target revision from spec
@@ -309,10 +309,10 @@ func (s *Server) setArgoAutomatedSync(w http.ResponseWriter, r *http.Request, en
 		// Try to get existing settings from annotations (we store them when suspending)
 		annotations, _, _ := unstructured.NestedStringMap(app.Object, "metadata", "annotations")
 		if annotations != nil {
-			if v, ok := annotations["radar.skyhook.io/suspended-prune"]; ok {
+			if v, ok := annotations["cmdb-kubeexplorer.cmdb.io/suspended-prune"]; ok {
 				prune = v == "true"
 			}
-			if v, ok := annotations["radar.skyhook.io/suspended-selfheal"]; ok {
+			if v, ok := annotations["cmdb-kubeexplorer.cmdb.io/suspended-selfheal"]; ok {
 				selfHeal = v == "true"
 			}
 		}
@@ -320,8 +320,8 @@ func (s *Server) setArgoAutomatedSync(w http.ResponseWriter, r *http.Request, en
 		patch = map[string]any{
 			"metadata": map[string]any{
 				"annotations": map[string]any{
-					"radar.skyhook.io/suspended-prune":    nil, // Remove
-					"radar.skyhook.io/suspended-selfheal": nil, // Remove
+					"cmdb-kubeexplorer.cmdb.io/suspended-prune":    nil, // Remove
+					"cmdb-kubeexplorer.cmdb.io/suspended-selfheal": nil, // Remove
 				},
 			},
 			"spec": map[string]any{
@@ -352,8 +352,8 @@ func (s *Server) setArgoAutomatedSync(w http.ResponseWriter, r *http.Request, en
 		patch = map[string]any{
 			"metadata": map[string]any{
 				"annotations": map[string]string{
-					"radar.skyhook.io/suspended-prune":    fmt.Sprintf("%v", prune),
-					"radar.skyhook.io/suspended-selfheal": fmt.Sprintf("%v", selfHeal),
+					"cmdb-kubeexplorer.cmdb.io/suspended-prune":    fmt.Sprintf("%v", prune),
+					"cmdb-kubeexplorer.cmdb.io/suspended-selfheal": fmt.Sprintf("%v", selfHeal),
 				},
 			},
 			"spec": map[string]any{

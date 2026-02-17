@@ -4,25 +4,25 @@
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X main.version=$(VERSION)
-DOCKER_REPO ?= ghcr.io/skyhook-io/radar
+DOCKER_REPO ?= ghcr.io/cmdb/kubeexplorer
 RADAR_FLAGS ?=
 
 ## Build targets
 
 # Build the complete application (frontend + embedded binary)
 build: frontend embed backend
-	@echo "Build complete: ./radar"
+	@echo "Build complete: ./cmdb-kubeexplorer"
 
 # Build and install to /usr/local/bin
 install: build
-	@echo "Installing to /usr/local/bin/kubectl-radar..."
-	@cp radar /usr/local/bin/kubectl-radar || sudo cp radar /usr/local/bin/kubectl-radar
-	@echo "Installed! Run 'kubectl radar' or 'kubectl-radar'"
+	@echo "Installing to /usr/local/bin/kubectl-cmdb-kubeexplorer..."
+	@cp cmdb-kubeexplorer /usr/local/bin/kubectl-cmdb-kubeexplorer || sudo cp cmdb-kubeexplorer /usr/local/bin/kubectl-cmdb-kubeexplorer
+	@echo "Installed! Run 'kubectl cmdb-kubeexplorer' or 'kubectl-cmdb-kubeexplorer'"
 
 # Build Go backend with embedded frontend
 backend:
 	@echo "Building Go backend..."
-	go build -ldflags "$(LDFLAGS)" -o radar ./cmd/explorer
+	go build -ldflags "$(LDFLAGS)" -o cmdb-kubeexplorer ./cmd/explorer
 
 # Build frontend (auto-installs deps if needed)
 frontend:
@@ -42,14 +42,14 @@ embed:
 # Quick rebuild and restart
 restart: frontend embed backend kill
 	@sleep 1
-	./radar --kubeconfig ~/.kube/config --no-browser &
+	./cmdb-kubeexplorer --kubeconfig ~/.kube/config --no-browser &
 	@sleep 4
 	@echo "Server running at http://localhost:9280"
 
 # Frontend-only rebuild and restart (faster - no Go recompile)
 restart-fe: frontend embed kill
 	@sleep 1
-	./radar --kubeconfig ~/.kube/config --no-browser &
+	./cmdb-kubeexplorer --kubeconfig ~/.kube/config --no-browser &
 	@sleep 4
 	@echo "Server running at http://localhost:9280"
 
@@ -77,15 +77,15 @@ watch-backend:
 
 # Run built binary
 run:
-	./radar --kubeconfig ~/.kube/config
+	./cmdb-kubeexplorer --kubeconfig ~/.kube/config
 
 # Run in dev mode (serve frontend from web/dist instead of embedded)
 run-dev:
-	./radar --kubeconfig ~/.kube/config --dev
+	./cmdb-kubeexplorer --kubeconfig ~/.kube/config --dev
 
 ## Utility targets
 
-# Kill any running radar process
+# Kill any running cmdb-kubeexplorer process
 kill:
 	@lsof -ti:9280 | xargs kill -9 2>/dev/null || true
 
@@ -102,7 +102,7 @@ install-tools:
 
 # Clean build artifacts
 clean:
-	rm -f radar radar-desktop
+	rm -f cmdb-kubeexplorer cmdb-kubeexplorer-desktop
 	rm -rf web/dist
 	rm -f internal/static/dist/index.html
 	rm -rf internal/static/dist/assets
@@ -135,7 +135,7 @@ docker:
 # Test Docker image with read-only filesystem (simulates in-cluster with readOnlyRootFilesystem)
 # Requires ~/.kube/config for cluster access; runs on port 9280
 docker-test: docker
-	@echo "Starting Radar with read-only filesystem (simulating in-cluster)..."
+	@echo "Starting CMDB KubeExplorer with read-only filesystem (simulating in-cluster)..."
 	@echo "Press Ctrl+C to stop"
 	docker run --rm \
 		--read-only \
@@ -149,8 +149,8 @@ docker-test: docker
 
 # Docker build multi-arch (amd64 + arm64, for production)
 docker-multiarch:
-	@docker buildx inspect radar-builder &>/dev/null || docker buildx create --name radar-builder --use
-	docker buildx use radar-builder
+	@docker buildx inspect cmdb-kubeexplorer-builder &>/dev/null || docker buildx create --name cmdb-kubeexplorer-builder --use
+	docker buildx use cmdb-kubeexplorer-builder
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
@@ -169,12 +169,12 @@ docker-push:
 
 # Build desktop app: frontend + Go desktop binary
 desktop: frontend embed desktop-binary
-	@echo "Desktop build complete: ./radar-desktop"
+	@echo "Desktop build complete: ./cmdb-kubeexplorer-desktop"
 
 # Build desktop binary only (assumes frontend is already in internal/static/dist)
 desktop-binary:
 	@echo "Building desktop binary..."
-	CGO_ENABLED=1 CGO_LDFLAGS="-framework UniformTypeIdentifiers" go build -tags production -ldflags "$(LDFLAGS)" -o radar-desktop ./cmd/desktop
+	CGO_ENABLED=1 CGO_LDFLAGS="-framework UniformTypeIdentifiers" go build -tags production -ldflags "$(LDFLAGS)" -o cmdb-kubeexplorer-desktop ./cmd/desktop
 
 # Run desktop app in Wails dev mode with Go hot reload.
 # wails.json lives in cmd/desktop/ (Wails requires it next to the main package).
@@ -216,7 +216,7 @@ release:
 # ============================================================================
 
 help:
-	@echo "Radar - Kubernetes Cluster Visualization"
+	@echo "CMDB KubeExplorer - Kubernetes Cluster Visualization"
 	@echo ""
 	@echo "Development:"
 	@echo "  make build           - Build CLI binary (frontend + embedded)"

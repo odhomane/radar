@@ -1,19 +1,19 @@
-name: radar-desktop
+name: cmdb-kubeexplorer-desktop
 arch: amd64
 platform: linux
 version: ${VERSION}
-maintainer: Skyhook <support@skyhook.io>
+maintainer: CMDB <support@cmdb.io>
 description: "Kubernetes visibility — topology, traffic, and Helm management"
-vendor: Skyhook
-homepage: https://github.com/skyhook-io/radar
+vendor: CMDB
+homepage: https://github.com/cmdb/kubeexplorer
 license: Apache-2.0
 contents:
-  - src: build/bin/radar-desktop
-    dst: /usr/bin/radar-desktop
-  - src: deploy/linux/radar-desktop.desktop
-    dst: /usr/share/applications/radar-desktop.desktop
+  - src: build/bin/cmdb-kubeexplorer-desktop
+    dst: /usr/bin/cmdb-kubeexplorer-desktop
+  - src: deploy/linux/cmdb-kubeexplorer-desktop.desktop
+    dst: /usr/share/applications/cmdb-kubeexplorer-desktop.desktop
   - src: build/appicon.png
-    dst: /usr/share/icons/hicolor/32x32/apps/radar-desktop.png
+    dst: /usr/share/icons/hicolor/32x32/apps/cmdb-kubeexplorer-desktop.png
 overrides:
   deb:
     depends:

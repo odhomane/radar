@@ -3,7 +3,7 @@ package topology
 import (
 	"strings"
 
-	"github.com/skyhook-io/radar/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
 )
 
 // resolveAPIGroup returns the API group for a resource kind using resource discovery.

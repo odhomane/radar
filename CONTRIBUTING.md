@@ -1,6 +1,6 @@
-# Contributing to Radar
+# Contributing to CMDB KubeExplorer
 
-Thank you for your interest in contributing to Radar! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to CMDB KubeExplorer! This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
@@ -49,8 +49,8 @@ Feature requests are welcome! Please include:
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/radar.git
-cd radar
+git clone https://github.com/YOUR_USERNAME/cmdb-kubeexplorer.git
+cd cmdb-kubeexplorer
 
 # Install frontend dependencies
 cd web
@@ -84,7 +84,7 @@ npm run tsc
 make build
 
 # Backend only
-go build -o radar ./cmd/explorer
+go build -o cmdb-kubeexplorer ./cmd/explorer
 
 # Frontend only
 cd web

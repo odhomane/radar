@@ -1,4 +1,4 @@
-module github.com/skyhook-io/radar
+module github.com/cmdb/kubeexplorer
 
 go 1.25.0
 

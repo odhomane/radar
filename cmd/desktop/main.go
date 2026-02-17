@@ -6,10 +6,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/skyhook-io/radar/internal/app"
-	"github.com/skyhook-io/radar/internal/k8s"
-	"github.com/skyhook-io/radar/internal/updater"
-	versionpkg "github.com/skyhook-io/radar/internal/version"
+	"github.com/cmdb/kubeexplorer/internal/app"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/updater"
+	versionpkg "github.com/cmdb/kubeexplorer/internal/version"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -34,12 +34,12 @@ func main() {
 	fakeInCluster := flag.Bool("fake-in-cluster", false, "Simulate in-cluster mode for testing")
 	disableHelmWrite := flag.Bool("disable-helm-write", false, "Simulate restricted Helm permissions")
 	timelineStorage := flag.String("timeline-storage", "memory", "Timeline storage backend: memory or sqlite")
-	timelineDBPath := flag.String("timeline-db", "", "Path to timeline database file (default: ~/.radar/timeline.db)")
+	timelineDBPath := flag.String("timeline-db", "", "Path to timeline database file (default: ~/.cmdb-kubeexplorer/timeline.db)")
 	prometheusURL := flag.String("prometheus-url", "", "Manual Prometheus/VictoriaMetrics URL (skips auto-discovery)")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("radar-desktop %s\n", version)
+		fmt.Printf("cmdb-kubeexplorer-desktop %s\n", version)
 		os.Exit(0)
 	}
 
@@ -50,7 +50,7 @@ func main() {
 	_ = flag.Set("alsologtostderr", "false")
 	klog.SetOutput(os.Stderr)
 
-	log.Printf("Radar Desktop %s starting...", version)
+	log.Printf("CMDB KubeExplorer Desktop %s starting...", version)
 
 	// GUI apps (macOS .app, Linux .desktop) get a minimal PATH that
 	// doesn't include user-installed tools like gke-gcloud-auth-plugin,
@@ -108,9 +108,9 @@ func main() {
 	go app.InitializeCluster()
 
 	// Build window title
-	windowTitle := "Radar"
+	windowTitle := "CMDB KubeExplorer"
 	if ctx := k8s.GetContextName(); ctx != "" {
-		windowTitle = "Radar — " + ctx
+		windowTitle = "CMDB KubeExplorer — " + ctx
 	}
 
 	// Create desktop app
@@ -144,8 +144,8 @@ func main() {
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarDefault(),
 			About: &mac.AboutInfo{
-				Title:   "Radar",
-				Message: "Kubernetes Visibility Tool\nBuilt by Skyhook\n\nVersion: " + version,
+				Title:   "CMDB KubeExplorer",
+				Message: "Kubernetes Visibility Tool\nBuilt by CMDB\n\nVersion: " + version,
 			},
 		},
 	})

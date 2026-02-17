@@ -9,7 +9,7 @@ import {
 } from '../../api/client'
 import type { DesktopUpdateState } from '../../api/client'
 
-const DISMISSED_KEY = 'radar-update-dismissed'
+const DISMISSED_KEY = 'cmdb-kubeexplorer-update-dismissed'
 
 export function UpdateNotification() {
   const queryClient = useQueryClient()
@@ -46,7 +46,7 @@ export function UpdateNotification() {
   // Log version check errors for debugging
   useEffect(() => {
     if (versionInfo?.error) {
-      console.debug('[radar] Version check failed:', versionInfo.error)
+      console.debug('[cmdb-kubeexplorer] Version check failed:', versionInfo.error)
     }
   }, [versionInfo?.error])
 
@@ -89,7 +89,7 @@ export function UpdateNotification() {
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
       } catch (err) {
-        console.debug('[radar] Clipboard write failed:', err)
+        console.debug('[cmdb-kubeexplorer] Clipboard write failed:', err)
         setCopyFailed(true)
         setTimeout(() => setCopyFailed(false), 2000)
       }
@@ -120,7 +120,7 @@ export function UpdateNotification() {
             <UpdateTitle state={effectiveState} />
           </h4>
           <p className="text-xs text-theme-text-secondary mt-1">
-            Radar {versionInfo.latestVersion} is available.{' '}
+            CMDB KubeExplorer {versionInfo.latestVersion} is available.{' '}
             You're on {versionInfo.currentVersion}.
           </p>
 

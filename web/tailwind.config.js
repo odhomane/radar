@@ -41,8 +41,8 @@ export default {
           'muted': 'var(--accent-muted)',
           'text': 'var(--accent-text)',
         },
-        // Skyhook brand colors
-        'skyhook': {
+        // CMDB brand colors
+        'cmdb': {
           DEFAULT: '#2D7AFF',
           50: '#E6F0FF',
           100: '#CCE0FF',

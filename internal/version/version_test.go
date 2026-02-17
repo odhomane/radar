@@ -46,9 +46,9 @@ func TestGetUpdateCommand(t *testing.T) {
 		method InstallMethod
 		want   string
 	}{
-		{InstallHomebrew, "brew upgrade skyhook-io/tap/radar"},
-		{InstallKrew, "kubectl krew upgrade radar"},
-		{InstallScoop, "scoop update radar"},
+		{InstallHomebrew, "brew upgrade cmdb/tap/cmdb-kubeexplorer"},
+		{InstallKrew, "kubectl krew upgrade cmdb-kubeexplorer"},
+		{InstallScoop, "scoop update cmdb-kubeexplorer"},
 		{InstallDirect, ""},
 		{InstallDesktop, ""},
 		{InstallMethod("unknown"), ""},
@@ -70,16 +70,16 @@ func TestDetectInstallMethodFromPath(t *testing.T) {
 		path string
 		want InstallMethod
 	}{
-		{"homebrew mac arm", "/opt/homebrew/bin/radar", InstallHomebrew},
-		{"homebrew cellar", "/usr/local/Cellar/radar/1.0/bin/radar", InstallHomebrew},
-		{"linuxbrew", "/home/linuxbrew/.linuxbrew/bin/radar", InstallHomebrew},
-		{"krew", "/home/user/.krew/store/radar/v1.0/radar", InstallKrew},
-		{"scoop unix", "/home/user/scoop/apps/radar/current/radar", InstallScoop},
-		{"scoop windows", `C:\Users\user\scoop\apps\radar\current\radar.exe`, InstallScoop},
-		{"direct /usr/local/bin", "/usr/local/bin/radar", InstallDirect},
-		{"direct home", "/home/user/bin/radar", InstallDirect},
-		{"direct tmp", "/tmp/radar", InstallDirect},
-		{"mixed case Homebrew", "/opt/Homebrew/bin/radar", InstallHomebrew},
+		{"homebrew mac arm", "/opt/homebrew/bin/cmdb-kubeexplorer", InstallHomebrew},
+		{"homebrew cellar", "/usr/local/Cellar/cmdb-kubeexplorer/1.0/bin/cmdb-kubeexplorer", InstallHomebrew},
+		{"linuxbrew", "/home/linuxbrew/.linuxbrew/bin/cmdb-kubeexplorer", InstallHomebrew},
+		{"krew", "/home/user/.krew/store/cmdb-kubeexplorer/v1.0/cmdb-kubeexplorer", InstallKrew},
+		{"scoop unix", "/home/user/scoop/apps/cmdb-kubeexplorer/current/cmdb-kubeexplorer", InstallScoop},
+		{"scoop windows", `C:\Users\user\scoop\apps\cmdb-kubeexplorer\current\cmdb-kubeexplorer.exe`, InstallScoop},
+		{"direct /usr/local/bin", "/usr/local/bin/cmdb-kubeexplorer", InstallDirect},
+		{"direct home", "/home/user/bin/cmdb-kubeexplorer", InstallDirect},
+		{"direct tmp", "/tmp/cmdb-kubeexplorer", InstallDirect},
+		{"mixed case Homebrew", "/opt/Homebrew/bin/cmdb-kubeexplorer", InstallHomebrew},
 	}
 
 	for _, tt := range tests {

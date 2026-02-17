@@ -95,7 +95,7 @@ function KubectlCommandDialog({
 
         <div className="p-4 space-y-3">
           <p className="text-sm text-theme-text-secondary">
-            Radar is running in-cluster, so port forwarding must be run from your local terminal.
+            CMDB KubeExplorer is running in-cluster, so port forwarding must be run from your local terminal.
           </p>
           <div className="flex items-center gap-2 text-sm text-theme-text-secondary">
             <label htmlFor="local-port">Local port:</label>

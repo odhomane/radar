@@ -1,9 +1,9 @@
-# Multi-stage Dockerfile for Radar
+# Multi-stage Dockerfile for CMDB KubeExplorer
 #
 # Usage:
 #   Full build (default):  docker build .
 #   Release (pre-built):   docker build --target release .
-#                          (requires radar-amd64/radar-arm64 binaries in context)
+#                          (requires cmdb-kubeexplorer-amd64/cmdb-kubeexplorer-arm64 binaries in context)
 
 # =============================================================================
 # Stage 1: Build frontend
@@ -51,41 +51,41 @@ ARG TARGETARCH=amd64
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -ldflags "-s -w -X main.version=${VERSION}" \
-    -o /radar ./cmd/explorer
+    -o /cmdb-kubeexplorer ./cmd/explorer
 
 # =============================================================================
 # Stage 3a: Full build (default) - copies from build stages
 # =============================================================================
 FROM gcr.io/distroless/static-debian12:nonroot AS full
 
-LABEL org.opencontainers.image.title="Radar"
+LABEL org.opencontainers.image.title="CMDB KubeExplorer"
 LABEL org.opencontainers.image.description="Modern Kubernetes visibility — topology, traffic, and Helm management"
-LABEL org.opencontainers.image.source="https://github.com/skyhook-io/radar"
-LABEL org.opencontainers.image.vendor="Skyhook"
+LABEL org.opencontainers.image.source="https://github.com/cmdb/kubeexplorer"
+LABEL org.opencontainers.image.vendor="CMDB"
 
-COPY --from=backend-builder /radar /radar
+COPY --from=backend-builder /cmdb-kubeexplorer /cmdb-kubeexplorer
 
 EXPOSE 9280
 USER nonroot:nonroot
-ENTRYPOINT ["/radar"]
+ENTRYPOINT ["/cmdb-kubeexplorer"]
 CMD ["--no-browser"]
 
 # =============================================================================
 # Stage 3b: Release build - uses pre-built binaries from goreleaser
 # Much faster for multi-arch since no QEMU compilation needed
-# Requires: radar-amd64 and radar-arm64 in build context
+# Requires: cmdb-kubeexplorer-amd64 and cmdb-kubeexplorer-arm64 in build context
 # =============================================================================
 FROM gcr.io/distroless/static-debian12:nonroot AS release
 
-LABEL org.opencontainers.image.title="Radar"
+LABEL org.opencontainers.image.title="CMDB KubeExplorer"
 LABEL org.opencontainers.image.description="Modern Kubernetes visibility — topology, traffic, and Helm management"
-LABEL org.opencontainers.image.source="https://github.com/skyhook-io/radar"
-LABEL org.opencontainers.image.vendor="Skyhook"
+LABEL org.opencontainers.image.source="https://github.com/cmdb/kubeexplorer"
+LABEL org.opencontainers.image.vendor="CMDB"
 
 ARG TARGETARCH
-COPY radar-${TARGETARCH} /radar
+COPY cmdb-kubeexplorer-${TARGETARCH} /cmdb-kubeexplorer
 
 EXPOSE 9280
 USER nonroot:nonroot
-ENTRYPOINT ["/radar"]
+ENTRYPOINT ["/cmdb-kubeexplorer"]
 CMD ["--no-browser"]

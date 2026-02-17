@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-# Radar Release Script
+# CMDB KubeExplorer Release Script
 # Usage: ./scripts/release.sh
 
-readonly REPO="https://github.com/skyhook-io/radar"
-readonly DOCKER_REPO="ghcr.io/skyhook-io/radar"
+readonly REPO="https://github.com/cmdb/kubeexplorer"
+readonly DOCKER_REPO="ghcr.io/cmdb/kubeexplorer"
 
 # Colors
 RED='\033[0;31m'
@@ -183,7 +183,7 @@ release_local() {
 main() {
   echo ""
   echo -e "${BLUE}=========================================="
-  echo "  Radar Release"
+  echo "  CMDB KubeExplorer Release"
   echo -e "==========================================${NC}"
 
   get_version

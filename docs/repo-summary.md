@@ -1,6 +1,6 @@
-# Radar Repository Summary
+# CMDB KubeExplorer Repository Summary
 
-Radar is a local-first Kubernetes observability tool that runs as a single binary (CLI plugin or standalone) and serves a browser UI for cluster visibility and operations.
+CMDB KubeExplorer is a local-first Kubernetes observability tool that runs as a single binary (CLI plugin or standalone) and serves a browser UI for cluster visibility and operations.
 
 ## What this repo contains
 

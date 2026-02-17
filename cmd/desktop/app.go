@@ -4,10 +4,10 @@ import (
 	"context"
 	"log"
 
-	"github.com/skyhook-io/radar/internal/app"
-	"github.com/skyhook-io/radar/internal/k8s"
-	"github.com/skyhook-io/radar/internal/server"
-	"github.com/skyhook-io/radar/internal/timeline"
+	"github.com/cmdb/kubeexplorer/internal/app"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/server"
+	"github.com/cmdb/kubeexplorer/internal/timeline"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -36,7 +36,7 @@ func (a *DesktopApp) domReady(ctx context.Context) {
 	// Update window title with cluster context
 	contextName := k8s.GetContextName()
 	if contextName != "" {
-		wailsRuntime.WindowSetTitle(ctx, "Radar — "+contextName)
+		wailsRuntime.WindowSetTitle(ctx, "CMDB KubeExplorer — "+contextName)
 	}
 }
 

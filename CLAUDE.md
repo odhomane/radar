@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Project Overview
 
-Radar is a modern Kubernetes visibility tool — local-first, no account required, no cloud dependency, fast. It provides topology visualization, event timeline, service traffic maps, resource browsing, and Helm management. Runs as a kubectl plugin (`kubectl-radar`) or standalone binary and opens a web UI in the browser. Open source, free forever. Built by Skyhook.
+CMDB KubeExplorer is a modern Kubernetes visibility tool — local-first, no account required, no cloud dependency, fast. It provides topology visualization, event timeline, service traffic maps, resource browsing, and Helm management. Runs as a kubectl plugin (`kubectl-cmdb-kubeexplorer`) or standalone binary and opens a web UI in the browser. Open source, free forever. Built by CMDB.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ Radar is a modern Kubernetes visibility tool — local-first, no account require
 │                         User's Machine                          │
 │                                                                 │
 │   ┌─────────────────┐                   ┌───────────────────┐  │
-│   │    Browser      │◄── HTTP/SSE/WS ──►│  Radar Binary     │  │
+│   │    Browser      │◄── HTTP/SSE/WS ──►│  CMDB KubeExplorer Binary     │  │
 │   │  (React + UI)   │                   │  (Go + Embedded)  │  │
 │   └─────────────────┘                   └───────────────────┘  │
 │                                                  │              │
@@ -33,7 +33,7 @@ Radar is a modern Kubernetes visibility tool — local-first, no account require
 ## Project Structure
 
 ```
-radar/
+cmdb-kubeexplorer/
 ├── cmd/explorer/              # CLI entry point (main.go)
 ├── internal/
 │   ├── helm/                  # Helm client integration
@@ -83,7 +83,7 @@ radar/
 ### Backend (Go)
 ```bash
 # Build binary
-go build -o radar ./cmd/explorer
+go build -o cmdb-kubeexplorer ./cmd/explorer
 
 # Run in dev mode (serves frontend from filesystem, not embedded)
 go run ./cmd/explorer --dev
@@ -118,7 +118,7 @@ npm run tsc
 make build
 
 # Run the complete application
-./radar
+./cmdb-kubeexplorer
 
 # Other Makefile targets
 make frontend       # Build frontend only
@@ -143,7 +143,7 @@ make docker         # Build Docker image
 --dev               Development mode (serve frontend from web/dist instead of embedded)
 --version           Show version and exit
 --timeline-storage  Timeline storage backend: memory or sqlite (default: memory)
---timeline-db       Path to timeline SQLite database (default: ~/.radar/timeline.db)
+--timeline-db       Path to timeline SQLite database (default: ~/.cmdb-kubeexplorer/timeline.db)
 --history-limit     Maximum number of events to retain in timeline (default: 10000)
 ```
 
@@ -245,7 +245,7 @@ DELETE /api/helm/releases/{ns}/{name}              # Uninstall release
 - GitOps nodes: Application (ArgoCD), Kustomization, HelmRelease, GitRepository (FluxCD)
   - Connected to managed resources via status.resources (ArgoCD) or status.inventory (FluxCD Kustomization)
   - HelmRelease connects to resources via FluxCD labels (`helm.toolkit.fluxcd.io/name`) or standard Helm label (`app.kubernetes.io/instance`)
-  - **Single-cluster limitation**: Radar only shows connections when GitOps controller and managed resources are in the same cluster. ArgoCD commonly deploys to remote clusters (hub-spoke model), so Application→resource edges won't appear when connected to the ArgoCD cluster. FluxCD typically deploys to its own cluster, so connections usually work.
+  - **Single-cluster limitation**: CMDB KubeExplorer only shows connections when GitOps controller and managed resources are in the same cluster. ArgoCD commonly deploys to remote clusters (hub-spoke model), so Application→resource edges won't appear when connected to the ArgoCD cluster. FluxCD typically deploys to its own cluster, so connections usually work.
 
 ### Timeline
 - In-memory or SQLite storage for event tracking (`--timeline-storage`)

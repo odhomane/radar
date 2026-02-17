@@ -55,7 +55,7 @@ func (h *RedirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 <body>
 <div class="loader">
   <div class="spinner"></div>
-  <div>Starting Radar...</div>
+  <div>Starting CMDB KubeExplorer...</div>
 </div>
 </body>
 </html>`, h.serverAddr)

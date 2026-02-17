@@ -2,9 +2,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "radar.fullname" . }}
+  name: {{ include "cmdb-kubeexplorer.fullname" . }}
   labels:
-    {{- include "radar.labels" . | nindent 4 }}
+    {{- include "cmdb-kubeexplorer.labels" . | nindent 4 }}
 rules:
   # Core resources (read-only)
   - apiGroups: [""]

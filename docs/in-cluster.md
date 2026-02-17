@@ -1,19 +1,19 @@
 # In-Cluster Deployment
 
-Deploy Radar to your Kubernetes cluster for shared team access.
+Deploy CMDB KubeExplorer to your Kubernetes cluster for shared team access.
 
-> **Note:** This guide covers deploying Radar as a pod in your cluster. If you're running Radar locally but need to understand cluster connection behavior (e.g., using `KUBECONFIG` to override in-cluster detection), see the [Configuration Guide](configuration.md).
+> **Note:** This guide covers deploying CMDB KubeExplorer as a pod in your cluster. If you're running CMDB KubeExplorer locally but need to understand cluster connection behavior (e.g., using `KUBECONFIG` to override in-cluster detection), see the [Configuration Guide](configuration.md).
 
 ## Quick Start
 
 ```bash
-helm repo add skyhook https://skyhook-io.github.io/helm-charts
-helm install radar skyhook/radar -n radar --create-namespace
+helm repo add cmdb https://cmdb.github.io/helm-charts
+helm install cmdb-kubeexplorer cmdb/cmdb-kubeexplorer -n cmdb-kubeexplorer --create-namespace
 ```
 
 Access via port-forward:
 ```bash
-kubectl port-forward svc/radar 9280:9280 -n radar
+kubectl port-forward svc/cmdb-kubeexplorer 9280:9280 -n cmdb-kubeexplorer
 open http://localhost:9280
 ```
 
@@ -27,15 +27,15 @@ ingress:
   enabled: true
   className: nginx
   hosts:
-    - host: radar.your-domain.com
+    - host: cmdb-kubeexplorer.your-domain.com
       paths:
         - path: /
           pathType: Prefix
 ```
 
 ```bash
-helm upgrade --install radar skyhook/radar \
-  -n radar -f values.yaml
+helm upgrade --install cmdb-kubeexplorer cmdb/cmdb-kubeexplorer \
+  -n cmdb-kubeexplorer -f values.yaml
 ```
 
 ### With Basic Authentication
@@ -48,9 +48,9 @@ helm upgrade --install radar skyhook/radar \
    htpasswd -nb admin 'your-password' > auth
 
    # Create the secret
-   kubectl create secret generic radar-basic-auth \
+   kubectl create secret generic cmdb-kubeexplorer-basic-auth \
      --from-file=auth \
-     -n radar
+     -n cmdb-kubeexplorer
 
    rm auth  # Clean up local file
    ```
@@ -63,10 +63,10 @@ helm upgrade --install radar skyhook/radar \
      className: nginx
      annotations:
        nginx.ingress.kubernetes.io/auth-type: basic
-       nginx.ingress.kubernetes.io/auth-secret: radar-basic-auth
-       nginx.ingress.kubernetes.io/auth-realm: "Radar"
+       nginx.ingress.kubernetes.io/auth-secret: cmdb-kubeexplorer-basic-auth
+       nginx.ingress.kubernetes.io/auth-realm: "CMDB KubeExplorer"
      hosts:
-       - host: radar.your-domain.com
+       - host: cmdb-kubeexplorer.your-domain.com
          paths:
            - path: /
              pathType: Prefix
@@ -74,8 +74,8 @@ helm upgrade --install radar skyhook/radar \
 
 3. **Deploy:**
    ```bash
-   helm upgrade --install radar skyhook/radar \
-     -n radar -f values.yaml
+   helm upgrade --install cmdb-kubeexplorer cmdb/cmdb-kubeexplorer \
+     -n cmdb-kubeexplorer -f values.yaml
    ```
 
 ### With TLS (HTTPS)
@@ -90,34 +90,34 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: radar.your-domain.com
+    - host: cmdb-kubeexplorer.your-domain.com
       paths:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: radar-tls
+    - secretName: cmdb-kubeexplorer-tls
       hosts:
-        - radar.your-domain.com
+        - cmdb-kubeexplorer.your-domain.com
 ```
 
 ## DNS Setup
 
 1. **Get your ingress IP:**
    ```bash
-   kubectl get ingress -n radar
+   kubectl get ingress -n cmdb-kubeexplorer
    ```
 
 2. **Create a DNS A record** pointing your domain to the ingress IP.
 
 **Multi-cluster naming convention:**
 ```
-radar.<cluster-name>.<domain>
+cmdb-kubeexplorer.<cluster-name>.<domain>
 ```
-Example: `radar.prod-us-east1.example.com`
+Example: `cmdb-kubeexplorer.prod-us-east1.example.com`
 
 ## RBAC
 
-Radar uses its ServiceAccount to access the Kubernetes API. The Helm chart creates a ClusterRole with **read-only access** to common resources by default:
+CMDB KubeExplorer uses its ServiceAccount to access the Kubernetes API. The Helm chart creates a ClusterRole with **read-only access** to common resources by default:
 
 - Pods, Services, ConfigMaps, Events, Namespaces, Nodes, ServiceAccounts, Endpoints
 - Deployments, DaemonSets, StatefulSets, ReplicaSets
@@ -148,13 +148,13 @@ rbac:
 
 ### Graceful RBAC Degradation
 
-Radar works with whatever permissions are available — it does not require full cluster-admin access. At startup, Radar checks which resource types are accessible using `SelfSubjectAccessReview` and only starts informers for permitted resources.
+CMDB KubeExplorer works with whatever permissions are available — it does not require full cluster-admin access. At startup, CMDB KubeExplorer checks which resource types are accessible using `SelfSubjectAccessReview` and only starts informers for permitted resources.
 
 **What this means in practice:**
 
-- If your ServiceAccount can only list Pods and Services, Radar shows those — other resource types display an "Access Restricted" message
+- If your ServiceAccount can only list Pods and Services, CMDB KubeExplorer shows those — other resource types display an "Access Restricted" message
 - Cluster-scoped resources (Nodes, Namespaces) require a ClusterRole; if unavailable, those sections are gracefully hidden
-- For namespace-scoped ServiceAccounts (RoleBinding instead of ClusterRoleBinding), Radar automatically detects this and scopes its informers to the permitted namespace
+- For namespace-scoped ServiceAccounts (RoleBinding instead of ClusterRoleBinding), CMDB KubeExplorer automatically detects this and scopes its informers to the permitted namespace
 - The UI clearly indicates which resources are restricted vs simply empty
 
 **Example: Namespace-scoped deployment**
@@ -164,7 +164,7 @@ Radar works with whatever permissions are available — it does not require full
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: radar-viewer
+  name: cmdb-kubeexplorer-viewer
   namespace: my-team
 rules:
   - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
@@ -179,39 +179,39 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: radar-viewer
+  name: cmdb-kubeexplorer-viewer
   namespace: my-team
 subjects:
   - kind: ServiceAccount
-    name: radar
-    namespace: radar
+    name: cmdb-kubeexplorer
+    namespace: cmdb-kubeexplorer
 roleRef:
   kind: Role
-  name: radar-viewer
+  name: cmdb-kubeexplorer-viewer
   apiGroup: rbac.authorization.k8s.io
 ```
 
-Set `rbac.create: false` in the Helm values and apply the custom Role/RoleBinding above. Radar will detect the namespace-scoped permissions and work within `my-team` only.
+Set `rbac.create: false` in the Helm values and apply the custom Role/RoleBinding above. CMDB KubeExplorer will detect the namespace-scoped permissions and work within `my-team` only.
 
 ## Security Considerations
 
-When deploying Radar in-cluster:
+When deploying CMDB KubeExplorer in-cluster:
 
 1. **Authentication**: Always enable authentication when exposing via ingress. Use basic auth (shown above) or an auth proxy like oauth2-proxy.
 
-2. **RBAC scope**: The default ClusterRole grants cluster-wide read access. For namespace-restricted access, set `rbac.create: false` and create a custom Role/RoleBinding. Radar will gracefully adapt to the available permissions.
+2. **RBAC scope**: The default ClusterRole grants cluster-wide read access. For namespace-restricted access, set `rbac.create: false` and create a custom Role/RoleBinding. CMDB KubeExplorer will gracefully adapt to the available permissions.
 
 3. **Privileged features**: Terminal (`podExec`) and port forwarding grant significant access. Only enable these in trusted environments or when using per-user authentication.
 
-4. **Network access**: Consider using NetworkPolicies to restrict which pods can reach Radar.
+4. **Network access**: Consider using NetworkPolicies to restrict which pods can reach CMDB KubeExplorer.
 
 ## Configuration Reference
 
-See [Helm Chart README](../deploy/helm/radar/README.md) for all available values.
+See [Helm Chart README](../deploy/helm/cmdb-kubeexplorer/README.md) for all available values.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `image.repository` | Container image | `ghcr.io/skyhook-io/radar` |
+| `image.repository` | Container image | `ghcr.io/cmdb/kubeexplorer` |
 | `image.tag` | Image tag | Chart appVersion |
 | `ingress.enabled` | Enable ingress | `false` |
 | `ingress.className` | Ingress class | `""` |
@@ -227,14 +227,14 @@ See [Helm Chart README](../deploy/helm/radar/README.md) for all available values
 ### Pod not starting
 
 ```bash
-kubectl logs -n radar -l app.kubernetes.io/name=radar
-kubectl describe pod -n radar -l app.kubernetes.io/name=radar
+kubectl logs -n cmdb-kubeexplorer -l app.kubernetes.io/name=cmdb-kubeexplorer
+kubectl describe pod -n cmdb-kubeexplorer -l app.kubernetes.io/name=cmdb-kubeexplorer
 ```
 
 ### Ingress not working
 
 ```bash
-kubectl get ingress -n radar -o yaml
+kubectl get ingress -n cmdb-kubeexplorer -o yaml
 kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
 ```
 
@@ -242,20 +242,20 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
 
 Verify the secret format:
 ```bash
-kubectl get secret radar-basic-auth -n radar -o jsonpath='{.data.auth}' | base64 -d
+kubectl get secret cmdb-kubeexplorer-basic-auth -n cmdb-kubeexplorer -o jsonpath='{.data.auth}' | base64 -d
 # Should show: username:$apr1$...
 ```
 
 ## Upgrading
 
 ```bash
-helm repo update skyhook
-helm upgrade radar skyhook/radar -n radar -f values.yaml
+helm repo update cmdb
+helm upgrade cmdb-kubeexplorer cmdb/cmdb-kubeexplorer -n cmdb-kubeexplorer -f values.yaml
 ```
 
 ## Uninstalling
 
 ```bash
-helm uninstall radar -n radar
-kubectl delete namespace radar
+helm uninstall cmdb-kubeexplorer -n cmdb-kubeexplorer
+kubectl delete namespace cmdb-kubeexplorer
 ```

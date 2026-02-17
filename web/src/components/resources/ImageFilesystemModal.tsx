@@ -459,7 +459,7 @@ function AuthenticationHelp({ image, registryType, onRetry }: AuthenticationHelp
 
       {/* Explanation */}
       <p className="text-xs text-theme-text-tertiary text-center max-w-md mb-6">
-        Radar uses your local Docker credentials (<span className="font-mono">~/.docker/config.json</span>).
+        CMDB KubeExplorer uses your local Docker credentials (<span className="font-mono">~/.docker/config.json</span>).
         Run the command above in your terminal, then click Retry.
       </p>
 

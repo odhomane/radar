@@ -21,11 +21,11 @@ import (
 )
 
 const (
-	maxFileCount       = 50000             // Safety limit for file count
-	maxTotalSize       = 5 << 30           // 5GB safety limit
-	layerCacheTTL      = 5 * time.Minute   // TTL for cached layers on disk
-	maxCachedImages    = 5                 // Max number of images to cache on disk
-	cacheSubdir        = "radar-image-cache"
+	maxFileCount    = 50000           // Safety limit for file count
+	maxTotalSize    = 5 << 30         // 5GB safety limit
+	layerCacheTTL   = 5 * time.Minute // TTL for cached layers on disk
+	maxCachedImages = 5               // Max number of images to cache on disk
+	cacheSubdir     = "cmdb-kubeexplorer-image-cache"
 )
 
 // layerCacheMetadata stores metadata about cached image layers

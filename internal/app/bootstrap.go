@@ -10,16 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skyhook-io/radar/internal/helm"
-	"github.com/skyhook-io/radar/internal/k8s"
-	"github.com/skyhook-io/radar/internal/server"
-	"github.com/skyhook-io/radar/internal/static"
-	"github.com/skyhook-io/radar/internal/timeline"
-	"github.com/skyhook-io/radar/internal/traffic"
-	versionpkg "github.com/skyhook-io/radar/internal/version"
+	"github.com/cmdb/kubeexplorer/internal/helm"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/server"
+	"github.com/cmdb/kubeexplorer/internal/static"
+	"github.com/cmdb/kubeexplorer/internal/timeline"
+	"github.com/cmdb/kubeexplorer/internal/traffic"
+	versionpkg "github.com/cmdb/kubeexplorer/internal/version"
 )
 
-// AppConfig holds all parsed configuration for the Radar application.
+// AppConfig holds all parsed configuration for the CMDB KubeExplorer application.
 type AppConfig struct {
 	Kubeconfig       string
 	KubeconfigDirs   []string
@@ -87,7 +87,7 @@ func BuildTimelineStoreConfig(cfg AppConfig) timeline.StoreConfig {
 		dbPath := cfg.TimelineDBPath
 		if dbPath == "" {
 			homeDir, _ := os.UserHomeDir()
-			dbPath = filepath.Join(homeDir, ".radar", "timeline.db")
+			dbPath = filepath.Join(homeDir, ".cmdb-kubeexplorer", "timeline.db")
 		}
 		storeCfg.Path = dbPath
 	}

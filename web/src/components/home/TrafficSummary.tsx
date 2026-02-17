@@ -13,7 +13,7 @@ interface TrafficSummaryProps {
  */
 function TrafficSchematic() {
   // Service node colors matching the real traffic view
-  const green  = '#22c55e'  // skyhook-connector style
+  const green  = '#22c55e'  // cmdb-connector style
   const blue   = '#3b82f6'  // dev services
   const brown  = '#a3734c'  // staging services
   const teal   = '#14b8a6'  // keda style

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/skyhook-io/radar/internal/k8s"
+	"github.com/cmdb/kubeexplorer/internal/k8s"
 )
 
 // IsForbiddenError checks if an error is a Kubernetes RBAC forbidden error
@@ -677,7 +677,7 @@ func requireHelmWrite(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if !caps.HelmWrite {
 		log.Printf("[helm] Denied %s %s: helmWrite capability not available", r.Method, r.URL.Path)
-		writeError(w, http.StatusForbidden, "Helm write operations require additional RBAC permissions. Set rbac.helm=true in the Radar Helm chart values.")
+		writeError(w, http.StatusForbidden, "Helm write operations require additional RBAC permissions. Set rbac.helm=true in the CMDB KubeExplorer Helm chart values.")
 		return false
 	}
 	return true

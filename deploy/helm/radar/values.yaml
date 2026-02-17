@@ -1,9 +1,9 @@
-# Default values for radar.
+# Default values for cmdb-kubeexplorer.
 
 replicaCount: 1
 
 image:
-  repository: ghcr.io/skyhook-io/radar
+  repository: ghcr.io/cmdb/kubeexplorer
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -126,14 +126,14 @@ ingress:
     # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
   hosts:
-    - host: radar.example.com
+    - host: cmdb-kubeexplorer.example.com
       paths:
         - path: /
           pathType: Prefix
   tls: []
-  #  - secretName: radar-tls
+  #  - secretName: cmdb-kubeexplorer-tls
   #    hosts:
-  #      - radar.example.com
+  #      - cmdb-kubeexplorer.example.com
 
 resources:
   limits:
