@@ -471,7 +471,7 @@ done
 		if msg == "" {
 			msg = err.Error()
 		}
-		return "", nil, fmt.Errorf(msg)
+		return "", nil, fmt.Errorf("%s", msg)
 	}
 
 	currentPath := targetPath
@@ -522,7 +522,7 @@ cat "$f"
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf(msg)
+		return nil, fmt.Errorf("%s", msg)
 	}
 	return stdout.Bytes(), nil
 }
@@ -549,7 +549,7 @@ fi
 		if msg == "" {
 			msg = err.Error()
 		}
-		return "", fmt.Errorf(msg)
+		return "", fmt.Errorf("%s", msg)
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }
@@ -583,7 +583,7 @@ zip -q -r - "$name"
 		if msg == "" {
 			msg = err.Error()
 		}
-		return false, nil, fmt.Errorf(msg)
+		return false, nil, fmt.Errorf("%s", msg)
 	}
 	return true, stdout.Bytes(), nil
 }
@@ -609,7 +609,7 @@ tar -h -C "$parent" -cf - "$name"
 		if msg == "" {
 			msg = err.Error()
 		}
-		return false, nil, fmt.Errorf(msg)
+		return false, nil, fmt.Errorf("%s", msg)
 	}
 
 	tr := tar.NewReader(bytes.NewReader(stdout.Bytes()))

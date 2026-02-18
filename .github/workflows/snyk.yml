@@ -17,6 +17,9 @@ jobs:
   snyk-go:
     name: Snyk Go
     runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SNYK_ORG: ${{ vars.SNYK_ORG }}
     steps:
       - uses: actions/checkout@v6
 
@@ -26,19 +29,28 @@ jobs:
           go-version: '1.22'
 
       - name: Set up Snyk
+        if: env.SNYK_TOKEN != ''
         uses: snyk/actions/setup@master
 
       - name: Snyk test
-        run: snyk test --severity-threshold=high --org=skyhook
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        if: env.SNYK_TOKEN != ''
+        run: |
+          if [ -n "${SNYK_ORG}" ]; then
+            snyk test --severity-threshold=high --org="${SNYK_ORG}"
+          else
+            snyk test --severity-threshold=high
+          fi
         continue-on-error: true
 
       - name: Snyk code test
         id: snyk-code
-        run: snyk code test --sarif-file-output=snyk-code.sarif --org=skyhook
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        if: env.SNYK_TOKEN != ''
+        run: |
+          if [ -n "${SNYK_ORG}" ]; then
+            snyk code test --sarif-file-output=snyk-code.sarif --org="${SNYK_ORG}"
+          else
+            snyk code test --sarif-file-output=snyk-code.sarif
+          fi
         continue-on-error: true
 
       - name: Upload Snyk Code results to GitHub
@@ -47,9 +59,16 @@ jobs:
           sarif_file: snyk-code.sarif
         if: always() && steps.snyk-code.outcome == 'success'
 
+      - name: Snyk skipped notice
+        if: env.SNYK_TOKEN == ''
+        run: echo "SNYK_TOKEN is not configured; skipping Snyk Go scans." >> "$GITHUB_STEP_SUMMARY"
+
   snyk-node:
     name: Snyk Node
     runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SNYK_ORG: ${{ vars.SNYK_ORG }}
     defaults:
       run:
         working-directory: web
@@ -67,18 +86,30 @@ jobs:
         run: npm ci
 
       - name: Set up Snyk
+        if: env.SNYK_TOKEN != ''
         uses: snyk/actions/setup@master
 
       - name: Snyk test
-        run: snyk test --severity-threshold=high --org=skyhook
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        if: env.SNYK_TOKEN != ''
+        run: |
+          if [ -n "${SNYK_ORG}" ]; then
+            snyk test --severity-threshold=high --org="${SNYK_ORG}"
+          else
+            snyk test --severity-threshold=high
+          fi
         working-directory: web
         continue-on-error: true
 
       - name: Snyk monitor
-        run: snyk monitor --org=skyhook
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        if: env.SNYK_TOKEN != '' && github.ref == 'refs/heads/main'
+        run: |
+          if [ -n "${SNYK_ORG}" ]; then
+            snyk monitor --org="${SNYK_ORG}"
+          else
+            snyk monitor
+          fi
         working-directory: web
-        if: github.ref == 'refs/heads/main'
+
+      - name: Snyk skipped notice
+        if: env.SNYK_TOKEN == ''
+        run: echo "SNYK_TOKEN is not configured; skipping Snyk Node scans." >> "$GITHUB_STEP_SUMMARY"
