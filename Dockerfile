@@ -5,6 +5,10 @@
 #   Release (pre-built):   docker build --target release .
 #                          (requires radar-amd64/radar-arm64 binaries in context)
 
+# Buildx automatic platform args with docker-build fallback defaults
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
 # =============================================================================
 # Stage 1: Build frontend
 # =============================================================================
@@ -45,8 +49,8 @@ COPY --from=frontend-builder /app/web/dist internal/static/dist/
 # TARGETOS and TARGETARCH are automatically set by Docker buildx for multi-platform builds
 # Defaults provided for regular docker build (without buildx)
 ARG VERSION=dev
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
@@ -54,9 +58,31 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     -o /radar ./cmd/explorer
 
 # =============================================================================
+# Stage 3: Runtime base with GKE auth plugin
+# =============================================================================
+FROM debian:bookworm-slim AS runtime-base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg && \
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+    gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+    > /etc/apt/sources.list.d/google-cloud-sdk.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    google-cloud-cli \
+    google-cloud-cli-gke-gcloud-auth-plugin && \
+    useradd --uid 65532 --create-home --shell /usr/sbin/nologin nonroot && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# =============================================================================
 # Stage 3a: Full build (default) - copies from build stages
 # =============================================================================
-FROM gcr.io/distroless/static-debian12:nonroot AS full
+FROM runtime-base AS full
 
 LABEL org.opencontainers.image.title="Radar"
 LABEL org.opencontainers.image.description="Modern Kubernetes visibility — topology, traffic, and Helm management"
@@ -75,7 +101,7 @@ CMD ["--no-browser"]
 # Much faster for multi-arch since no QEMU compilation needed
 # Requires: radar-amd64 and radar-arm64 in build context
 # =============================================================================
-FROM gcr.io/distroless/static-debian12:nonroot AS release
+FROM runtime-base AS release
 
 LABEL org.opencontainers.image.title="Radar"
 LABEL org.opencontainers.image.description="Modern Kubernetes visibility — topology, traffic, and Helm management"

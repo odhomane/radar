@@ -14,9 +14,14 @@ services:
       HELM_CACHE_HOME: /tmp/helm/cache
       HELM_CONFIG_HOME: /tmp/helm/config
       HELM_DATA_HOME: /tmp/helm/data
+      # Ensure client-go + exec auth plugin use mounted host config paths
+      KUBECONFIG: /home/nonroot/.kube/config
+      CLOUDSDK_CONFIG: /home/nonroot/.config/gcloud
     volumes:
       # Mount your kubeconfig so Radar can connect to your cluster
       - ${KUBECONFIG_PATH:-${HOME}/.kube/config}:/home/nonroot/.kube/config:ro
+      # Mount gcloud config for GKE exec auth plugin credentials (RW for token refresh)
+      - ${GCLOUD_CONFIG_PATH:-${HOME}/.config/gcloud}:/home/nonroot/.config/gcloud
     read_only: true
     tmpfs:
       - /tmp

@@ -12,6 +12,7 @@ This folder contains a production-friendly Docker Compose setup for Radar with a
 - Exposed port: `8585`
 - Command: `--no-browser --port 8585`
 - Kubeconfig mount: `${HOME}/.kube/config` -> `/home/nonroot/.kube/config:ro`
+- GCloud config mount (for GKE auth): `${HOME}/.config/gcloud` -> `/home/nonroot/.config/gcloud`
 - Runtime hardening:
   - `read_only: true`
   - `tmpfs: /tmp`
@@ -46,6 +47,7 @@ You can override image/tag, container name, port, and kubeconfig path without ed
 - `RADAR_CONTAINER_NAME` (default: `radar`)
 - `RADAR_PORT` (default: `8585`)
 - `KUBECONFIG_PATH` (default: `${HOME}/.kube/config`)
+- `GCLOUD_CONFIG_PATH` (default: `${HOME}/.config/gcloud`)
 
 ## Examples
 
@@ -86,6 +88,7 @@ cd docker
 RADAR_IMAGE=dhomane/radar:0.9.12 \
 RADAR_PORT=9280 \
 KUBECONFIG_PATH=/Users/you/.kube/config \
+GCLOUD_CONFIG_PATH=/Users/you/.config/gcloud \
 docker compose up -d
 ```
 
@@ -97,6 +100,7 @@ Create `docker/.env`:
 RADAR_IMAGE=dhomane/radar:0.9.12
 RADAR_PORT=8585
 KUBECONFIG_PATH=/Users/you/.kube/config
+GCLOUD_CONFIG_PATH=/Users/you/.config/gcloud
 RADAR_CONTAINER_NAME=radar
 ```
 
@@ -146,3 +150,4 @@ docker compose down
   - Check `RADAR_PORT` mapping and `docker compose logs -f radar`.
 - Kubernetes auth failures:
   - Verify the mounted kubeconfig context and credentials are valid on your host.
+  - For GKE, ensure `GCLOUD_CONFIG_PATH` is mounted and writable so token refresh can succeed.

@@ -143,7 +143,10 @@ docker-test: docker
 		-e HELM_CACHE_HOME=/tmp/helm/cache \
 		-e HELM_CONFIG_HOME=/tmp/helm/config \
 		-e HELM_DATA_HOME=/tmp/helm/data \
+		-e KUBECONFIG=/home/nonroot/.kube/config \
+		-e CLOUDSDK_CONFIG=/home/nonroot/.config/gcloud \
 		-v $(HOME)/.kube/config:/home/nonroot/.kube/config:ro \
+		-v $(HOME)/.config/gcloud:/home/nonroot/.config/gcloud \
 		-p 9280:9280 \
 		$(DOCKER_REPO):$(VERSION) --no-browser
 
