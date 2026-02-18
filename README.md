@@ -25,6 +25,32 @@ curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | 
 ```
 [More installation options ↓](#installation)
 
+## Fork Changes vs Upstream
+
+This fork includes the following additions compared to the parent project:
+
+- **Live Pod Filesystem Explorer** from the Pod UI (per container), with file management:
+  - list, upload, download, rename, create folder, delete
+  - faster refresh behavior after delete
+- **Recursive fuzzy filesystem search** (server-side) across directories, not only the current folder.
+- **Path jump from search bar**:
+  - type an absolute path (for example `/opt/app`) and press `Enter` to navigate directly.
+- **Folder download as ZIP**:
+  - directory archive endpoint support
+  - optimized archive path for faster folder downloads
+- **Safer delete workflow**:
+  - first confirmation dialog
+  - second confirmation requiring typing `delete`
+- **Built-in file editor** for eligible files:
+  - Monaco-based editor in modal
+  - syntax highlighting for common file types
+  - save edited content back to the container
+- **Improved write-permission UX** for filesystem upload/save operations (clear permission-denied messaging).
+- **Docker workflow additions**:
+  - compose deployment under `docker/docker-compose.yaml`
+  - detailed compose usage guide in `docker/README.md`
+  - default custom image in compose: `dhomane/radar:0.9.12`
+
 ## Why Radar?
 
 - **Zero install on your cluster** — runs on your laptop, talks to the K8s API directly
@@ -43,6 +69,18 @@ curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | bash
 ```
+
+**Run this fork via Docker Compose (custom image default):**
+```bash
+cd docker
+docker compose up -d
+```
+
+Default compose image in this fork:
+`dhomane/radar:0.9.12`
+
+Detailed examples:
+`docker/README.md`
 
 **Homebrew:**
 ```bash

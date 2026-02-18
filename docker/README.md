@@ -8,7 +8,7 @@ This folder contains a production-friendly Docker Compose setup for Radar with a
 
 ## Default behavior
 
-- Image: `ghcr.io/skyhook-io/radar:latest`
+- Image: `dhomane/radar:0.9.12`
 - Exposed port: `8585`
 - Command: `--no-browser --port 8585`
 - Kubeconfig mount: `${HOME}/.kube/config` -> `/home/nonroot/.kube/config:ro`
@@ -42,21 +42,28 @@ docker compose down
 
 You can override image/tag, container name, port, and kubeconfig path without editing YAML.
 
-- `RADAR_IMAGE` (default: `ghcr.io/skyhook-io/radar:latest`)
+- `RADAR_IMAGE` (default: `dhomane/radar:0.9.12`)
 - `RADAR_CONTAINER_NAME` (default: `radar`)
 - `RADAR_PORT` (default: `8585`)
 - `KUBECONFIG_PATH` (default: `${HOME}/.kube/config`)
 
 ## Examples
 
-### 1) Use your Docker Hub image/tag
+### 1) Start directly with your default custom image/tag
 
 ```bash
 cd docker
-RADAR_IMAGE=dhomane/radar:0.9.12 docker compose up -d
+docker compose up -d
 ```
 
-### 2) Use a custom host port
+### 2) Override image tag
+
+```bash
+cd docker
+RADAR_IMAGE=dhomane/radar:latest docker compose up -d
+```
+
+### 3) Use a custom host port
 
 ```bash
 cd docker
@@ -65,14 +72,14 @@ RADAR_PORT=9280 docker compose up -d
 
 Open: [http://localhost:9280](http://localhost:9280)
 
-### 3) Use kubeconfig from a custom path
+### 4) Use kubeconfig from a custom path
 
 ```bash
 cd docker
 KUBECONFIG_PATH=/path/to/kubeconfig docker compose up -d
 ```
 
-### 4) Combine multiple overrides
+### 5) Combine multiple overrides
 
 ```bash
 cd docker
@@ -82,7 +89,7 @@ KUBECONFIG_PATH=/Users/you/.kube/config \
 docker compose up -d
 ```
 
-### 5) Keep overrides in a `.env` file
+### 6) Keep overrides in a `.env` file
 
 Create `docker/.env`:
 
