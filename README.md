@@ -49,7 +49,10 @@ This fork includes the following additions compared to the parent project:
 - **Docker workflow additions**:
   - compose deployment under `docker/docker-compose.yaml`
   - detailed compose usage guide in `docker/README.md`
-  - default custom image in compose: `dhomane/radar:0.9.12`
+  - default custom image in compose: `ghcr.io/odhomane/radar:latest`
+  - fork automation workflows:
+    - `.github/workflows/upstream-sync.yml` (daily upstream merge)
+    - `.github/workflows/ghcr-image.yml` (auto GHCR multi-arch image publish on `main`)
 
 ## Why Radar?
 
@@ -77,10 +80,28 @@ docker compose up -d
 ```
 
 Default compose image in this fork:
-`dhomane/radar:0.9.12`
+`ghcr.io/odhomane/radar:latest`
 
 Detailed examples:
 `docker/README.md`
+
+## Fork Update Automation (Upstream + GHCR)
+
+This fork is configured to keep custom features while continuously receiving upstream updates:
+
+- **Upstream sync workflow**: `/Users/odhomane/Projects/radar/.github/workflows/upstream-sync.yml`
+  - Runs daily (and manually)
+  - Merges `skyhook-io/radar:main` into your `main` using a merge commit
+  - Preserves your fork-only commits/features
+- **GHCR image workflow**: `/Users/odhomane/Projects/radar/.github/workflows/ghcr-image.yml`
+  - Runs on every push to `main` (including upstream sync merges)
+  - Publishes multi-arch image to:
+    - `ghcr.io/odhomane/radar:latest`
+    - `ghcr.io/odhomane/radar:main`
+    - `ghcr.io/odhomane/radar:sha-<commit>`
+
+Prerequisite:
+- In your GitHub repo settings, allow workflow permissions to write packages and contents (for GHCR push and sync push).
 
 **Homebrew:**
 ```bash

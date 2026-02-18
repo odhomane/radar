@@ -8,7 +8,7 @@ This folder contains a production-friendly Docker Compose setup for Radar with a
 
 ## Default behavior
 
-- Image: `dhomane/radar:0.9.12`
+- Image: `ghcr.io/odhomane/radar:latest`
 - Exposed port: `8585`
 - Command: `--no-browser --port 8585`
 - Kubeconfig mount: `${HOME}/.kube/config` -> `/home/nonroot/.kube/config:ro`
@@ -43,7 +43,7 @@ docker compose down
 
 You can override image/tag, container name, port, and kubeconfig path without editing YAML.
 
-- `RADAR_IMAGE` (default: `dhomane/radar:0.9.12`)
+- `RADAR_IMAGE` (default: `ghcr.io/odhomane/radar:latest`)
 - `RADAR_CONTAINER_NAME` (default: `radar`)
 - `RADAR_PORT` (default: `8585`)
 - `KUBECONFIG_PATH` (default: `${HOME}/.kube/config`)
@@ -62,7 +62,7 @@ docker compose up -d
 
 ```bash
 cd docker
-RADAR_IMAGE=dhomane/radar:latest docker compose up -d
+RADAR_IMAGE=ghcr.io/odhomane/radar:latest docker compose up -d
 ```
 
 ### 3) Use a custom host port
@@ -85,7 +85,7 @@ KUBECONFIG_PATH=/path/to/kubeconfig docker compose up -d
 
 ```bash
 cd docker
-RADAR_IMAGE=dhomane/radar:0.9.12 \
+RADAR_IMAGE=ghcr.io/odhomane/radar:latest \
 RADAR_PORT=9280 \
 KUBECONFIG_PATH=/Users/you/.kube/config \
 GCLOUD_CONFIG_PATH=/Users/you/.config/gcloud \
@@ -97,7 +97,7 @@ docker compose up -d
 Create `docker/.env`:
 
 ```dotenv
-RADAR_IMAGE=dhomane/radar:0.9.12
+RADAR_IMAGE=ghcr.io/odhomane/radar:latest
 RADAR_PORT=8585
 KUBECONFIG_PATH=/Users/you/.kube/config
 GCLOUD_CONFIG_PATH=/Users/you/.config/gcloud

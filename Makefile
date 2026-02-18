@@ -4,7 +4,7 @@
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X main.version=$(VERSION)
-DOCKER_REPO ?= ghcr.io/skyhook-io/radar
+DOCKER_REPO ?= ghcr.io/odhomane/radar
 RADAR_FLAGS ?=
 
 ## Build targets

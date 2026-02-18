@@ -1,6 +1,6 @@
 services:
   radar:
-    image: ${RADAR_IMAGE:-dhomane/radar:0.9.12}
+    image: ${RADAR_IMAGE:-ghcr.io/odhomane/radar:latest}
     container_name: ${RADAR_CONTAINER_NAME:-radar}
     restart: unless-stopped
     command:

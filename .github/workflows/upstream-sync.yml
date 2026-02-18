@@ -1,0 +1,72 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Upstream branch/tag to merge (default: main)"
+        required: false
+        default: "main"
+      dry_run:
+        description: "Preview only (no push)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote and fetch
+        run: |
+          git remote add upstream https://github.com/skyhook-io/radar.git
+          git fetch upstream --tags
+
+      - name: Merge upstream into main
+        id: merge
+        env:
+          UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'main' }}
+        run: |
+          set -euo pipefail
+          BEFORE="$(git rev-parse HEAD)"
+          git merge --no-ff --no-edit "upstream/${UPSTREAM_REF}" || {
+            echo "merge_conflict=true" >> "$GITHUB_OUTPUT"
+            echo "Merge conflict while syncing upstream/${UPSTREAM_REF}" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          AFTER="$(git rev-parse HEAD)"
+
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up-to-date with upstream/${UPSTREAM_REF}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Merged upstream/${UPSTREAM_REF}" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Before: \`$BEFORE\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- After:  \`$AFTER\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Push updated main
+        if: steps.merge.outputs.changed == 'true' && github.event.inputs.dry_run != 'true'
+        run: git push origin HEAD:main
+
+      - name: Dry run note
+        if: steps.merge.outputs.changed == 'true' && github.event.inputs.dry_run == 'true'
+        run: echo "Dry run enabled; merge commit not pushed." >> "$GITHUB_STEP_SUMMARY"
