@@ -45,11 +45,54 @@ jobs:
         run: |
           set -euo pipefail
           BEFORE="$(git rev-parse HEAD)"
-          git merge --no-ff --no-edit "upstream/${UPSTREAM_REF}" || {
-            echo "merge_conflict=true" >> "$GITHUB_OUTPUT"
-            echo "Merge conflict while syncing upstream/${UPSTREAM_REF}" >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          }
+
+          if ! git merge --no-ff --no-edit "upstream/${UPSTREAM_REF}"; then
+            echo "Merge reported conflicts; attempting allowlisted auto-resolution." >> "$GITHUB_STEP_SUMMARY"
+
+            mapfile -t CONFLICTED < <(git diff --name-only --diff-filter=U | sort -u)
+            if [ "${#CONFLICTED[@]}" -eq 0 ]; then
+              echo "merge_conflict=true" >> "$GITHUB_OUTPUT"
+              echo "Merge failed, but no conflicted files were detected." >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+
+            UNRESOLVED=()
+            for file in "${CONFLICTED[@]}"; do
+              case "$file" in
+                Dockerfile)
+                  git checkout --ours -- "$file"
+                  git add "$file"
+                  echo "- Auto-resolved \`$file\` using \`ours\`" >> "$GITHUB_STEP_SUMMARY"
+                  ;;
+                web/src/components/resources/renderers/PodRenderer.tsx)
+                  git checkout --ours -- "$file"
+                  git add "$file"
+                  echo "- Auto-resolved \`$file\` using \`ours\`" >> "$GITHUB_STEP_SUMMARY"
+                  ;;
+                *)
+                  UNRESOLVED+=("$file")
+                  ;;
+              esac
+            done
+
+            if [ "${#UNRESOLVED[@]}" -gt 0 ]; then
+              echo "merge_conflict=true" >> "$GITHUB_OUTPUT"
+              echo "Merge conflict includes unallowlisted files:" >> "$GITHUB_STEP_SUMMARY"
+              for file in "${UNRESOLVED[@]}"; do
+                echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
+              done
+              exit 1
+            fi
+
+            if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+              echo "merge_conflict=true" >> "$GITHUB_OUTPUT"
+              echo "Auto-resolution did not clear all conflicts." >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+
+            git commit --no-edit
+          fi
+
           AFTER="$(git rev-parse HEAD)"
 
           if [ "$BEFORE" = "$AFTER" ]; then
