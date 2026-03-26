@@ -12,7 +12,7 @@ ARG TARGETARCH=amd64
 # =============================================================================
 # Stage 1: Build frontend
 # =============================================================================
-FROM node:20-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
 
 WORKDIR /app/web
 
@@ -27,7 +27,7 @@ RUN npm run build
 # =============================================================================
 # Stage 2: Build Go backend
 # =============================================================================
-FROM golang:1.25-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates
@@ -60,7 +60,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 # =============================================================================
 # Stage 3: Runtime base with GKE auth plugin
 # =============================================================================
-FROM debian:bookworm-slim AS runtime-base
+FROM --platform=$TARGETPLATFORM debian:bookworm-slim AS runtime-base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -82,7 +82,7 @@ ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 # =============================================================================
 # Stage 3a: Full build (default) - copies from build stages
 # =============================================================================
-FROM runtime-base AS full
+FROM --platform=$TARGETPLATFORM runtime-base AS full
 
 LABEL org.opencontainers.image.title="Radar"
 LABEL org.opencontainers.image.description="Modern Kubernetes visibility — topology, traffic, and Helm management"
@@ -101,7 +101,7 @@ CMD ["--no-browser"]
 # Much faster for multi-arch since no QEMU compilation needed
 # Requires: radar-amd64 and radar-arm64 in build context
 # =============================================================================
-FROM runtime-base AS release
+FROM --platform=$TARGETPLATFORM runtime-base AS release
 
 LABEL org.opencontainers.image.title="Radar"
 LABEL org.opencontainers.image.description="Modern Kubernetes visibility — topology, traffic, and Helm management"
