@@ -77,6 +77,62 @@ jobs:
             type=ref,event=branch
             type=sha,prefix=sha-
 
+      - name: Docker metadata (x64)
+        id: meta_x64
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
+            suffix=-x64,onlatest=true
+          tags: |
+            type=raw,value=x64,enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,prefix=sha-
+
+      - name: Docker metadata (arm64)
+        id: meta_arm64
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
+            suffix=-arm64,onlatest=true
+          tags: |
+            type=raw,value=arm64,enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,prefix=sha-
+
+      - name: Build and push (x64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: release
+          platforms: linux/amd64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ github.sha }}
+          tags: ${{ steps.meta_x64.outputs.tags }}
+          labels: ${{ steps.meta_x64.outputs.labels }}
+
+      - name: Build and push (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: release
+          platforms: linux/arm64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ github.sha }}
+          tags: ${{ steps.meta_arm64.outputs.tags }}
+          labels: ${{ steps.meta_arm64.outputs.labels }}
+
       - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
         with:
