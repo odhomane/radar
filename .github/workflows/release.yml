@@ -103,6 +103,24 @@ jobs:
           cp dist/radar_linux_arm64_v8.0/kubectl-radar radar-arm64
           chmod +x radar-amd64 radar-arm64
 
+      - name: Build auth-capable runtime smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: release
+          platforms: linux/amd64
+          load: true
+          tags: radar-auth-smoke:release
+
+      - name: Verify bundled cloud auth tooling
+        run: |
+          docker run --rm --entrypoint sh radar-auth-smoke:release -lc '
+            command -v aws
+            command -v az
+            command -v kubelogin
+            command -v gke-gcloud-auth-plugin
+          '
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

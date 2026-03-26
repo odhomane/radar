@@ -1,0 +1,101 @@
+services:
+  radar:
+    image: ${RADAR_IMAGE:-ghcr.io/odhomane/radar:latest}
+    container_name: ${RADAR_CONTAINER_NAME:-radar}
+    # Host kubeconfigs are commonly 0600, so the container must read them as root.
+    user: "0:0"
+    restart: unless-stopped
+    command:
+      - --no-browser
+      - --port
+      - "${RADAR_PORT:-8585}"
+    environment:
+      # Required by Helm operations in read-only style environments
+      HELM_CACHE_HOME: /tmp/helm/cache
+      HELM_CONFIG_HOME: /tmp/helm/config
+      HELM_DATA_HOME: /tmp/helm/data
+      # Ensure client-go + exec auth plugin use mounted host config paths
+      KUBECONFIG: /home/nonroot/.kube/config
+      AZURE_CONFIG_DIR: /home/nonroot/.azure
+      CLOUDSDK_CONFIG: /home/nonroot/.config/gcloud
+    volumes:
+      # Mount your kubeconfig so Radar can connect to your cluster
+      - ${KUBECONFIG_PATH:-${HOME}/.kube/config}:/home/nonroot/.kube/config:ro
+      # Mount AWS CLI config for EKS auth
+      - ${AWS_CONFIG_PATH:-${HOME}/.aws}:/root/.aws
+      # Mount Azure CLI config for AKS kubelogin/azurecli auth
+      - ${AZURE_CONFIG_PATH:-${HOME}/.azure}:/home/nonroot/.azure
+      # Mount gcloud config for GKE exec auth plugin credentials (RW for token refresh)
+      - ${GCLOUD_CONFIG_PATH:-${HOME}/.config/gcloud}:/home/nonroot/.config/gcloud
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - radar-auth-net
+
+  keycloak:
+    image: ${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.1}
+    container_name: ${KEYCLOAK_CONTAINER_NAME:-keycloak}
+    restart: unless-stopped
+    command:
+      - start-dev
+      - --http-port=8080
+      - --import-realm
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN is required}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HOSTNAME: ${KC_HOSTNAME:-}
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+      - ./keycloak/realm-import.json:/opt/keycloak/data/import/realm-import.json:ro
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    networks:
+      - radar-auth-net
+
+  radar-auth:
+    image: ${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.12.0}
+    container_name: ${RADAR_AUTH_CONTAINER_NAME:-radar-auth}
+    restart: unless-stopped
+    depends_on:
+      - radar
+      - keycloak
+    ports:
+      - "${AUTH_PORT:-4180}:4180"
+    environment:
+      OAUTH2_PROXY_PROVIDER: oidc
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:?OAUTH2_PROXY_CLIENT_ID is required}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?OAUTH2_PROXY_CLIENT_SECRET is required}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?OAUTH2_PROXY_COOKIE_SECRET is required}
+      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_REDIRECT_URL:-http://localhost:${AUTH_PORT:-4180}/oauth2/callback}
+      OAUTH2_PROXY_UPSTREAMS: http://radar:${RADAR_PORT:-8585}
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_PROXY_EMAIL_DOMAINS:-*}
+      OAUTH2_PROXY_SCOPE: ${OAUTH2_PROXY_SCOPE:-openid profile email}
+      OAUTH2_PROXY_COOKIE_SECURE: ${OAUTH2_PROXY_COOKIE_SECURE:-false}
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_SET_AUTHORIZATION_HEADER: "true"
+      OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER: "true"
+      OAUTH2_PROXY_PASS_ACCESS_TOKEN: "true"
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_SKIP_OIDC_DISCOVERY: ${OAUTH2_PROXY_SKIP_OIDC_DISCOVERY:-false}
+      # Use browser-reachable auth endpoint and container-reachable token/JWKS endpoints.
+      OAUTH2_PROXY_LOGIN_URL: ${OAUTH2_PROXY_LOGIN_URL:-http://localhost:${KEYCLOAK_PORT:-8080}/realms/${KEYCLOAK_REALM:-radar}/protocol/openid-connect/auth}
+      OAUTH2_PROXY_REDEEM_URL: ${OAUTH2_PROXY_REDEEM_URL:-http://keycloak:8080/realms/${KEYCLOAK_REALM:-radar}/protocol/openid-connect/token}
+      OAUTH2_PROXY_OIDC_JWKS_URL: ${OAUTH2_PROXY_OIDC_JWKS_URL:-http://keycloak:8080/realms/${KEYCLOAK_REALM:-radar}/protocol/openid-connect/certs}
+      OAUTH2_PROXY_PROFILE_URL: ${OAUTH2_PROXY_PROFILE_URL:-http://keycloak:8080/realms/${KEYCLOAK_REALM:-radar}/protocol/openid-connect/userinfo}
+      OAUTH2_PROXY_VALIDATE_URL: ${OAUTH2_PROXY_VALIDATE_URL:-http://keycloak:8080/realms/${KEYCLOAK_REALM:-radar}/protocol/openid-connect/userinfo}
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${OAUTH2_PROXY_OIDC_ISSUER_URL:-http://keycloak:8080/realms/${KEYCLOAK_REALM:-radar}}
+      OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL: "true"
+    networks:
+      - radar-auth-net
+
+volumes:
+  keycloak-data:
+
+networks:
+  radar-auth-net:

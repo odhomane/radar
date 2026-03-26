@@ -54,6 +54,27 @@ jobs:
           file radar-amd64
           file radar-arm64
 
+      - name: Build auth-capable runtime smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: release
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            VERSION=${{ github.sha }}
+            TARGETOS=linux
+            TARGETARCH=amd64
+          tags: radar-auth-smoke:ghcr
+
+      - name: Verify bundled cloud auth tooling
+        run: |
+          docker run --rm --entrypoint sh radar-auth-smoke:ghcr -lc '
+            command -v aws
+            command -v az
+            command -v kubelogin
+            command -v gke-gcloud-auth-plugin
+          '
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

@@ -58,24 +58,58 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     -o /radar ./cmd/explorer
 
 # =============================================================================
-# Stage 3: Runtime base with GKE auth plugin
+# Stage 3: Runtime base with cloud auth plugins
 # =============================================================================
 FROM --platform=$TARGETPLATFORM debian:bookworm-slim AS runtime-base
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG TARGETARCH
+ARG KUBELOGIN_VERSION=v0.2.15
+
+RUN set -eux; \
+    retry() { \
+      n=0; \
+      until "$@"; do \
+        n=$((n + 1)); \
+        if [ "$n" -ge 3 ]; then \
+          return 1; \
+        fi; \
+        sleep $((n * 5)); \
+      done; \
+    }; \
+    retry apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
-    gnupg && \
+    gnupg \
+    unzip && \
+    install -m 0755 -d /etc/apt/keyrings && \
     curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
     gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
     > /etc/apt/sources.list.d/google-cloud-sdk.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | \
+    gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg && \
+    chmod go+r /etc/apt/keyrings/microsoft.gpg && \
+    . /etc/os-release && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ ${VERSION_CODENAME} main" \
+    > /etc/apt/sources.list.d/azure-cli.list && \
+    retry apt-get update && \
+    retry apt-get install -y --no-install-recommends \
+    azure-cli \
     google-cloud-cli \
     google-cloud-cli-gke-gcloud-auth-plugin && \
+    case "${TARGETARCH}" in \
+      amd64) AWSCLI_ARCH=x86_64 ;; \
+      arm64) AWSCLI_ARCH=aarch64 ;; \
+      *) echo "unsupported TARGETARCH for awscli: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSLo /tmp/awscliv2.zip "https://awscli.amazonaws.com/awscli-exe-linux-${AWSCLI_ARCH}.zip" && \
+    unzip /tmp/awscliv2.zip -d /tmp && \
+    /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli && \
+    curl -fsSLo /tmp/kubelogin.zip "https://github.com/Azure/kubelogin/releases/download/${KUBELOGIN_VERSION}/kubelogin-linux-${TARGETARCH}.zip" && \
+    unzip /tmp/kubelogin.zip -d /tmp/kubelogin && \
+    install -m 0755 /tmp/kubelogin/bin/linux_${TARGETARCH}/kubelogin /usr/local/bin/kubelogin && \
     useradd --uid 65532 --create-home --shell /usr/sbin/nologin nonroot && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* /tmp/aws /tmp/awscliv2.zip /tmp/kubelogin /tmp/kubelogin.zip
 
 ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 

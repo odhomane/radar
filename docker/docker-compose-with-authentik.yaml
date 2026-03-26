@@ -1,0 +1,126 @@
+services:
+  radar:
+    image: ${RADAR_IMAGE:-ghcr.io/odhomane/radar:latest}
+    container_name: ${RADAR_CONTAINER_NAME:-radar}
+    # Host kubeconfigs are commonly 0600, so the container must read them as root.
+    user: "0:0"
+    restart: unless-stopped
+    command:
+      - --no-browser
+      - --port
+      - "${RADAR_PORT:-8585}"
+    environment:
+      HELM_CACHE_HOME: /tmp/helm/cache
+      HELM_CONFIG_HOME: /tmp/helm/config
+      HELM_DATA_HOME: /tmp/helm/data
+      KUBECONFIG: /home/nonroot/.kube/config
+      AZURE_CONFIG_DIR: /home/nonroot/.azure
+      CLOUDSDK_CONFIG: /home/nonroot/.config/gcloud
+    volumes:
+      - ${KUBECONFIG_PATH:-${HOME}/.kube/config}:/home/nonroot/.kube/config:ro
+      - ${AWS_CONFIG_PATH:-${HOME}/.aws}:/root/.aws
+      - ${AZURE_CONFIG_PATH:-${HOME}/.azure}:/home/nonroot/.azure
+      - ${GCLOUD_CONFIG_PATH:-${HOME}/.config/gcloud}:/home/nonroot/.config/gcloud
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - radar-auth-net
+
+  authentik-db:
+    image: docker.io/library/postgres:16
+    container_name: ${AUTHENTIK_DB_CONTAINER_NAME:-authentik-db}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:?AUTHENTIK_POSTGRES_PASSWORD is required}
+    volumes:
+      - authentik-db-data:/var/lib/postgresql/data
+    networks:
+      - radar-auth-net
+
+  authentik-redis:
+    image: docker.io/library/redis:7-alpine
+    container_name: ${AUTHENTIK_REDIS_CONTAINER_NAME:-authentik-redis}
+    restart: unless-stopped
+    command: --save 60 1 --loglevel warning
+    volumes:
+      - authentik-redis-data:/data
+    networks:
+      - radar-auth-net
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2025.8}
+    container_name: ${AUTHENTIK_SERVER_CONTAINER_NAME:-authentik-server}
+    restart: unless-stopped
+    command: server
+    depends_on:
+      - authentik-db
+      - authentik-redis
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?AUTHENTIK_SECRET_KEY is required}
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-db
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:?AUTHENTIK_POSTGRES_PASSWORD is required}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-}
+    ports:
+      - "${AUTHENTIK_PORT:-9000}:9000"
+    volumes:
+      - authentik-media:/media
+      - authentik-templates:/templates
+    networks:
+      - radar-auth-net
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2025.8}
+    container_name: ${AUTHENTIK_WORKER_CONTAINER_NAME:-authentik-worker}
+    restart: unless-stopped
+    command: worker
+    depends_on:
+      - authentik-db
+      - authentik-redis
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?AUTHENTIK_SECRET_KEY is required}
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-db
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:?AUTHENTIK_POSTGRES_PASSWORD is required}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - authentik-media:/media
+      - authentik-certs:/certs
+      - authentik-templates:/templates
+    networks:
+      - radar-auth-net
+
+  authentik-outpost:
+    image: ghcr.io/goauthentik/proxy:${AUTHENTIK_VERSION:-2025.8}
+    container_name: ${AUTHENTIK_OUTPOST_CONTAINER_NAME:-authentik-outpost}
+    restart: unless-stopped
+    depends_on:
+      - authentik-server
+      - radar
+    environment:
+      AUTHENTIK_HOST: http://authentik-server:9000
+      AUTHENTIK_HOST_BROWSER: ${AUTHENTIK_HOST_BROWSER:-http://localhost:${AUTHENTIK_PORT:-9000}}
+      AUTHENTIK_INSECURE: "true"
+      AUTHENTIK_TOKEN: ${AUTHENTIK_OUTPOST_TOKEN:?AUTHENTIK_OUTPOST_TOKEN is required}
+    ports:
+      - "${RADAR_AUTH_PORT:-4180}:9000"
+    networks:
+      - radar-auth-net
+
+volumes:
+  authentik-db-data:
+  authentik-redis-data:
+  authentik-media:
+  authentik-certs:
+  authentik-templates:
+
+networks:
+  radar-auth-net:

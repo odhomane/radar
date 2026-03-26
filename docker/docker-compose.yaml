@@ -2,6 +2,8 @@ services:
   radar:
     image: ${RADAR_IMAGE:-ghcr.io/odhomane/radar:latest}
     container_name: ${RADAR_CONTAINER_NAME:-radar}
+    # Host kubeconfigs are commonly 0600, so the container must read them as root.
+    user: "0:0"
     restart: unless-stopped
     command:
       - --no-browser
@@ -16,10 +18,15 @@ services:
       HELM_DATA_HOME: /tmp/helm/data
       # Ensure client-go + exec auth plugin use mounted host config paths
       KUBECONFIG: /home/nonroot/.kube/config
+      AZURE_CONFIG_DIR: /home/nonroot/.azure
       CLOUDSDK_CONFIG: /home/nonroot/.config/gcloud
     volumes:
       # Mount your kubeconfig so Radar can connect to your cluster
       - ${KUBECONFIG_PATH:-${HOME}/.kube/config}:/home/nonroot/.kube/config:ro
+      # Mount AWS CLI config for EKS auth
+      - ${AWS_CONFIG_PATH:-${HOME}/.aws}:/root/.aws
+      # Mount Azure CLI config for AKS kubelogin/azurecli auth
+      - ${AZURE_CONFIG_PATH:-${HOME}/.azure}:/home/nonroot/.azure
       # Mount gcloud config for GKE exec auth plugin credentials (RW for token refresh)
       - ${GCLOUD_CONFIG_PATH:-${HOME}/.config/gcloud}:/home/nonroot/.config/gcloud
     read_only: true
