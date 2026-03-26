@@ -109,7 +109,15 @@ LABEL org.opencontainers.image.source="https://github.com/skyhook-io/radar"
 LABEL org.opencontainers.image.vendor="Skyhook"
 
 ARG TARGETARCH
-COPY radar-${TARGETARCH} /radar
+COPY radar-amd64 /tmp/radar-amd64
+COPY radar-arm64 /tmp/radar-arm64
+RUN case "${TARGETARCH}" in \
+      amd64) cp /tmp/radar-amd64 /radar ;; \
+      arm64) cp /tmp/radar-arm64 /radar ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    chmod +x /radar && \
+    rm -f /tmp/radar-amd64 /tmp/radar-arm64
 
 EXPOSE 9280
 USER nonroot:nonroot
