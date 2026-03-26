@@ -127,6 +127,30 @@ jobs:
             ${{ env.DOCKER_REPO }}:${{ needs.release.outputs.version }}
             ${{ env.DOCKER_REPO }}:latest
 
+      - name: Build and push x64 tag
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          target: release
+          push: true
+          tags: |
+            ${{ env.DOCKER_REPO }}:${{ needs.release.outputs.version }}-x64
+            ${{ env.DOCKER_REPO }}:latest-x64
+            ${{ env.DOCKER_REPO }}:x64
+
+      - name: Build and push arm64 tag
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          target: release
+          push: true
+          tags: |
+            ${{ env.DOCKER_REPO }}:${{ needs.release.outputs.version }}-arm64
+            ${{ env.DOCKER_REPO }}:latest-arm64
+            ${{ env.DOCKER_REPO }}:arm64
+
   helm:
     name: Helm Chart
     runs-on: ubuntu-latest
