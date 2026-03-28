@@ -1,4 +1,4 @@
-name: Weekly Desktop Build
+name: Weekly Custom Desktop Release
 
 on:
   schedule:
@@ -10,8 +10,7 @@ permissions:
   contents: write
 
 env:
-  WEEKLY_TAG: weekly-desktop
-  ASSET_NAME: radar-desktop_weekly_darwin_universal.zip
+  UPSTREAM_REPO: skyhook-io/radar
 
 jobs:
   build-macos:
@@ -21,6 +20,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream --tags
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -37,8 +43,32 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build frontend
-        run: make frontend embed
+      - name: Compute weekly release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+
+          BASE_TAG="$(git tag -l 'v*' --sort=-v:refname | grep -Ev -- '-fork\.' | head -n1)"
+          if [ -z "${BASE_TAG}" ]; then
+            echo "Could not determine upstream base tag" >&2
+            exit 1
+          fi
+
+          DATE_UTC="$(date -u +%Y%m%d)"
+          RELEASE_TAG="${BASE_TAG}-fork.${DATE_UTC}"
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          ASSET_NAME="radar-desktop_${RELEASE_TAG}_darwin_universal.zip"
+          CHECKSUM_FILE="checksums-desktop.txt"
+          UPSTREAM_SHA="$(git rev-parse --short upstream/main)"
+
+          {
+            echo "base_tag=${BASE_TAG}"
+            echo "release_tag=${RELEASE_TAG}"
+            echo "release_version=${RELEASE_VERSION}"
+            echo "asset_name=${ASSET_NAME}"
+            echo "checksum_file=${CHECKSUM_FILE}"
+            echo "upstream_sha=${UPSTREAM_SHA}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create dummy kubeconfig for Wails binding generation
         run: |
@@ -64,40 +94,60 @@ jobs:
 
       - name: Build macOS .app (universal)
         run: |
-          cd cmd/desktop
-          wails build -platform darwin/universal -ldflags "-X main.version=weekly-${GITHUB_RUN_NUMBER}"
+          make desktop-package-darwin \
+            VERSION="${{ steps.meta.outputs.release_version }}" \
+            LDFLAGS="-X main.version=${{ steps.meta.outputs.release_version }} -X github.com/skyhook-io/radar/internal/version.ReleaseRepo=${{ github.repository }}"
 
       - name: Archive app
         run: |
           cd build/bin
           mv radar-desktop.app Radar.app
-          ditto -c -k --sequesterRsrc --keepParent Radar.app "../../${ASSET_NAME}"
+          ditto -c -k --sequesterRsrc --keepParent Radar.app "../../${{ steps.meta.outputs.asset_name }}"
           cd ../..
 
       - name: Generate checksum
-        run: shasum -a 256 "${ASSET_NAME}" > checksums-weekly-desktop.txt
+        run: |
+          shasum -a 256 "${{ steps.meta.outputs.asset_name }}" > "${{ steps.meta.outputs.checksum_file }}"
 
-      - name: Publish weekly release asset
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.WEEKLY_TAG }}
-          name: Weekly Desktop Build
-          prerelease: true
-          make_latest: false
-          files: |
-            ${{ env.ASSET_NAME }}
-            checksums-weekly-desktop.txt
-          overwrite_files: true
+      - name: Publish weekly desktop release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.meta.outputs.release_tag }}"
+          ASSET="${{ steps.meta.outputs.asset_name }}"
+          CHECKSUM_FILE="${{ steps.meta.outputs.checksum_file }}"
+          NOTES_FILE="$(mktemp)"
+
+          cat > "${NOTES_FILE}" <<EOF
+          Weekly fork desktop build based on upstream \`${{ steps.meta.outputs.base_tag }}\` at commit \`${{ steps.meta.outputs.upstream_sha }}\`.
+
+          This release preserves the fork-only desktop userstyle support while pulling in the latest upstream code merged into \`main\`.
+          EOF
+
+          gh release delete "${TAG}" --repo "${{ github.repository }}" --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --title "Radar Desktop ${TAG}" \
+            --notes-file "${NOTES_FILE}" \
+            --latest \
+            "${ASSET}" \
+            "${CHECKSUM_FILE}"
 
       - name: Build summary
         if: always()
         run: |
           {
-            echo "## Weekly Desktop Build"
+            echo "## Weekly Custom Desktop Release"
             echo ""
-            if ls "${ASSET_NAME}" 1>/dev/null 2>&1; then
-              echo "- Asset: \`${ASSET_NAME}\`"
-              echo "- Tag: \`${WEEKLY_TAG}\`"
+            if ls "${{ steps.meta.outputs.asset_name }}" 1>/dev/null 2>&1; then
+              echo "- Release tag: \`${{ steps.meta.outputs.release_tag }}\`"
+              echo "- Upstream base: \`${{ steps.meta.outputs.base_tag }}\`"
+              echo "- Upstream commit: \`${{ steps.meta.outputs.upstream_sha }}\`"
+              echo "- Asset: \`${{ steps.meta.outputs.asset_name }}\`"
+              echo "- Update source: \`${{ github.repository }}\`"
             else
               echo "Build failed before artifact generation."
             fi

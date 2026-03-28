@@ -7,7 +7,9 @@
 
 :root {
   /* Font settings */
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-ui: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-code: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-ui);
   line-height: 1.5;
   font-weight: 400;
 
@@ -27,6 +29,18 @@
   --color-error-light: #F87171;
   --color-error-dark: #DC2626;
   --color-info: #3B82F6;
+}
+
+body {
+  font-family: var(--font-ui);
+}
+
+code,
+pre,
+kbd,
+samp,
+.font-mono {
+  font-family: var(--font-code);
 }
 
 /* Dark Theme (default) */
@@ -173,6 +187,15 @@ body {
   min-height: 100vh;
   background-color: var(--bg-base);
   color: var(--text-primary);
+}
+
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 #root {

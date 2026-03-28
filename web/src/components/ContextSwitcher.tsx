@@ -262,7 +262,7 @@ export function ContextSwitcher({ className = '' }: ContextSwitcherProps) {
     // Check for active sessions (port forwards from API + terminal tabs from dock)
     try {
       const counts = await fetchSessionCounts()
-      const terminalTabs = tabs.filter(t => t.type === 'terminal').length
+      const terminalTabs = tabs.filter(t => t.type === 'terminal' || t.type === 'host-terminal').length
       const totalSessions = counts.portForwards + terminalTabs
 
       if (totalSessions > 0) {

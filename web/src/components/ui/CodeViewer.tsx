@@ -92,7 +92,7 @@ export function CodeViewer({
           margin: 0;
           padding: 12px;
           background: transparent !important;
-          font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+          font-family: var(--font-code);
           font-size: 12px;
           line-height: 1.5;
         }

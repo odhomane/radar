@@ -1,6 +1,6 @@
 services:
   radar:
-    image: ${RADAR_IMAGE:-ghcr.io/odhomane/radar:latest}
+    image: ${RADAR_IMAGE:-odhomane/radar:latest}
     container_name: ${RADAR_CONTAINER_NAME:-radar}
     # Host kubeconfigs are commonly 0600, so the container must read them as root.
     user: "0:0"

@@ -4,7 +4,7 @@
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X main.version=$(VERSION)
-DOCKER_REPO ?= ghcr.io/odhomane/radar
+DOCKER_REPO ?= odhomane/radar
 RADAR_FLAGS ?=
 
 ## Build targets
@@ -187,17 +187,17 @@ desktop-dev:
 	cd cmd/desktop && wails dev -ldflags "$(LDFLAGS)"
 
 # Package macOS .app bundle
-desktop-package-darwin:
+desktop-package-darwin: frontend embed
 	@command -v wails >/dev/null 2>&1 || { echo "Error: wails CLI not found"; exit 1; }
 	cd cmd/desktop && wails build -platform darwin/universal -ldflags "$(LDFLAGS)"
 
 # Package Windows .exe
-desktop-package-windows:
+desktop-package-windows: frontend embed
 	@command -v wails >/dev/null 2>&1 || { echo "Error: wails CLI not found"; exit 1; }
 	cd cmd/desktop && wails build -platform windows/amd64 -ldflags "$(LDFLAGS)"
 
 # Package Linux binary
-desktop-package-linux:
+desktop-package-linux: frontend embed
 	@command -v wails >/dev/null 2>&1 || { echo "Error: wails CLI not found"; exit 1; }
 	cd cmd/desktop && wails build -platform linux/amd64 -ldflags "$(LDFLAGS)"
 

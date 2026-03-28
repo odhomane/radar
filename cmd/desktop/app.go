@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/skyhook-io/radar/internal/app"
+	"github.com/skyhook-io/radar/internal/desktopstyle"
 	"github.com/skyhook-io/radar/internal/k8s"
 	"github.com/skyhook-io/radar/internal/server"
 	"github.com/skyhook-io/radar/internal/timeline"
@@ -16,18 +17,25 @@ type DesktopApp struct {
 	ctx              context.Context
 	srv              *server.Server
 	timelineStoreCfg timeline.StoreConfig
+	userStyle        *desktopstyle.Manager
 }
 
-func NewDesktopApp(srv *server.Server, timelineStoreCfg timeline.StoreConfig) *DesktopApp {
+func NewDesktopApp(srv *server.Server, timelineStoreCfg timeline.StoreConfig, userStyle *desktopstyle.Manager) *DesktopApp {
 	return &DesktopApp{
 		srv:              srv,
 		timelineStoreCfg: timelineStoreCfg,
+		userStyle:        userStyle,
 	}
 }
 
 // startup is called when the Wails app starts.
 func (a *DesktopApp) startup(ctx context.Context) {
 	a.ctx = ctx
+	if a.userStyle != nil {
+		if err := a.userStyle.Ensure(); err != nil {
+			log.Printf("[desktop-userstyle] Failed to initialize userstyle.css: %v", err)
+		}
+	}
 	startNativeMouseMonitor(ctx)
 }
 

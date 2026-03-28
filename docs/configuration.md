@@ -54,6 +54,24 @@ Radar supports switching between Kubernetes contexts at runtime through the UI. 
 
 When running in-cluster (using the pod's service account), context switching is disabled.
 
+## Desktop User Style
+
+Radar Desktop can load a custom stylesheet from:
+
+```text
+~/.radar/desktop/userstyle.css
+```
+
+The file is created automatically the first time the desktop app starts. It loads after the built-in UI styles, so you can override fonts, spacing, colors, and component styling.
+
+To edit and apply it:
+
+- Open `View -> Open User Style CSS` in Radar Desktop
+- Save your CSS changes in your editor
+- Use `View -> Reload User Style` to refresh the stylesheet in the running app
+
+This feature is desktop-only. The browser/CLI build ignores `userstyle.css`.
+
 ## Related Documentation
 
 - [README](../README.md#usage) — CLI flags and basic usage

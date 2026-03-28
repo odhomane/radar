@@ -35,6 +35,7 @@ func main() {
 	disableHelmWrite := flag.Bool("disable-helm-write", false, "Simulate restricted Helm permissions")
 	timelineStorage := flag.String("timeline-storage", "memory", "Timeline storage backend: memory or sqlite")
 	timelineDBPath := flag.String("timeline-db", "", "Path to timeline database file (default: ~/.radar/timeline.db)")
+	settingsDBPath := flag.String("settings-db", "", "Path to local settings/auth database (default: ~/.radar/settings.db)")
 	prometheusURL := flag.String("prometheus-url", "", "Manual Prometheus/VictoriaMetrics URL (skips auto-discovery)")
 	flag.Parse()
 
@@ -52,11 +53,6 @@ func main() {
 
 	log.Printf("Radar Desktop %s starting...", version)
 
-	// GUI apps (macOS .app, Linux .desktop) get a minimal PATH that
-	// doesn't include user-installed tools like gke-gcloud-auth-plugin,
-	// gcloud, aws CLI, etc. Enrich PATH from the user's login shell.
-	enrichPath()
-
 	if *kubeconfig != "" && *kubeconfigDir != "" {
 		log.Fatalf("--kubeconfig and --kubeconfig-dir are mutually exclusive")
 	}
@@ -73,6 +69,7 @@ func main() {
 		DisableHelmWrite: *disableHelmWrite,
 		TimelineStorage:  *timelineStorage,
 		TimelineDBPath:   *timelineDBPath,
+		SettingsDBPath:   *settingsDBPath,
 		PrometheusURL:    *prometheusURL,
 		Version:          version,
 	}
@@ -95,6 +92,12 @@ func main() {
 	desktopUpdater := updater.New()
 	srv.SetUpdater(desktopUpdater)
 
+	userStyleManager, err := newDesktopUserStyleManager()
+	if err != nil {
+		log.Fatalf("Failed to initialize desktop userstyle: %v", err)
+	}
+	srv.SetUserStyleManager(userStyleManager)
+
 	// Start server and wait until it's accepting connections
 	ready := make(chan struct{})
 	go func() {
@@ -114,10 +117,10 @@ func main() {
 	}
 
 	// Create desktop app
-	desktopApp := NewDesktopApp(srv, timelineStoreCfg)
+	desktopApp := NewDesktopApp(srv, timelineStoreCfg, userStyleManager)
 
 	// Run Wails application
-	err := wails.Run(&options.App{
+	err = wails.Run(&options.App{
 		Title:     windowTitle,
 		Width:     1440,
 		Height:    900,

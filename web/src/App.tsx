@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRefreshAnimation } from './hooks/useRefreshAnimation'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
+import { clsx } from 'clsx'
 import { HomeView } from './components/home/HomeView'
 import { DebugOverlay } from './components/DebugOverlay'
 import { TopologyGraph } from './components/topology/TopologyGraph'
@@ -9,12 +10,15 @@ import { TopologyFilterSidebar } from './components/topology/TopologyFilterSideb
 import { TimelineView } from './components/timeline/TimelineView'
 import { ResourcesView } from './components/resources/ResourcesView'
 import { ResourceDetailDrawer } from './components/resources/ResourceDetailDrawer'
+import { PodFilesystemView } from './components/resources/PodFilesystemView'
+import { FilesystemBrowserView } from './components/resources/FilesystemBrowserView'
+import { SettingsView } from './components/settings/SettingsView'
+import { AuthScreen } from './components/settings/AuthScreen'
 import { ResourceDetailPage } from './components/resource/ResourceDetailPage'
 import { HelmView } from './components/helm/HelmView'
-import { TrafficView } from './components/traffic/TrafficView'
 import { HelmReleaseDrawer } from './components/helm/HelmReleaseDrawer'
 import { PortForwardManager, usePortForwardCount } from './components/portforward/PortForwardManager'
-import { DockProvider, BottomDock, useDock } from './components/dock'
+import { DockProvider, BottomDock, useDock, useOpenHostTerminal } from './components/dock'
 import { ContextSwitcher } from './components/ContextSwitcher'
 import { ContextSwitchProvider, useContextSwitch } from './context/ContextSwitchContext'
 import { ConnectionProvider, useConnection } from './context/ConnectionContext'
@@ -24,9 +28,9 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { NamespaceSelector } from './components/ui/NamespaceSelector'
 import { UpdateNotification } from './components/ui/UpdateNotification'
 import { useEventSource } from './hooks/useEventSource'
-import { useNamespaces } from './api/client'
+import { useAppSettings, useAuthStatus, useClusterInfo, useLogout, useNamespaces, useUpdateAppSettings, type CurrentUser } from './api/client'
 import { Loader2 } from 'lucide-react'
-import { RefreshCw, FolderTree, Network, List, Clock, Package, Sun, Moon, Activity, Home } from 'lucide-react'
+import { RefreshCw, FolderTree, Network, List, Clock, Package, Sun, Moon, HardDrive, Home, Settings as SettingsIcon, LogOut, TerminalSquare } from 'lucide-react'
 import { useTheme } from './context/ThemeContext'
 import { Tooltip } from './components/ui/Tooltip'
 import type { TopologyNode, GroupingMode, MainView, SelectedResource, SelectedHelmRelease, NodeKind, Topology } from './types'
@@ -83,8 +87,9 @@ function encodeResourceParam(resource: SelectedResource): string {
   return `${resource.kind}/${resource.namespace}/${resource.name}`
 }
 
-// Extended MainView type that includes traffic
-type ExtendedMainView = MainView | 'traffic'
+// Extended MainView type includes legacy "traffic" for compatibility with existing props,
+// but traffic routes are mapped to filesystem.
+type ExtendedMainView = MainView | 'traffic' | 'filesystem'
 
 // Extract view from URL path
 function getViewFromPath(pathname: string): ExtendedMainView {
@@ -94,14 +99,17 @@ function getViewFromPath(pathname: string): ExtendedMainView {
   if (path === 'resources') return 'resources'
   if (path === 'timeline') return 'timeline'
   if (path === 'helm') return 'helm'
-  if (path === 'traffic') return 'traffic'
+  if (path === 'traffic') return 'filesystem'
+  if (path === 'filesystem') return 'filesystem'
+  if (path === 'settings') return 'settings'
   return 'home'
 }
 
-function AppInner() {
+function AppInner({ currentUser }: { currentUser: CurrentUser }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const showSecondaryUserIdentity = currentUser.email.trim().toLowerCase() !== currentUser.displayName.trim().toLowerCase()
 
   // Parse namespaces from URL (supports both 'namespaces' and legacy 'namespace')
   const parseNamespacesFromURL = (params: URLSearchParams): string[] => {
@@ -152,6 +160,13 @@ function AppInner() {
       newParams.delete('resource')
       newParams.delete('view')
       newParams.delete('filter')
+    }
+
+    if (view !== 'filesystem') {
+      newParams.delete('podNamespace')
+      newParams.delete('pod')
+      newParams.delete('container')
+      newParams.delete('path')
     }
 
     // Add any new params
@@ -419,10 +434,13 @@ function AppInner() {
       <header className="relative flex items-center justify-between px-4 py-2 bg-theme-surface border-b border-theme-border">
         {/* Left: Logo + Cluster info */}
         <div className="flex items-center gap-4 shrink-0">
-          <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setMainView('home')}
+            className="flex items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60"
+            title="Go to Home"
+          >
             <Logo />
-            <span className="text-xl text-theme-text-primary leading-none -translate-y-0.5" style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 520 }}>radar</span>
-          </div>
+          </button>
 
           <div className="flex items-center gap-2">
             <ContextSwitcher />
@@ -452,24 +470,25 @@ function AppInner() {
 
         {/* Center: View tabs — absolute centered on wide, flows after left section on narrow */}
         <div className="md:absolute md:left-1/2 md:-translate-x-1/2 flex items-center gap-1 bg-theme-elevated/50 rounded-lg p-1 ml-2 md:ml-0">
-          {([
-            { view: 'home' as const, icon: Home, label: 'Home' },
-            { view: 'topology' as const, icon: Network, label: 'Topology' },
-            { view: 'resources' as const, icon: List, label: 'Resources' },
-            { view: 'timeline' as const, icon: Clock, label: 'Timeline' },
-            { view: 'helm' as const, icon: Package, label: 'Helm' },
-            { view: 'traffic' as const, icon: Activity, label: 'Traffic' },
-          ] as const).map(({ view, icon: Icon, label }) => (
+            {([
+            { view: 'home' as const, icon: Home, label: 'Home', color: 'text-sky-500 dark:text-sky-300' },
+            { view: 'topology' as const, icon: Network, label: 'Topology', color: 'text-violet-500 dark:text-violet-300' },
+            { view: 'resources' as const, icon: List, label: 'Resources', color: 'text-emerald-500 dark:text-emerald-300' },
+            { view: 'timeline' as const, icon: Clock, label: 'Timeline', color: 'text-amber-500 dark:text-amber-300' },
+            { view: 'helm' as const, icon: Package, label: 'Helm', color: 'text-cyan-500 dark:text-cyan-300' },
+            { view: 'filesystem' as const, icon: HardDrive, label: 'Filesystem', color: 'text-rose-500 dark:text-rose-300' },
+            { view: 'settings' as const, icon: SettingsIcon, label: 'Settings', color: 'text-indigo-500 dark:text-indigo-300' },
+          ] as const).map(({ view, icon: Icon, label, color }) => (
             <Tooltip key={view} content={label} delay={100} position="bottom">
               <button
                 onClick={() => setMainView(view)}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors ${
                   mainView === view
-                    ? 'bg-blue-500 text-theme-text-primary'
+                    ? 'bg-accent text-theme-text-primary'
                     : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-hover'
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className={clsx('w-4 h-4', mainView === view ? 'text-white' : color)} />
                 <span className="hidden lg:inline">{label}</span>
               </button>
             </Tooltip>
@@ -486,14 +505,28 @@ function AppInner() {
             </div>
           )}
           {/* Namespace selector with search */}
-          <NamespaceSelector
-            value={namespaces}
-            onChange={setNamespaces}
-            namespaces={availableNamespaces}
-            namespacesError={namespacesError}
-            disabled={mainView === 'helm'}
-            disabledTooltip="Helm view always shows all namespaces"
-          />
+          <div className="w-[220px] xl:w-[260px] flex justify-center">
+            <NamespaceSelector
+              value={namespaces}
+              onChange={setNamespaces}
+              namespaces={availableNamespaces}
+              namespacesError={namespacesError}
+              disabled={mainView === 'helm' || mainView === 'settings'}
+              disabledTooltip={mainView === 'settings' ? 'Settings are workspace-wide' : 'Helm view always shows all namespaces'}
+            />
+          </div>
+
+          <div className="hidden lg:flex items-center gap-1.5 rounded-lg border border-theme-border bg-theme-surface px-2 py-1 shadow-sm">
+            <div className="min-w-0 rounded-md bg-theme-elevated/70 px-2.5 py-1">
+              <div className="text-xs font-semibold leading-none text-theme-text-primary truncate">{currentUser.displayName}</div>
+              {showSecondaryUserIdentity && (
+                <div className="mt-0.5 text-[10px] leading-none text-theme-text-tertiary truncate">{currentUser.email}</div>
+              )}
+            </div>
+            <LogoutButton />
+          </div>
+
+          <GlobalTerminalButton />
 
           {/* Theme toggle */}
           <ThemeToggle />
@@ -667,7 +700,7 @@ function AppInner() {
                     onClick={() => setTopologyMode('resources')}
                     className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                       topologyMode === 'resources'
-                        ? 'bg-blue-500 text-theme-text-primary'
+                        ? 'bg-accent text-theme-text-primary'
                         : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-elevated'
                     }`}
                   >
@@ -677,7 +710,7 @@ function AppInner() {
                     onClick={() => setTopologyMode('traffic')}
                     className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                       topologyMode === 'traffic'
-                        ? 'bg-blue-500 text-theme-text-primary'
+                        ? 'bg-accent text-theme-text-primary'
                         : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-elevated'
                     }`}
                   >
@@ -733,9 +766,44 @@ function AppInner() {
           />
         )}
 
-        {/* Traffic view */}
-        {mainView === 'traffic' && (
-          <TrafficView namespaces={namespaces} />
+        {mainView === 'settings' && (
+          <div className="flex-1 min-w-0">
+            <SettingsView currentUser={currentUser} />
+          </div>
+        )}
+
+        {mainView === 'filesystem' && (
+          (() => {
+            const podNamespace = searchParams.get('podNamespace') || ''
+            const pod = searchParams.get('pod') || ''
+            const container = searchParams.get('container') || ''
+
+            if (podNamespace && pod && container) {
+              return (
+                <PodFilesystemView
+                  namespace={podNamespace}
+                  podName={pod}
+                  containerName={container}
+                  initialPath={searchParams.get('path') || '/'}
+                  onBack={() => navigate('/filesystem')}
+                />
+              )
+            }
+
+            return (
+              <FilesystemBrowserView
+                namespaces={namespaces}
+                onOpenFilesystem={({ namespace, podName, containerName, path }) =>
+                  setMainView('filesystem', {
+                    podNamespace: namespace,
+                    pod: podName,
+                    container: containerName,
+                    path,
+                  })
+                }
+              />
+            )
+          })()
         )}
 
         </ErrorBoundary>
@@ -796,7 +864,7 @@ function App() {
       <CapabilitiesProvider>
         <ContextSwitchProvider>
           <DockProvider>
-            <AppInner />
+            <AuthenticatedApp />
           </DockProvider>
         </ContextSwitchProvider>
       </CapabilitiesProvider>
@@ -804,23 +872,52 @@ function App() {
   )
 }
 
-// Skyhook logo that switches based on theme
-function Logo() {
-  const { theme } = useTheme()
-  const logoSrc = theme === 'dark'
-    ? '/assets/skyhook/logotype-white-color.svg'
-    : '/assets/skyhook/logotype-dark-color.svg'
+function AuthenticatedApp() {
+  const { data: authStatus, isLoading } = useAuthStatus()
 
-  return <img src={logoSrc} alt="Skyhook" className="h-5 w-auto" />
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-theme-base">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    )
+  }
+
+  if (!authStatus || authStatus.needsSetup || !authStatus.authenticated || !authStatus.currentUser) {
+    return <AuthScreen />
+  }
+
+  return <AppInner currentUser={authStatus.currentUser} />
+}
+
+// Strategy logo that switches based on theme
+function Logo() {
+  return <img src="/branding/strategy-logo-orange-official.svg" alt="StrategyB" className="h-7 w-auto object-contain" />
 }
 
 // Theme toggle button component
 function ThemeToggle() {
-  const { theme, toggleTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
+  const { data: settings } = useAppSettings()
+  const updateSettings = useUpdateAppSettings()
+
+  const handleToggle = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(nextTheme)
+
+    if (!settings) return
+    updateSettings.mutate({
+      ...settings,
+      appearance: {
+        ...settings.appearance,
+        uiTheme: nextTheme,
+      },
+    })
+  }
 
   return (
     <button
-      onClick={toggleTheme}
+      onClick={handleToggle}
       className="p-1.5 rounded-md bg-theme-elevated hover:bg-theme-hover text-theme-text-secondary hover:text-theme-text-primary transition-colors"
       title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
     >
@@ -829,6 +926,46 @@ function ThemeToggle() {
       ) : (
         <Moon className="w-4 h-4" />
       )}
+    </button>
+  )
+}
+
+function GlobalTerminalButton() {
+  const openHostTerminal = useOpenHostTerminal()
+  const { data: clusterInfo, isLoading } = useClusterInfo()
+  return (
+    <button
+      onClick={() => openHostTerminal({ contextName: clusterInfo?.context })}
+      disabled={isLoading}
+      className="p-1.5 rounded-md bg-theme-elevated hover:bg-theme-hover text-theme-text-secondary hover:text-theme-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      title={
+        clusterInfo?.context
+          ? `Open host terminal (${clusterInfo.context})`
+          : 'Open host terminal'
+      }
+    >
+      <TerminalSquare className="w-4 h-4 text-emerald-500" />
+    </button>
+  )
+}
+
+function LogoutButton() {
+  const navigate = useNavigate()
+  const logout = useLogout()
+
+  return (
+    <button
+      onClick={() =>
+        logout.mutate(undefined, {
+          onSuccess: () => navigate('/', { replace: true }),
+        })
+      }
+      disabled={logout.isPending}
+      className="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-theme-text-secondary hover:border-theme-border hover:bg-theme-elevated hover:text-theme-text-primary disabled:opacity-50"
+      title="Sign out"
+    >
+      {logout.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+      <span className="hidden xl:inline text-xs font-medium">Logout</span>
     </button>
   )
 }

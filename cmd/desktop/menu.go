@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -40,6 +42,34 @@ func createMenu(desktopApp *DesktopApp) *menu.Menu {
 	viewMenu.AddSeparator()
 	viewMenu.AddText("Reload", keys.CmdOrCtrl("r"), func(_ *menu.CallbackData) {
 		runtime.WindowReloadApp(desktopApp.ctx)
+	})
+	viewMenu.AddText("Open User Style CSS", keys.CmdOrCtrl("u"), func(_ *menu.CallbackData) {
+		if desktopApp.userStyle == nil {
+			return
+		}
+		if err := openPath(desktopApp.userStyle.Path()); err != nil {
+			runtime.MessageDialog(desktopApp.ctx, runtime.MessageDialogOptions{
+				Type:    runtime.ErrorDialog,
+				Title:   "Open User Style CSS",
+				Message: fmt.Sprintf("Failed to open %s\n\n%v", desktopApp.userStyle.Path(), err),
+			})
+		}
+	})
+	viewMenu.AddText("Reveal User Style Folder", nil, func(_ *menu.CallbackData) {
+		if desktopApp.userStyle == nil {
+			return
+		}
+		if err := openPath(desktopApp.userStyle.Dir()); err != nil {
+			runtime.MessageDialog(desktopApp.ctx, runtime.MessageDialogOptions{
+				Type:    runtime.ErrorDialog,
+				Title:   "Reveal User Style Folder",
+				Message: fmt.Sprintf("Failed to open %s\n\n%v", desktopApp.userStyle.Dir(), err),
+			})
+		}
+	})
+	viewMenu.AddText("Reload User Style", keys.Combo("u", keys.ShiftKey, keys.CmdOrCtrlKey), func(_ *menu.CallbackData) {
+		runtime.EventsEmit(desktopApp.ctx, "reload-user-style")
+		runtime.WindowExecJS(desktopApp.ctx, "window.dispatchEvent(new CustomEvent('radar:reload-user-style'))")
 	})
 	viewMenu.AddSeparator()
 	viewMenu.AddText("Zoom In", keys.CmdOrCtrl("="), nil)

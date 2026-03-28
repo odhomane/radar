@@ -18,6 +18,10 @@ var (
 	// Current is the current version of Radar, set at build time
 	Current = "dev"
 
+	// ReleaseRepo is the GitHub repository used for version checks and desktop
+	// update downloads. Override at build time for forked/custom desktop builds.
+	ReleaseRepo = "odhomane/radar"
+
 	// isDesktop is set to true when running as a desktop app (Wails).
 	// Controls install method detection and enables in-app update flow.
 	isDesktop bool
@@ -122,7 +126,7 @@ func fetchLatestRelease(ctx context.Context) *UpdateInfo {
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/skyhook-io/radar/releases/latest", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", releaseAPIURL("/releases/latest"), nil)
 	if err != nil {
 		result.Error = fmt.Sprintf("failed to create request: %v", err)
 		log.Printf("[version] %s", result.Error)
@@ -163,6 +167,14 @@ func fetchLatestRelease(ctx context.Context) *UpdateInfo {
 	result.UpdateAvail = newer
 
 	return result
+}
+
+func releaseAPIURL(path string) string {
+	repo := strings.Trim(ReleaseRepo, "/")
+	if repo == "" {
+		repo = "odhomane/radar"
+	}
+	return fmt.Sprintf("https://api.github.com/repos/%s%s", repo, path)
 }
 
 // isNewerVersion compares semver versions using Masterminds/semver

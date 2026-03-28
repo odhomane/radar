@@ -56,7 +56,7 @@ helm upgrade --install radar skyhook/radar \
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `replicaCount` | Number of replicas | `1` |
-| `image.repository` | Image repository | `ghcr.io/skyhook-io/radar` |
+| `image.repository` | Image repository | `odhomane/radar` |
 | `image.tag` | Image tag | Chart appVersion |
 | `service.type` | Service type | `ClusterIP` |
 | `service.port` | Service port | `9280` |

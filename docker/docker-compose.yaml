@@ -8,9 +8,9 @@ services:
     command:
       - --no-browser
       - --port
-      - "${RADAR_PORT:-8585}"
+      - "${RADAR_PORT:-9009}"
     ports:
-      - "${RADAR_PORT:-8585}:${RADAR_PORT:-8585}"
+      - "${RADAR_PORT:-9009}:${RADAR_PORT:-9009}"
     environment:
       # Required by Helm operations in read-only style environments
       HELM_CACHE_HOME: /tmp/helm/cache
@@ -29,6 +29,11 @@ services:
       - ${AZURE_CONFIG_PATH:-${HOME}/.azure}:/home/nonroot/.azure
       # Mount gcloud config for GKE exec auth plugin credentials (RW for token refresh)
       - ${GCLOUD_CONFIG_PATH:-${HOME}/.config/gcloud}:/home/nonroot/.config/gcloud
+      # Persistent writable state for settings/auth DB when read_only is enabled
+      - radar-data:/root/.radar
     read_only: true
     tmpfs:
       - /tmp
+
+volumes:
+  radar-data:

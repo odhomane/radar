@@ -4,6 +4,23 @@ import (
 	"testing"
 )
 
+func TestReleaseAPIURL(t *testing.T) {
+	originalRepo := ReleaseRepo
+	t.Cleanup(func() {
+		ReleaseRepo = originalRepo
+	})
+
+	ReleaseRepo = "odhomane/radar"
+	if got, want := releaseAPIURL("/releases/latest"), "https://api.github.com/repos/odhomane/radar/releases/latest"; got != want {
+		t.Fatalf("releaseAPIURL() = %q, want %q", got, want)
+	}
+
+	ReleaseRepo = ""
+	if got, want := releaseAPIURL("/releases/latest"), "https://api.github.com/repos/odhomane/radar/releases/latest"; got != want {
+		t.Fatalf("releaseAPIURL() fallback = %q, want %q", got, want)
+	}
+}
+
 func TestIsNewerVersion(t *testing.T) {
 	tests := []struct {
 		name    string

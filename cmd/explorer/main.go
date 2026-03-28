@@ -34,6 +34,7 @@ func main() {
 	// Timeline storage options
 	timelineStorage := flag.String("timeline-storage", "memory", "Timeline storage backend: memory or sqlite")
 	timelineDBPath := flag.String("timeline-db", "", "Path to timeline database file (default: ~/.radar/timeline.db)")
+	settingsDBPath := flag.String("settings-db", "", "Path to local settings/auth database (default: ~/.radar/settings.db)")
 	// Traffic/metrics options
 	prometheusURL := flag.String("prometheus-url", "", "Manual Prometheus/VictoriaMetrics URL (skips auto-discovery)")
 	flag.Parse()
@@ -70,6 +71,7 @@ func main() {
 		DisableHelmWrite: *disableHelmWrite,
 		TimelineStorage:  *timelineStorage,
 		TimelineDBPath:   *timelineDBPath,
+		SettingsDBPath:   *settingsDBPath,
 		PrometheusURL:    *prometheusURL,
 		Version:          version,
 	}

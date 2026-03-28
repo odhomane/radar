@@ -1,6 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react'
 import Editor, { OnMount, OnChange } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
+import { getCssFontVar } from '../../utils/fonts'
 
 interface YamlEditorProps {
   value: string
@@ -167,6 +168,7 @@ export function YamlEditor({
     })
 
     // Set editor options
+    const codeFont = getCssFontVar('--font-code', 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace')
     editor.updateOptions({
       minimap: { enabled: false },
       lineNumbers: 'on',
@@ -183,7 +185,7 @@ export function YamlEditor({
       tabSize: 2,
       insertSpaces: true,
       fontSize: 13,
-      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+      fontFamily: codeFont,
       padding: { top: 12, bottom: 12 },
       glyphMargin: true,
     })
@@ -248,6 +250,7 @@ export function YamlDiffEditor({
 }: YamlDiffEditorProps) {
   // TODO: Use Monaco DiffEditor to show actual diff
   void _original
+  const codeFont = getCssFontVar('--font-code', 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace')
   return (
     <div className="rounded-lg overflow-hidden border border-theme-border" style={{ height }}>
       <Editor
@@ -260,7 +263,7 @@ export function YamlDiffEditor({
           lineNumbers: 'on',
           scrollBeyondLastLine: false,
           fontSize: 13,
-          fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+          fontFamily: codeFont,
           padding: { top: 12, bottom: 12 },
         }}
         loading={

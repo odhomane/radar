@@ -99,6 +99,11 @@ This fork is configured to keep custom features while continuously receiving ups
     - `ghcr.io/odhomane/radar:latest`
     - `ghcr.io/odhomane/radar:main`
     - `ghcr.io/odhomane/radar:sha-<commit>`
+- **Weekly custom desktop workflow**: `/Users/odhomane/Projects/radar/.github/workflows/weekly-desktop.yml`
+  - Runs weekly
+  - Builds a fresh macOS desktop app from this fork's `main`
+  - Publishes a fork-owned GitHub release tag like `v1.2.5-fork.20260325`
+  - Desktop in-app update checks can be pointed at this fork so updates preserve the fork-only userstyle feature
 
 Prerequisite:
 - In your GitHub repo settings, allow workflow permissions to write packages and contents (for GHCR push and sync push).
@@ -161,6 +166,8 @@ scoop install radar-desktop
 ```
 
 **Windows (direct download)** — [GitHub Releases](https://github.com/skyhook-io/radar/releases).
+
+Radar Desktop also supports a local custom stylesheet at `~/.radar/desktop/userstyle.css`. Open it from `View -> Open User Style CSS`, save your overrides, then use `View -> Reload User Style` to apply font and visual changes without rebuilding the frontend.
 
 #### In-Cluster Deployment
 

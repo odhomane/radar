@@ -185,7 +185,7 @@ function ToggleOption({
         )} />
         <span className={clsx(
           'flex-1 text-xs',
-          enabled ? 'text-blue-400' : 'text-theme-text-primary'
+          enabled ? 'text-blue-400' : 'text-white'
         )}>
           {label}
         </span>
@@ -499,13 +499,13 @@ export const TrafficFilterSidebar = memo(function TrafficFilterSidebar({
                     )}
                     <span className={clsx(
                       'text-[11px] font-medium truncate flex-1',
-                      isHidden ? 'text-theme-text-tertiary line-through' : 'text-white'
+                      isHidden ? 'text-white/35 line-through' : 'text-white'
                     )}>
                       {name}
                     </span>
                     <span className={clsx(
                       'text-[10px] tabular-nums',
-                      isHidden ? 'text-theme-text-tertiary' : 'text-white/70'
+                      isHidden ? 'text-white/35' : 'text-white/70'
                     )}>
                       {nodeCount}
                     </span>

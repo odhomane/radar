@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
 
-export type DockTabType = 'terminal' | 'logs' | 'workload-logs'
+export type DockTabType = 'terminal' | 'host-terminal' | 'logs' | 'workload-logs'
 
 export interface DockTab {
   id: string
@@ -11,6 +11,8 @@ export interface DockTab {
   podName?: string
   containerName?: string
   containers?: string[]
+  initialCommand?: string
+  contextName?: string
   // Logs props
   // (namespace, podName, containers already covered)
   // Workload logs props
@@ -50,7 +52,8 @@ export function DockProvider({ children }: { children: ReactNode }) {
       }
       return t.namespace === tabData.namespace &&
              t.podName === tabData.podName &&
-             t.containerName === tabData.containerName
+             t.containerName === tabData.containerName &&
+             t.initialCommand === tabData.initialCommand
     })
 
     if (existingTab) {
@@ -135,18 +138,29 @@ export function useOpenTerminal() {
     podName: string
     containerName: string
     containers: string[]
+    workingDir?: string
   }) => {
+    const initialCommand = opts.workingDir
+      ? `cd -- ${shellQuote(opts.workingDir)}\r`
+      : undefined
     addTab({
       type: 'terminal',
-      title: `${opts.podName}/${opts.containerName}`,
+      title: opts.workingDir
+        ? `${opts.podName}/${opts.containerName} · ${opts.workingDir}`
+        : `${opts.podName}/${opts.containerName}`,
       namespace: opts.namespace,
       podName: opts.podName,
       containerName: opts.containerName,
       containers: opts.containers,
+      initialCommand,
     })
   }
 
   return openTerminal
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`
 }
 
 export function useOpenLogs() {
@@ -175,6 +189,26 @@ export function useOpenLogs() {
   }
 
   return openLogs
+}
+
+export function useOpenHostTerminal() {
+  const { addTab } = useDock()
+
+  const openHostTerminal = (opts?: { contextName?: string }) => {
+    const contextName = opts?.contextName?.trim()
+    const initialCommand = contextName
+      ? `kubectl config use-context ${shellQuote(contextName)} >/dev/null 2>&1 || true\rkubectl config current-context\r`
+      : undefined
+
+    addTab({
+      type: 'host-terminal',
+      title: contextName ? `Host · ${contextName}` : 'Host Terminal',
+      contextName,
+      initialCommand,
+    })
+  }
+
+  return openHostTerminal
 }
 
 export function useOpenWorkloadLogs() {

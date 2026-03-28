@@ -190,6 +190,460 @@ export interface DashboardResponse {
   metrics: DashboardMetrics | null
 }
 
+// ============================================================================
+// Auth & Settings
+// ============================================================================
+
+export interface CurrentUser {
+  id: string
+  email: string
+  displayName: string
+  permissions: string[]
+  roleIds: string[]
+  groupIds: string[]
+  isSuperUser: boolean
+}
+
+export interface AuthStatus {
+  needsSetup: boolean
+  authenticated: boolean
+  currentUser?: CurrentUser
+  providers: AuthProviderStatus
+}
+
+export interface AuthProviderStatus {
+  localEnabled: boolean
+  ldapEnabled: boolean
+  ssoEnabled: boolean
+  ssoProviderName: string
+}
+
+export interface AppearanceSettings {
+  uiTheme: string
+  uiFont: string
+  codeFont: string
+  density: string
+  accentColor: string
+  reduceMotion: boolean
+  compactSidebar: boolean
+  dateFormat: string
+}
+
+export interface SecuritySettings {
+  sessionTimeoutMinutes: number
+  passwordMinLength: number
+  requireStrongPasswords: boolean
+  requireMFA: boolean
+  allowSelfSignup: boolean
+  allowPasswordReset: boolean
+  auditRetentionDays: number
+}
+
+export interface LocalAuthSettings {
+  enabled: boolean
+}
+
+export interface GenericOAuthSettings {
+  enabled: boolean
+  providerType: string
+  providerName: string
+  clientId: string
+  clientSecret: string
+  azureTenantId: string
+  authUrl: string
+  tokenUrl: string
+  userInfoUrl: string
+  scopes: string[]
+  emailPath: string
+  namePath: string
+  groupsPath: string
+  allowedGroups: string[]
+  allowedDomains: string[]
+  autoSignUp: boolean
+  defaultRole: string
+}
+
+export interface LDAPSettings {
+  enabled: boolean
+  host: string
+  port: number
+  useSSL: boolean
+  startTLS: boolean
+  skipTLSVerify: boolean
+  bindDn: string
+  bindPassword: string
+  userBaseDn: string
+  userSearchFilter: string
+  emailAttribute: string
+  nameAttribute: string
+  groupAttribute: string
+  allowedGroups: string[]
+  autoSignUp: boolean
+  defaultRole: string
+}
+
+export interface AuthenticationSettings {
+  local: LocalAuthSettings
+  genericOAuth: GenericOAuthSettings
+  ldap: LDAPSettings
+}
+
+export interface OperationsSettings {
+  defaultLandingPage: string
+  defaultNamespaceMode: string
+  autoRefreshSeconds: number
+  confirmDestructiveActions: boolean
+  enableDesktopNotifications: boolean
+}
+
+export interface AppSettingsRecord {
+  organizationName: string
+  supportEmail: string
+  appearance: AppearanceSettings
+  security: SecuritySettings
+  authentication: AuthenticationSettings
+  operations: OperationsSettings
+}
+
+export interface SettingsRole {
+  id: string
+  name: string
+  description: string
+  permissions: string[]
+  system: boolean
+}
+
+export interface SettingsGroup {
+  id: string
+  name: string
+  description: string
+  roleIds: string[]
+  memberCount: number
+}
+
+export interface SettingsUser {
+  id: string
+  email: string
+  displayName: string
+  status: string
+  roleIds: string[]
+  groupIds: string[]
+  effectiveRoles: string[]
+  permissions: string[]
+  lastLoginAt?: string
+}
+
+export interface UserInput {
+  email: string
+  displayName: string
+  status: string
+  roleIds: string[]
+  groupIds: string[]
+  password?: string
+}
+
+export interface RoleInput {
+  name: string
+  description: string
+  permissions: string[]
+}
+
+export interface GroupInput {
+  name: string
+  description: string
+  roleIds: string[]
+}
+
+export async function getAuthStatus(): Promise<AuthStatus> {
+  return fetchJSON('/auth/status')
+}
+
+export async function login(email: string, password: string, method: 'local' | 'ldap' = 'local'): Promise<{ currentUser: CurrentUser }> {
+  const response = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, method }),
+  })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+  return response.json()
+}
+
+export async function setupAdmin(displayName: string, email: string, password: string): Promise<{ currentUser: CurrentUser }> {
+  const response = await fetch(`${API_BASE}/auth/setup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName, email, password }),
+  })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+  return response.json()
+}
+
+export async function logout(): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/logout`, { method: 'POST' })
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+  }
+}
+
+export function useAuthStatus() {
+  return useQuery<AuthStatus>({
+    queryKey: ['auth-status'],
+    queryFn: getAuthStatus,
+    staleTime: 5000,
+    retry: false,
+  })
+}
+
+export function useLogin() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ email, password, method }: { email: string; password: string; method?: 'local' | 'ldap' }) => login(email, password, method),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth-status'] })
+    },
+  })
+}
+
+export function useSetupAdmin() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ displayName, email, password }: { displayName: string; email: string; password: string }) =>
+      setupAdmin(displayName, email, password),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth-status'] })
+    },
+  })
+}
+
+export function useLogout() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: logout,
+    onSuccess: () => {
+      queryClient.setQueryData<AuthStatus>(['auth-status'], {
+        needsSetup: false,
+        authenticated: false,
+        providers: {
+          localEnabled: true,
+          ldapEnabled: false,
+          ssoEnabled: false,
+          ssoProviderName: 'SSO',
+        },
+      })
+      queryClient.removeQueries({
+        predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] !== 'auth-status',
+      })
+      queryClient.invalidateQueries({ queryKey: ['auth-status'] })
+    },
+  })
+}
+
+export function useAppSettings(enabled = true) {
+  return useQuery<AppSettingsRecord>({
+    queryKey: ['app-settings'],
+    queryFn: () => fetchJSON('/settings/app'),
+    enabled,
+  })
+}
+
+export function useUpdateAppSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (settings: AppSettingsRecord) => {
+      const response = await fetch(`${API_BASE}/settings/app`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+      }
+      return response.json() as Promise<AppSettingsRecord>
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['app-settings'], updated)
+      queryClient.invalidateQueries({ queryKey: ['app-settings'] })
+    },
+  })
+}
+
+export function useSettingsUsers() {
+  return useQuery<SettingsUser[]>({
+    queryKey: ['settings-users'],
+    queryFn: () => fetchJSON('/settings/users'),
+  })
+}
+
+export function useCreateUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: UserInput) => {
+      const response = await fetch(`${API_BASE}/settings/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+      }
+      return response.json() as Promise<SettingsUser>
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-users'] }),
+  })
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, input }: { id: string; input: UserInput }) => {
+      const response = await fetch(`${API_BASE}/settings/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+      }
+      return response.json() as Promise<SettingsUser>
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-users'] }),
+  })
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`${API_BASE}/settings/users/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Failed to delete user')
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-users'] }),
+  })
+}
+
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: async ({ id, password }: { id: string; password: string }) => {
+      const response = await fetch(`${API_BASE}/settings/users/${id}/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      if (!response.ok) throw new Error('Failed to reset password')
+    },
+  })
+}
+
+export function useSettingsRoles() {
+  return useQuery<SettingsRole[]>({
+    queryKey: ['settings-roles'],
+    queryFn: () => fetchJSON('/settings/roles'),
+  })
+}
+
+export function useCreateRole() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: RoleInput) => {
+      const response = await fetch(`${API_BASE}/settings/roles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!response.ok) throw new Error('Failed to create role')
+      return response.json() as Promise<SettingsRole>
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-roles'] }),
+  })
+}
+
+export function useUpdateRole() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, input }: { id: string; input: RoleInput }) => {
+      const response = await fetch(`${API_BASE}/settings/roles/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!response.ok) throw new Error('Failed to update role')
+      return response.json() as Promise<SettingsRole>
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-roles'] }),
+  })
+}
+
+export function useDeleteRole() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`${API_BASE}/settings/roles/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Failed to delete role')
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-roles'] }),
+  })
+}
+
+export function useSettingsGroups() {
+  return useQuery<SettingsGroup[]>({
+    queryKey: ['settings-groups'],
+    queryFn: () => fetchJSON('/settings/groups'),
+  })
+}
+
+export function useCreateGroup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: GroupInput) => {
+      const response = await fetch(`${API_BASE}/settings/groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!response.ok) throw new Error('Failed to create group')
+      return response.json() as Promise<SettingsGroup>
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-groups'] }),
+  })
+}
+
+export function useUpdateGroup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, input }: { id: string; input: GroupInput }) => {
+      const response = await fetch(`${API_BASE}/settings/groups/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!response.ok) throw new Error('Failed to update group')
+      return response.json() as Promise<SettingsGroup>
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-groups'] }),
+  })
+}
+
+export function useDeleteGroup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`${API_BASE}/settings/groups/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Failed to delete group')
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-groups'] }),
+  })
+}
+
 export interface DashboardCRDsResponse {
   topCRDs: DashboardCRDCount[]
 }

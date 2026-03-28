@@ -3,6 +3,7 @@ import { X, ChevronDown, ChevronUp, Terminal, FileText, Trash2, Layers } from 'l
 import { clsx } from 'clsx'
 import { useDock, DockTab } from './DockContext'
 import { TerminalTab } from './TerminalTab'
+import { HostTerminalTab } from './HostTerminalTab'
 import { LogsTab } from './LogsTab'
 import { WorkloadLogsTab } from './WorkloadLogsTab'
 
@@ -136,7 +137,11 @@ function TabButton({
   onSelect: () => void
   onClose: () => void
 }) {
-  const Icon = tab.type === 'terminal' ? Terminal : tab.type === 'workload-logs' ? Layers : FileText
+  const Icon = tab.type === 'terminal' || tab.type === 'host-terminal'
+    ? Terminal
+    : tab.type === 'workload-logs'
+      ? Layers
+      : FileText
 
   return (
     <div
@@ -171,6 +176,17 @@ function TabContent({ tab, isActive }: { tab: DockTab; isActive: boolean }) {
         podName={tab.podName!}
         containerName={tab.containerName!}
         containers={tab.containers!}
+        initialCommand={tab.initialCommand}
+        isActive={isActive}
+      />
+    )
+  }
+
+  if (tab.type === 'host-terminal') {
+    return (
+      <HostTerminalTab
+        initialCommand={tab.initialCommand}
+        contextName={tab.contextName}
         isActive={isActive}
       />
     )

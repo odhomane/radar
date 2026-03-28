@@ -1,10 +1,10 @@
 #!/bin/bash
 # Radar installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/skyhook-io/radar/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/odhomane/radar/main/install.sh | bash
 
 set -e
 
-REPO="skyhook-io/radar"
+REPO="odhomane/radar"
 BINARY_NAME="kubectl-radar"
 INSTALL_DIR="/usr/local/bin"
 

@@ -5,7 +5,7 @@ version: ${VERSION}
 maintainer: Skyhook <support@skyhook.io>
 description: "Kubernetes visibility — topology, traffic, and Helm management"
 vendor: Skyhook
-homepage: https://github.com/skyhook-io/radar
+homepage: https://github.com/odhomane/radar
 license: Apache-2.0
 contents:
   - src: build/bin/radar-desktop

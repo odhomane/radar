@@ -22,6 +22,7 @@ import {
 import { clsx } from 'clsx'
 import type { SelectedResource, APIResource } from '../../types'
 import type { NavigateToResource } from '../../utils/navigation'
+import { kindToPlural } from '../../utils/navigation'
 import { useAPIResources, categorizeResources, CORE_RESOURCES } from '../../api/apiResources'
 import {
   getPodStatus,
@@ -646,6 +647,35 @@ interface ResourcesViewProps {
 // Default selected kind
 const DEFAULT_KIND_INFO: SelectedKindInfo = { name: 'pods', kind: 'Pod', group: '' }
 
+function resolveKindInfo(
+  value: string,
+  group: string,
+  apiResources?: APIResource[]
+): SelectedKindInfo | null {
+  const normalized = value.toLowerCase()
+  const plural = kindToPlural(value)
+
+  const matches = (resource: APIResource) =>
+    resource.group === group && (
+      resource.name.toLowerCase() === normalized ||
+      resource.kind.toLowerCase() === normalized ||
+      resource.name.toLowerCase() === plural ||
+      resource.kind.toLowerCase() === plural
+    )
+
+  const apiMatch = apiResources?.find(matches)
+  if (apiMatch) {
+    return { name: apiMatch.name, kind: apiMatch.kind, group: apiMatch.group }
+  }
+
+  const coreMatch = CORE_RESOURCES.find(matches)
+  if (coreMatch) {
+    return { name: coreMatch.name, kind: coreMatch.kind, group: coreMatch.group }
+  }
+
+  return null
+}
+
 // Read initial state from URL
 function getInitialKindFromURL(): SelectedKindInfo {
   const params = new URLSearchParams(window.location.search)
@@ -850,27 +880,20 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
   useEffect(() => {
     if (!selectedResource) return
 
-    const resourceKindLower = selectedResource.kind.toLowerCase()
-
-    // Find the best match: prefer dynamic API discovery (has correct kind for CRDs) over hardcoded
-    const apiMatch = apiResources?.find(r =>
-      r.name.toLowerCase() === resourceKindLower ||
-      r.kind.toLowerCase() === resourceKindLower
+    const match = resolveKindInfo(
+      selectedResource.kind,
+      selectedResource.group ?? '',
+      apiResources
     )
-    const coreMatch = CORE_RESOURCES.find(r =>
-      r.name.toLowerCase() === resourceKindLower ||
-      r.kind.toLowerCase() === resourceKindLower
-    )
-    const match = apiMatch || coreMatch
 
     if (match) {
-      // Skip if already correctly resolved (check kind too — fallback may have set wrong casing)
       if (selectedKind.name === match.name && selectedKind.kind === match.kind && selectedKind.group === match.group) return
       setOwnerKind('')
       setOwnerName('')
-      setSelectedKind({ name: match.name, kind: match.kind, group: match.group })
+      setSelectedKind(match)
     } else {
       // Last resort fallback: derive singular, preserve group from navigation
+      const resourceKindLower = selectedResource.kind.toLowerCase()
       const singular = resourceKindLower.endsWith('s')
         ? resourceKindLower.slice(0, -1).charAt(0).toUpperCase() + resourceKindLower.slice(1, -1)
         : resourceKindLower.charAt(0).toUpperCase() + resourceKindLower.slice(1)
@@ -927,12 +950,9 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
     )
     if (alreadyResolved) return
 
-    // Try to match by kind name (URL stores kind=HTTPRoute, API has name=httproutes)
-    const match = apiResources.find(r =>
-      r.kind === selectedKind.kind && r.group === selectedKind.group
-    )
+    const match = resolveKindInfo(selectedKind.kind, selectedKind.group, apiResources)
     if (match) {
-      setSelectedKind({ name: match.name, kind: match.kind, group: match.group })
+      setSelectedKind(match)
     }
   }, [apiResources, resourcesToCount, selectedKind.name, selectedKind.kind, selectedKind.group])
 
@@ -965,18 +985,74 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
 
   // Find the selected kind's query and derive resources/isLoading/refetch from it
   const selectedQueryIndex = useMemo(() => {
-    return resourcesToCount.findIndex(r =>
+    const exactMatchIndex = resourcesToCount.findIndex(r =>
       r.name === selectedKind.name && r.group === selectedKind.group
     )
-  }, [resourcesToCount, selectedKind.name, selectedKind.group])
+
+    if (exactMatchIndex !== -1) {
+      return exactMatchIndex
+    }
+
+    const caseInsensitiveNameIndex = resourcesToCount.findIndex(r =>
+      r.name.toLowerCase() === selectedKind.name.toLowerCase() &&
+      r.group === selectedKind.group
+    )
+
+    if (caseInsensitiveNameIndex !== -1) {
+      return caseInsensitiveNameIndex
+    }
+
+    // Fall back to the display kind so deep links or external navigation using
+    // singular kinds like "Pod" still resolve to the existing list query.
+    const kindMatchIndex = resourcesToCount.findIndex(r =>
+      r.kind.toLowerCase() === selectedKind.kind.toLowerCase() &&
+      r.group === selectedKind.group
+    )
+
+    if (kindMatchIndex !== -1) {
+      return kindMatchIndex
+    }
+
+    // Final fallback: normalize singular/plural mismatches.
+    const pluralKind = kindToPlural(selectedKind.kind)
+    return resourcesToCount.findIndex(r =>
+      r.name.toLowerCase() === pluralKind &&
+      r.group === selectedKind.group
+    )
+  }, [resourcesToCount, selectedKind.name, selectedKind.kind, selectedKind.group])
 
   const selectedQuery = resourceQueries[selectedQueryIndex]
   const resources = selectedQuery?.data
-  const isLoading = selectedQuery?.isLoading ?? true
+  const hasResolvedSelectedQuery = selectedQueryIndex !== -1
+  const isLoading = hasResolvedSelectedQuery ? (selectedQuery?.isLoading ?? false) : false
   const selectedQueryError = selectedQuery?.error
   const isSelectedForbidden = isForbiddenError(selectedQueryError)
   const refetchFn = selectedQuery?.refetch
   const dataUpdatedAt = selectedQuery?.dataUpdatedAt
+
+  // If the current selection doesn't map to a loaded query anymore, recover to a
+  // concrete resource kind instead of leaving the center pane in limbo.
+  useEffect(() => {
+    if (!resourcesToCount.length || hasResolvedSelectedQuery) return
+
+    const pluralKind = kindToPlural(selectedKind.kind)
+    const fallback =
+      resourcesToCount.find(r => r.name.toLowerCase() === pluralKind && r.group === selectedKind.group) ||
+      resourcesToCount.find(r => r.kind.toLowerCase() === selectedKind.kind.toLowerCase()) ||
+      resourcesToCount[0]
+
+    if (!fallback) return
+
+    if (
+      selectedKind.name === fallback.name &&
+      selectedKind.kind === fallback.kind &&
+      selectedKind.group === fallback.group
+    ) {
+      return
+    }
+
+    setSelectedKind({ name: fallback.name, kind: fallback.kind, group: fallback.group })
+  }, [resourcesToCount, hasResolvedSelectedQuery, selectedKind.name, selectedKind.kind, selectedKind.group])
 
   const [refetch, isRefreshAnimating] = useRefreshAnimation(() => refetchFn?.())
 
@@ -1603,6 +1679,7 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
                 ? type.label.slice(0, -1)
                 : type.label
               const Icon = getResourceIcon(kindKey)
+              const iconColor = getResourceKindColor(kindKey)
               const count = counts?.[kindKey] ?? 0
               const isSelected = selectedKind.name === type.kind
               return (
@@ -1619,7 +1696,9 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
                       : 'text-theme-text-secondary hover:bg-theme-elevated hover:text-theme-text-primary'
                   )}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-theme-elevated/70">
+                    <Icon className={clsx('h-4 w-4 shrink-0', iconColor)} />
+                  </span>
                   <span className="flex-1 text-left">{type.label}</span>
                   <span className={clsx(
                     'text-xs px-2 py-0.5 rounded',
@@ -1951,7 +2030,11 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
               </thead>
               <tbody className="table-divide-subtle">
                 {filteredResources.map((resource: any) => {
-                  const isSelected = selectedResource?.kind === selectedKind.name &&
+                  const selectedResourceKind = selectedResource?.kind?.toLowerCase()
+                  const isSelectedKind =
+                    selectedResourceKind === selectedKind.name.toLowerCase() ||
+                    selectedResourceKind === selectedKind.kind.toLowerCase()
+                  const isSelected = isSelectedKind &&
                     selectedResource?.namespace === resource.metadata?.namespace &&
                     selectedResource?.name === resource.metadata?.name
                   return (
@@ -1984,9 +2067,94 @@ interface ResourceTypeButtonProps {
   onClick: () => void
 }
 
+function getResourceKindColor(kind: string): string {
+  switch (kind) {
+    case 'Ingress':
+    case 'Gateway':
+    case 'HTTPRoute':
+    case 'GRPCRoute':
+    case 'TCPRoute':
+    case 'TLSRoute':
+      return 'text-purple-500 dark:text-purple-300'
+    case 'Service':
+    case 'Endpoints':
+    case 'EndpointSlice':
+      return 'text-blue-500 dark:text-blue-300'
+    case 'Deployment':
+    case 'Rollout':
+      return 'text-emerald-500 dark:text-emerald-300'
+    case 'DaemonSet':
+      return 'text-teal-500 dark:text-teal-300'
+    case 'StatefulSet':
+      return 'text-cyan-500 dark:text-cyan-300'
+    case 'ReplicaSet':
+      return 'text-green-500 dark:text-green-300'
+    case 'Pod':
+      return 'text-lime-500 dark:text-lime-300'
+    case 'Job':
+      return 'text-orange-500 dark:text-orange-300'
+    case 'CronJob':
+      return 'text-amber-500 dark:text-amber-300'
+    case 'ConfigMap':
+      return 'text-yellow-500 dark:text-yellow-300'
+    case 'PersistentVolumeClaim':
+    case 'PersistentVolume':
+    case 'StorageClass':
+    case 'VolumeAttachment':
+      return 'text-slate-500 dark:text-slate-200'
+    case 'HorizontalPodAutoscaler':
+      return 'text-pink-500 dark:text-pink-300'
+    case 'PodDisruptionBudget':
+      return 'text-fuchsia-500 dark:text-fuchsia-300'
+    case 'Secret':
+      return 'text-rose-500 dark:text-rose-300'
+    case 'NetworkPolicy':
+    case 'AuthorizationPolicy':
+    case 'RequestAuthentication':
+    case 'PeerAuthentication':
+      return 'text-indigo-500 dark:text-indigo-300'
+    case 'Node':
+    case 'Namespace':
+    case 'ServiceAccount':
+    case 'ClusterRole':
+    case 'ClusterRoleBinding':
+    case 'Role':
+    case 'RoleBinding':
+      return 'text-sky-500 dark:text-sky-300'
+    case 'Event':
+      return 'text-violet-500 dark:text-violet-300'
+    case 'Certificate':
+    case 'CertificateRequest':
+    case 'ClusterIssuer':
+    case 'Issuer':
+    case 'Order':
+    case 'Challenge':
+      return 'text-amber-500 dark:text-amber-300'
+    case 'PodMonitor':
+    case 'ServiceMonitor':
+    case 'PrometheusRule':
+    case 'Alertmanager':
+    case 'Prometheus':
+      return 'text-emerald-500 dark:text-emerald-300'
+    case 'EnvoyFilter':
+    case 'VirtualService':
+    case 'DestinationRule':
+    case 'Sidecar':
+    case 'GatewayClass':
+      return 'text-cyan-500 dark:text-cyan-300'
+    case 'FrontendConfig':
+    case 'BackendConfig':
+    case 'ServiceNetworkEndpointGroup':
+      return 'text-blue-500 dark:text-blue-300'
+    default:
+      return 'text-slate-500 dark:text-slate-300'
+  }
+}
+
 const ResourceTypeButton = forwardRef<HTMLButtonElement, ResourceTypeButtonProps>(
   function ResourceTypeButton({ resource, count, isSelected, isForbidden: forbidden, onClick }, ref) {
     const Icon = getResourceIcon(resource.kind)
+    const iconColor = getResourceKindColor(resource.kind)
     return (
       <button
         ref={ref}
@@ -2000,7 +2168,9 @@ const ResourceTypeButton = forwardRef<HTMLButtonElement, ResourceTypeButtonProps
               : 'text-theme-text-secondary hover:bg-theme-elevated hover:text-theme-text-primary'
         )}
       >
-        <Icon className="w-4 h-4 shrink-0" />
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-theme-elevated/70">
+          <Icon className={clsx('h-4 w-4 shrink-0', forbidden ? 'text-theme-text-disabled' : iconColor)} />
+        </span>
         <Tooltip content={forbidden ? `${resource.kind} (no access)` : resource.kind} position="right">
           <span className="flex-1 text-left truncate">
             {resource.kind}

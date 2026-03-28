@@ -1,0 +1,67 @@
+{
+  "realm": "radar",
+  "enabled": true,
+  "sslRequired": "none",
+  "displayName": "Radar",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "internationalizationEnabled": false,
+  "clients": [
+    {
+      "clientId": "radar-oauth2-proxy",
+      "name": "Radar OAuth2 Proxy",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "06f3123a2470fd81f3faac27b75864b18a441e042aa5ed73",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:4180/oauth2/callback",
+        "http://cloud.dhomane.com:4180/oauth2/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:4180",
+        "http://cloud.dhomane.com:4180"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:4180/*##http://cloud.dhomane.com:4180/*"
+      },
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "radar",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Radar",
+      "lastName": "User",
+      "email": "radar@example.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "K+T/c+UA4rZqJBtxD/JhFY/W",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-radar"
+      ]
+    }
+  ]
+}

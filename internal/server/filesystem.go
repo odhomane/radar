@@ -111,7 +111,6 @@ func (s *Server) handlePodFilesystemDownload(w http.ResponseWriter, r *http.Requ
 		s.writeError(w, http.StatusBadRequest, "path is required")
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", path.Base(filePath)))
 	content, err := s.readPodFile(r.Context(), namespace, podName, container, filePath)
@@ -316,7 +315,6 @@ func (s *Server) handlePodFilesystemArchive(w http.ResponseWriter, r *http.Reque
 	if strings.HasSuffix(strings.ToLower(baseName), ".zip") {
 		zipName = baseName
 	}
-
 	if ok, content, err := s.buildZipFromTarInContainer(r.Context(), namespace, podName, container, targetPath); err == nil && ok {
 		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", zipName))

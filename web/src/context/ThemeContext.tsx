@@ -1,10 +1,12 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react'
 
 type Theme = 'dark' | 'light'
+type ThemePreference = Theme | 'system'
 
 interface ThemeContextType {
   theme: Theme
-  setTheme: (theme: Theme) => void
+  themePreference: ThemePreference
+  setTheme: (theme: ThemePreference) => void
   toggleTheme: () => void
 }
 
@@ -16,8 +18,8 @@ function getInitialTheme(): Theme {
   // Check localStorage first
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem(THEME_STORAGE_KEY)
-    if (stored === 'light' || stored === 'dark') {
-      return stored
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+      return stored === 'system' ? resolveSystemTheme() : stored
     }
     // Check system preference
     if (window.matchMedia('(prefers-color-scheme: light)').matches) {
@@ -27,11 +29,33 @@ function getInitialTheme(): Theme {
   return 'dark' // Default to dark
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme)
+function resolveSystemTheme(): Theme {
+  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) {
+    return 'light'
+  }
+  return 'dark'
+}
 
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme)
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY)
+      if (stored === 'light' || stored === 'dark' || stored === 'system') {
+        return stored
+      }
+    }
+    return getInitialTheme()
+  })
+
+  const theme = useMemo<Theme>(() => {
+    if (themePreference === 'system') {
+      return resolveSystemTheme()
+    }
+    return themePreference
+  }, [themePreference])
+
+  const setTheme = (newTheme: ThemePreference) => {
+    setThemePreference(newTheme)
     localStorage.setItem(THEME_STORAGE_KEY, newTheme)
   }
 
@@ -47,11 +71,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Listen for system theme changes
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
-    const handleChange = (e: MediaQueryListEvent) => {
+    const handleChange = () => {
       // Only auto-switch if user hasn't explicitly set a preference
       const stored = localStorage.getItem(THEME_STORAGE_KEY)
-      if (!stored) {
-        setThemeState(e.matches ? 'light' : 'dark')
+      if (!stored || stored === 'system') {
+        setThemePreference('system')
       }
     }
     mediaQuery.addEventListener('change', handleChange)
@@ -59,7 +83,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, themePreference, setTheme, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   )

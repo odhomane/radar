@@ -120,7 +120,7 @@ FROM --platform=$TARGETPLATFORM runtime-base AS full
 
 LABEL org.opencontainers.image.title="Radar"
 LABEL org.opencontainers.image.description="Modern Kubernetes visibility — topology, traffic, and Helm management"
-LABEL org.opencontainers.image.source="https://github.com/skyhook-io/radar"
+LABEL org.opencontainers.image.source="https://github.com/odhomane/radar"
 LABEL org.opencontainers.image.vendor="Skyhook"
 
 COPY --from=backend-builder /radar /radar
@@ -139,7 +139,7 @@ FROM --platform=$TARGETPLATFORM runtime-base AS release
 
 LABEL org.opencontainers.image.title="Radar"
 LABEL org.opencontainers.image.description="Modern Kubernetes visibility — topology, traffic, and Helm management"
-LABEL org.opencontainers.image.source="https://github.com/skyhook-io/radar"
+LABEL org.opencontainers.image.source="https://github.com/odhomane/radar"
 LABEL org.opencontainers.image.vendor="Skyhook"
 
 ARG TARGETARCH

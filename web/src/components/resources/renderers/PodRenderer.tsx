@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Server, HardDrive, Terminal as TerminalIcon, FileText, AlertTriangle, Activity, FolderOpen } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Section, PropertyList, Property, ConditionsSection, CopyHandler } from '../drawer-components'
@@ -10,7 +11,6 @@ import { useCanExec, useCanViewLogs, useCanPortForward } from '../../../contexts
 import { usePodMetrics, usePodMetricsHistory } from '../../../api/client'
 import { MetricsChart } from '../../ui/MetricsChart'
 import { ImageFilesystemModal } from '../ImageFilesystemModal'
-import { PodFilesystemModal } from '../PodFilesystemModal'
 
 interface PodRendererProps {
   data: any
@@ -92,6 +92,8 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
 
   const openTerminal = useOpenTerminal()
   const openLogs = useOpenLogs()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   // Check capabilities
   const canExec = useCanExec()
@@ -108,7 +110,6 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
 
   // Image filesystem modal state
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
-  const [filesystemContainer, setFilesystemContainer] = useState<string | null>(null)
   const imagePullSecrets = data.spec?.imagePullSecrets?.map((s: { name: string }) => s.name) || []
 
   const handleOpenTerminal = (containerName?: string) => {
@@ -132,6 +133,16 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
         containerName,
       })
     }
+  }
+
+  const handleOpenFilesystem = (containerName: string) => {
+    if (!namespace || !podName) return
+    const params = new URLSearchParams(location.search)
+    params.set('podNamespace', namespace)
+    params.set('pod', podName)
+    params.set('container', containerName)
+    params.set('path', '/')
+    navigate({ pathname: '/filesystem', search: params.toString() })
   }
 
   return (
@@ -215,7 +226,7 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
                     )}
                     {stateKey === 'running' && canExec && (
                       <button
-                        onClick={() => setFilesystemContainer(container.name)}
+                        onClick={() => handleOpenFilesystem(container.name)}
                         className="p-1 text-slate-400 hover:text-blue-400 hover:bg-slate-600/50 rounded transition-colors"
                         title={`Open live filesystem in ${container.name}`}
                       >
@@ -425,15 +436,6 @@ export function PodRenderer({ data, onCopy, copied }: PodRendererProps) {
           namespace={namespace || ''}
           podName={podName || ''}
           pullSecrets={imagePullSecrets}
-        />
-      )}
-      {filesystemContainer && namespace && podName && (
-        <PodFilesystemModal
-          open={!!filesystemContainer}
-          onClose={() => setFilesystemContainer(null)}
-          namespace={namespace}
-          podName={podName}
-          containerName={filesystemContainer}
         />
       )}
     </>

@@ -1,9 +1,9 @@
 # Radar installer for Windows
-# Usage: irm https://raw.githubusercontent.com/skyhook-io/radar/main/install.ps1 | iex
+# Usage: irm https://raw.githubusercontent.com/odhomane/radar/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "skyhook-io/radar"
+$Repo = "odhomane/radar"
 $BinaryName = "kubectl-radar.exe"
 $InstallDir = "$env:LOCALAPPDATA\radar"
 

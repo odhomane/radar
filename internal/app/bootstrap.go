@@ -13,6 +13,7 @@ import (
 	"github.com/skyhook-io/radar/internal/helm"
 	"github.com/skyhook-io/radar/internal/k8s"
 	"github.com/skyhook-io/radar/internal/server"
+	"github.com/skyhook-io/radar/internal/settings"
 	"github.com/skyhook-io/radar/internal/static"
 	"github.com/skyhook-io/radar/internal/timeline"
 	"github.com/skyhook-io/radar/internal/traffic"
@@ -33,6 +34,7 @@ type AppConfig struct {
 	DisableHelmWrite bool
 	TimelineStorage  string
 	TimelineDBPath   string
+	SettingsDBPath   string
 	PrometheusURL    string
 	Version          string
 }
@@ -47,6 +49,8 @@ func SetGlobals(cfg AppConfig) {
 
 // InitializeK8s creates and configures the Kubernetes client.
 func InitializeK8s(cfg AppConfig) error {
+	EnrichPATH()
+
 	err := k8s.Initialize(k8s.InitOptions{
 		KubeconfigPath: cfg.Kubeconfig,
 		KubeconfigDirs: cfg.KubeconfigDirs,
@@ -119,11 +123,26 @@ func RegisterCallbacks(cfg AppConfig, timelineStoreCfg timeline.StoreConfig) {
 
 // CreateServer creates the HTTP server with the given configuration.
 func CreateServer(cfg AppConfig) *server.Server {
+	settingsDBPath := cfg.SettingsDBPath
+	if settingsDBPath == "" {
+		homeDir, _ := os.UserHomeDir()
+		settingsDBPath = filepath.Join(homeDir, ".radar", "settings.db")
+	}
+	settingsStore, err := settings.Open(settingsDBPath)
+	if err != nil {
+		log.Fatalf("failed to initialize settings store: %v", err)
+	}
+	if created, password, err := settingsStore.EnsureAdminUser(); err != nil {
+		log.Fatalf("failed to ensure built-in admin user: %v", err)
+	} else if created {
+		log.Printf("Created built-in admin user 'admin' with password: %s", password)
+	}
 	serverCfg := server.Config{
-		Port:       cfg.Port,
-		DevMode:    cfg.DevMode,
-		StaticFS:   static.FS,
-		StaticRoot: "dist",
+		Port:          cfg.Port,
+		DevMode:       cfg.DevMode,
+		StaticFS:      static.FS,
+		StaticRoot:    "dist",
+		SettingsStore: settingsStore,
 	}
 	return server.New(serverCfg)
 }

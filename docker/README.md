@@ -12,7 +12,7 @@ This folder contains production-friendly Docker Compose setups for Radar with a 
 
 ## Default behavior
 
-- Image: `ghcr.io/odhomane/radar:latest`
+- Image: `odhomane/radar:latest`
 - Exposed port: `8585`
 - Command: `--no-browser --port 8585`
 - Kubeconfig mount: `${HOME}/.kube/config` -> `/home/nonroot/.kube/config:ro`
@@ -53,7 +53,7 @@ docker compose down
 
 You can override image, port, and host credential paths without editing YAML.
 
-- `RADAR_IMAGE` default `ghcr.io/odhomane/radar:latest`
+- `RADAR_IMAGE` default `odhomane/radar:latest`
 - `RADAR_CONTAINER_NAME` default `radar`
 - `RADAR_PORT` default `8585`
 - `KUBECONFIG_PATH` default `${HOME}/.kube/config`
@@ -76,7 +76,7 @@ docker compose up -d
 You can also keep overrides in `docker/.env`:
 
 ```dotenv
-RADAR_IMAGE=ghcr.io/odhomane/radar:latest
+RADAR_IMAGE=odhomane/radar:latest
 RADAR_PORT=8585
 KUBECONFIG_PATH=/Users/you/.kube/config
 AWS_CONFIG_PATH=/Users/you/.aws

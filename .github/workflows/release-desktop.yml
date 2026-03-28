@@ -3,6 +3,7 @@ name: Release Desktop
 on:
   push:
     tags:
+      - "v*.*"
       - "v*.*.*"
 
 permissions:
@@ -352,7 +353,7 @@ jobs:
           VERSION_NUM="${VERSION#v}"
           SHA256=$(sha256sum "dist/radar-desktop_${VERSION}_darwin_universal.zip" | awk '{print $1}')
 
-          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/skyhook-io/homebrew-tap.git /tmp/homebrew-tap
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/odhomane/homebrew-tap.git /tmp/homebrew-tap
           mkdir -p /tmp/homebrew-tap/Casks
 
           cat > /tmp/homebrew-tap/Casks/radar-desktop.rb <<'CASK'
@@ -360,10 +361,10 @@ jobs:
             version "VERSION_PLACEHOLDER"
             sha256 "SHA256_PLACEHOLDER"
 
-            url "https://github.com/skyhook-io/radar/releases/download/v#{version}/radar-desktop_v#{version}_darwin_universal.zip"
+            url "https://github.com/odhomane/radar/releases/download/v#{version}/radar-desktop_v#{version}_darwin_universal.zip"
             name "Radar"
             desc "Kubernetes visibility — topology, traffic, and Helm management"
-            homepage "https://github.com/skyhook-io/radar"
+            homepage "https://github.com/odhomane/radar"
 
             app "Radar.app"
 
@@ -396,14 +397,14 @@ jobs:
           VERSION_NUM="${VERSION#v}"
           SHA256=$(sha256sum "dist/radar-desktop_${VERSION}_windows_amd64.zip" | awk '{print $1}')
 
-          git clone https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/skyhook-io/scoop-bucket.git /tmp/scoop-bucket
+          git clone https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/odhomane/scoop-bucket.git /tmp/scoop-bucket
 
           cat > /tmp/scoop-bucket/radar-desktop.json <<EOF
           {
               "version": "${VERSION_NUM}",
               "architecture": {
                   "64bit": {
-                      "url": "https://github.com/skyhook-io/radar/releases/download/${VERSION}/radar-desktop_${VERSION}_windows_amd64.zip",
+                      "url": "https://github.com/odhomane/radar/releases/download/${VERSION}/radar-desktop_${VERSION}_windows_amd64.zip",
                       "bin": [
                           "Radar.exe"
                       ],
@@ -413,7 +414,7 @@ jobs:
                       "hash": "${SHA256}"
                   }
               },
-              "homepage": "https://github.com/skyhook-io/radar",
+              "homepage": "https://github.com/odhomane/radar",
               "license": "Apache-2.0",
               "description": "Radar Desktop — Kubernetes visibility with topology, traffic, and Helm management",
               "post_install": [

@@ -159,7 +159,7 @@ export const TopologyFilterSidebar = memo(function TopologyFilterSidebar({
                 className={clsx(
                   'p-1.5 rounded transition-colors',
                   isVisible
-                    ? 'bg-theme-elevated text-theme-text-primary'
+                    ? 'bg-white text-black'
                     : 'text-theme-text-tertiary hover:text-theme-text-secondary'
                 )}
                 title={kind}
@@ -245,7 +245,7 @@ export const TopologyFilterSidebar = memo(function TopologyFilterSidebar({
                       className={clsx(
                         'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors',
                         isVisible
-                          ? 'bg-theme-elevated/70 text-theme-text-primary'
+                          ? 'bg-white text-black'
                           : 'text-theme-text-secondary hover:bg-theme-elevated/40 hover:text-theme-text-secondary'
                       )}
                     >

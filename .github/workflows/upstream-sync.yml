@@ -64,6 +64,31 @@ jobs:
                   git add "$file"
                   echo "- Auto-resolved \`$file\` using \`ours\`" >> "$GITHUB_STEP_SUMMARY"
                   ;;
+                .github/workflows/snyk.yml)
+                  git checkout --ours -- "$file"
+                  git add "$file"
+                  echo "- Auto-resolved \`$file\` using \`ours\`" >> "$GITHUB_STEP_SUMMARY"
+                  ;;
+                .github/workflows/weekly-desktop.yml)
+                  git checkout --ours -- "$file"
+                  git add "$file"
+                  echo "- Auto-resolved \`$file\` using \`ours\`" >> "$GITHUB_STEP_SUMMARY"
+                  ;;
+                internal/version/download.go)
+                  git checkout --ours -- "$file"
+                  git add "$file"
+                  echo "- Auto-resolved \`$file\` using \`ours\`" >> "$GITHUB_STEP_SUMMARY"
+                  ;;
+                internal/version/version.go)
+                  git checkout --ours -- "$file"
+                  git add "$file"
+                  echo "- Auto-resolved \`$file\` using \`ours\`" >> "$GITHUB_STEP_SUMMARY"
+                  ;;
+                web/src/components/resources/PodFilesystemModal.tsx)
+                  git checkout --ours -- "$file"
+                  git add "$file"
+                  echo "- Auto-resolved \`$file\` using \`ours\`" >> "$GITHUB_STEP_SUMMARY"
+                  ;;
                 web/src/components/resources/renderers/PodRenderer.tsx)
                   git checkout --ours -- "$file"
                   git add "$file"

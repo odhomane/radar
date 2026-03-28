@@ -6,12 +6,14 @@ import '@xterm/xterm/css/xterm.css'
 import { RefreshCw, ChevronDown, Bug } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Tooltip } from '../ui/Tooltip'
+import { getCssFontVar } from '../../utils/fonts'
 
 interface TerminalTabProps {
   namespace: string
   podName: string
   containerName: string
   containers: string[]
+  initialCommand?: string
   isActive?: boolean
 }
 
@@ -28,6 +30,7 @@ export function TerminalTab({
   podName,
   containerName,
   containers,
+  initialCommand,
   isActive = true,
 }: TerminalTabProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
@@ -59,7 +62,7 @@ export function TerminalTab({
     // Create terminal
     const xterm = new XTerm({
       cursorBlink: true,
-      fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
+      fontFamily: getCssFontVar('--font-code', 'JetBrains Mono, Menlo, Monaco, monospace'),
       fontSize: 13,
       lineHeight: 1.2,
       theme: {
@@ -131,6 +134,14 @@ export function TerminalTab({
         cols: xterm.cols,
       }
       ws.send(JSON.stringify(msg))
+
+      if (initialCommand) {
+        const initialMsg: TerminalMessage = {
+          type: 'input',
+          data: initialCommand,
+        }
+        ws.send(JSON.stringify(initialMsg))
+      }
     }
 
     ws.onmessage = (event) => {
@@ -206,7 +217,7 @@ export function TerminalTab({
     return () => {
       resizeObserver.disconnect()
     }
-  }, [namespace, podName, selectedContainer])
+  }, [namespace, podName, selectedContainer, initialCommand])
 
   // Connect on mount and when container changes
   useEffect(() => {

@@ -4,8 +4,8 @@ set -e
 # Radar Release Script
 # Usage: ./scripts/release.sh
 
-readonly REPO="https://github.com/skyhook-io/radar"
-readonly DOCKER_REPO="ghcr.io/skyhook-io/radar"
+readonly REPO="https://github.com/odhomane/radar"
+readonly DOCKER_REPO="odhomane/radar"
 
 # Colors
 RED='\033[0;31m'
